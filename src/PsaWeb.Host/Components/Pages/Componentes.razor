@@ -1,0 +1,38 @@
+@page "/componentes"
+
+<PageTitle>Componentes — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Componentes"
+               Subtitle="Sistema de diseño PSA en web: color de marca, tipografía y controles base." />
+
+<PsaCard Title="Botones">
+    <div class="psa-row">
+        <PsaButton Variant="primary">Primario</PsaButton>
+        <PsaButton Variant="secondary">Secundario</PsaButton>
+        <PsaButton Variant="ghost">Ghost</PsaButton>
+        <PsaButton Variant="danger">Peligro</PsaButton>
+        <PsaButton Variant="primary" Disabled="true">Deshabilitado</PsaButton>
+    </div>
+</PsaCard>
+
+<PsaCard Title="Rango de fechas">
+    <PsaDateRange From="_from" To="_to"
+                  FromChanged="v => _from = v" ToChanged="v => _to = v" />
+    <p class="psa-muted" style="margin-top: 1rem">
+        Desde <strong>@_from.ToString("dd/MM/yyyy")</strong>
+        hasta <strong>@_to.ToString("dd/MM/yyyy")</strong>
+    </p>
+</PsaCard>
+
+<PsaCard Title="Totales">
+    <div class="psa-grid psa-grid--stats">
+        <PsaStat Label="Total ventas" Value="$ 12.480,00" />
+        <PsaStat Label="Total cobros" Value="$ 12.480,00" />
+        <PsaStat Label="Diferencia" Value="$ 0,00" State="ok" />
+    </div>
+</PsaCard>
+
+@code {
+    private DateOnly _from = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly _to = DateOnly.FromDateTime(DateTime.Today);
+}

@@ -1,0 +1,23 @@
+@namespace PsaWeb.Shared.Components
+
+<header class="psa-pagehead">
+    <div>
+        <h1 class="psa-pagehead__title">@Title</h1>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <p class="psa-pagehead__subtitle">@Subtitle</p>
+        }
+    </div>
+    @if (ChildContent is not null)
+    {
+        <div class="psa-pagehead__actions">@ChildContent</div>
+    }
+</header>
+
+@code {
+    [Parameter] public string Title { get; set; } = string.Empty;
+
+    [Parameter] public string? Subtitle { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

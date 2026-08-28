@@ -1,0 +1,15 @@
+@namespace PsaWeb.Shared.Components
+
+<div class="psa-stat psa-stat--@State">
+    <span class="psa-stat__label">@Label</span>
+    <span class="psa-stat__value">@Value</span>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>neutral | ok | warn | danger</summary>
+    [Parameter] public string State { get; set; } = "neutral";
+}

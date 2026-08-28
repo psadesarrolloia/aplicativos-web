@@ -1,0 +1,15 @@
+# Normalización de fin de línea
+* text=auto
+
+*.cs      text diff=csharp
+*.razor   text
+*.csproj  text
+*.sln     text eol=crlf
+*.props   text
+*.json    text
+*.css     text
+*.js      text
+*.md      text
+
+*.png     binary
+*.ico     binary

@@ -1,0 +1,26 @@
+@page "/"
+@inject NavigationManager Nav
+
+<PageTitle>Inicio — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Aplicativos web"
+               Subtitle="Portal interno de PSA. Migración de los aplicativos de escritorio de Sage 50 a la web." />
+
+<div class="psa-grid psa-grid--cards">
+    <PsaCard Title="Cierre de Caja">
+        <p class="psa-muted">
+            Compara cobros contra ventas de Sage 50 para un rango de fechas.
+            Primer aplicativo del piloto.
+        </p>
+        <div class="psa-row" style="margin-top: 1rem">
+            <PsaButton Variant="primary" OnClick="@(() => Nav.NavigateTo("/cierre-de-caja"))">Abrir</PsaButton>
+        </div>
+    </PsaCard>
+
+    <PsaCard Title="Componentes">
+        <p class="psa-muted">Muestrario del sistema de diseño PSA en web.</p>
+        <div class="psa-row" style="margin-top: 1rem">
+            <PsaButton Variant="secondary" OnClick="@(() => Nav.NavigateTo("/componentes"))">Ver</PsaButton>
+        </div>
+    </PsaCard>
+</div>

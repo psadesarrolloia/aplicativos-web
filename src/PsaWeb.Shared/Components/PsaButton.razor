@@ -1,0 +1,27 @@
+@namespace PsaWeb.Shared.Components
+
+<button type="@Type"
+        class="psa-btn psa-btn--@Variant @Class"
+        disabled="@Disabled"
+        @onclick="OnClick"
+        @attributes="Additional">
+    @ChildContent
+</button>
+
+@code {
+    /// <summary>primary | secondary | ghost | danger</summary>
+    [Parameter] public string Variant { get; set; } = "primary";
+
+    [Parameter] public string Type { get; set; } = "button";
+
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public IReadOnlyDictionary<string, object>? Additional { get; set; }
+}

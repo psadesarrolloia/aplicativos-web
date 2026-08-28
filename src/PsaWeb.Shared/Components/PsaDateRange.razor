@@ -1,0 +1,26 @@
+@namespace PsaWeb.Shared.Components
+
+<div class="psa-daterange">
+    <label class="psa-field">
+        <span class="psa-field__label">Desde</span>
+        <input type="date" class="psa-input" @bind:get="From" @bind:set="OnFromChanged" />
+    </label>
+    <label class="psa-field">
+        <span class="psa-field__label">Hasta</span>
+        <input type="date" class="psa-input" @bind:get="To" @bind:set="OnToChanged" />
+    </label>
+</div>
+
+@code {
+    [Parameter] public DateOnly From { get; set; }
+
+    [Parameter] public EventCallback<DateOnly> FromChanged { get; set; }
+
+    [Parameter] public DateOnly To { get; set; }
+
+    [Parameter] public EventCallback<DateOnly> ToChanged { get; set; }
+
+    private Task OnFromChanged(DateOnly value) => FromChanged.InvokeAsync(value);
+
+    private Task OnToChanged(DateOnly value) => ToChanged.InvokeAsync(value);
+}

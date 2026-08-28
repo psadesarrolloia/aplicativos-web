@@ -1,0 +1,27 @@
+@namespace PsaWeb.Shared.Components
+
+<section class="psa-card @Class">
+    @if (!string.IsNullOrWhiteSpace(Title) || Actions is not null)
+    {
+        <header class="psa-card__head">
+            <h2 class="psa-card__title">@Title</h2>
+            @if (Actions is not null)
+            {
+                <div class="psa-card__actions">@Actions</div>
+            }
+        </header>
+    }
+    <div class="psa-card__body">
+        @ChildContent
+    </div>
+</section>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

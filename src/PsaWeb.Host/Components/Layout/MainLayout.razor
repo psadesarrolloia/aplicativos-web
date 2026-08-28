@@ -1,0 +1,26 @@
+@inherits LayoutComponentBase
+
+<div class="psa-shell">
+    <header class="psa-topbar">
+        <a class="psa-brand" href="/">
+            <img src="_content/PsaWeb.Shared/img/psa-logo-white.png" alt="PSA" />
+            <span>Aplicativos web</span>
+        </a>
+        <NavMenu />
+        <div class="psa-user">
+            <AuthorizeView>
+                <Authorized>@context.User.Identity?.Name</Authorized>
+            </AuthorizeView>
+        </div>
+    </header>
+
+    <main class="psa-main">
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    Ocurrió un error inesperado.
+    <a href="." class="reload">Recargar</a>
+    <span class="dismiss">🗙</span>
+</div>

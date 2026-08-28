@@ -1,0 +1,358 @@
+/* ============================================================================
+   Sistema de diseño PSA — tokens + base + componentes + chrome de layout.
+   Paleta de marca: navy #163154 · magenta #B40046 · blanco.
+   Colores semánticos (ok / warn / danger) deliberadamente distintos del acento.
+   ========================================================================== */
+
+:root {
+  /* superficies y texto (tema claro) */
+  --psa-bg: #f4f6f9;
+  --psa-surface: #ffffff;
+  --psa-surface-2: #eef1f5;
+  --psa-ink: #16202e;
+  --psa-ink-muted: #5a6472;
+  --psa-border: #dce1e8;
+  --psa-border-strong: #c3cad4;
+
+  /* marca */
+  --psa-navy: #163154;
+  --psa-navy-600: #1d4372;
+  --psa-magenta: #b40046;
+  --psa-magenta-600: #950039;
+  --psa-on-brand: #ffffff;
+
+  /* semánticos */
+  --psa-ok: #0f9d63;
+  --psa-warn: #b26a00;
+  --psa-danger: #d64545;
+
+  /* forma */
+  --psa-radius: 10px;
+  --psa-radius-sm: 7px;
+  --psa-shadow: 0 1px 2px rgba(22, 32, 46, .05), 0 10px 24px -14px rgba(22, 32, 46, .18);
+  --psa-focus: 0 0 0 3px rgba(22, 49, 84, .35);
+
+  /* tipografía */
+  --psa-font: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --psa-bg: #0e1520;
+    --psa-surface: #17202e;
+    --psa-surface-2: #1e2937;
+    --psa-ink: #e7ebf1;
+    --psa-ink-muted: #98a2b3;
+    --psa-border: #29333f;
+    --psa-border-strong: #3b4859;
+
+    --psa-navy: #1d4372;
+    --psa-navy-600: #295a97;
+    --psa-magenta: #ff6e9f;
+    --psa-magenta-600: #ff8ab3;
+    --psa-on-brand: #ffffff;
+
+    --psa-ok: #37b37e;
+    --psa-warn: #cd9c4c;
+    --psa-danger: #e5675f;
+
+    --psa-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 14px 32px -16px rgba(0, 0, 0, .55);
+    --psa-focus: 0 0 0 3px rgba(94, 138, 192, .45);
+  }
+}
+
+:root[data-theme="dark"] {
+  --psa-bg: #0e1520;
+  --psa-surface: #17202e;
+  --psa-surface-2: #1e2937;
+  --psa-ink: #e7ebf1;
+  --psa-ink-muted: #98a2b3;
+  --psa-border: #29333f;
+  --psa-border-strong: #3b4859;
+
+  --psa-navy: #1d4372;
+  --psa-navy-600: #295a97;
+  --psa-magenta: #ff6e9f;
+  --psa-magenta-600: #ff8ab3;
+  --psa-on-brand: #ffffff;
+
+  --psa-ok: #37b37e;
+  --psa-warn: #cd9c4c;
+  --psa-danger: #e5675f;
+
+  --psa-shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 14px 32px -16px rgba(0, 0, 0, .55);
+  --psa-focus: 0 0 0 3px rgba(94, 138, 192, .45);
+}
+
+/* --------------------------------------------------------------------------- */
+/* reset mínimo                                                                */
+/* --------------------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--psa-bg);
+  color: var(--psa-ink);
+  font-family: var(--psa-font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, p { margin: 0; }
+
+a { color: var(--psa-magenta); }
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--psa-focus);
+  border-radius: var(--psa-radius-sm);
+}
+
+/* --------------------------------------------------------------------------- */
+/* chrome de layout (shell / topbar / nav)                                     */
+/* --------------------------------------------------------------------------- */
+
+.psa-shell { min-height: 100vh; display: flex; flex-direction: column; }
+
+.psa-topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0 1.25rem;
+  height: 56px;
+  background: var(--psa-navy);
+  color: var(--psa-on-brand);
+}
+
+.psa-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--psa-on-brand);
+  text-decoration: none;
+  font-weight: 600;
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+
+.psa-brand img { height: 26px; width: auto; display: block; }
+
+.psa-nav { display: flex; gap: .25rem; flex: 1; }
+
+.psa-nav__link {
+  display: inline-flex;
+  align-items: center;
+  padding: .4rem .8rem;
+  border-radius: var(--psa-radius-sm);
+  color: rgba(255, 255, 255, .82);
+  text-decoration: none;
+  font-size: .92rem;
+}
+
+.psa-nav__link:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+
+.psa-nav__link.active { color: #fff; background: rgba(255, 255, 255, .16); }
+
+.psa-user { font-size: .85rem; color: rgba(255, 255, 255, .8); white-space: nowrap; }
+
+.psa-main {
+  flex: 1;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+@media (max-width: 640px) {
+  .psa-topbar { height: auto; flex-wrap: wrap; gap: .5rem; padding: .6rem 1rem; }
+  .psa-nav { order: 3; width: 100%; overflow-x: auto; }
+  .psa-main { padding-top: 1.25rem; }
+}
+
+/* --------------------------------------------------------------------------- */
+/* page header                                                                 */
+/* --------------------------------------------------------------------------- */
+
+.psa-pagehead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--psa-border-strong);
+}
+
+.psa-pagehead__title { font-size: 1.5rem; font-weight: 700; letter-spacing: -.01em; }
+
+.psa-pagehead__subtitle { margin-top: .35rem; color: var(--psa-ink-muted); max-width: 60ch; }
+
+/* --------------------------------------------------------------------------- */
+/* card                                                                        */
+/* --------------------------------------------------------------------------- */
+
+.psa-card {
+  background: var(--psa-surface);
+  border: 1px solid var(--psa-border);
+  border-radius: var(--psa-radius);
+  box-shadow: var(--psa-shadow);
+  margin-bottom: 1.25rem;
+}
+
+.psa-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: .9rem 1.15rem;
+  border-bottom: 1px solid var(--psa-border);
+}
+
+.psa-card__title { font-size: 1rem; font-weight: 600; }
+
+.psa-card__body { padding: 1.15rem; }
+
+/* --------------------------------------------------------------------------- */
+/* stat                                                                        */
+/* --------------------------------------------------------------------------- */
+
+.psa-stat {
+  border: 1px solid var(--psa-border);
+  border-left: 3px solid var(--psa-border-strong);
+  border-radius: var(--psa-radius-sm);
+  background: var(--psa-surface-2);
+  padding: .8rem 1rem;
+}
+
+.psa-stat__label {
+  display: block;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--psa-ink-muted);
+  margin-bottom: .3rem;
+}
+
+.psa-stat__value { font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.psa-stat--ok { border-left-color: var(--psa-ok); }
+.psa-stat--warn { border-left-color: var(--psa-warn); }
+.psa-stat--danger { border-left-color: var(--psa-danger); }
+
+/* --------------------------------------------------------------------------- */
+/* button                                                                      */
+/* --------------------------------------------------------------------------- */
+
+.psa-btn {
+  --_bg: var(--psa-navy);
+  --_fg: var(--psa-on-brand);
+  --_bd: var(--psa-navy);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: .5rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  font-size: .9rem;
+  line-height: 1;
+  color: var(--_fg);
+  background: var(--_bg);
+  border: 1px solid var(--_bd);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: filter .12s ease, background-color .12s ease;
+}
+
+.psa-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.psa-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.psa-btn--primary { --_bg: var(--psa-navy); --_fg: var(--psa-on-brand); --_bd: var(--psa-navy); }
+
+.psa-btn--secondary {
+  --_bg: transparent;
+  --_fg: var(--psa-navy);
+  --_bd: var(--psa-border-strong);
+}
+:root[data-theme="dark"] .psa-btn--secondary,
+:root:not([data-theme="light"]) .psa-btn--secondary { --_fg: var(--psa-ink); }
+
+.psa-btn--ghost { --_bg: transparent; --_fg: var(--psa-ink-muted); --_bd: transparent; }
+
+.psa-btn--danger { --_bg: var(--psa-danger); --_fg: #fff; --_bd: var(--psa-danger); }
+
+/* --------------------------------------------------------------------------- */
+/* fields / date range                                                         */
+/* --------------------------------------------------------------------------- */
+
+.psa-daterange { display: flex; gap: 1rem; flex-wrap: wrap; }
+
+.psa-field { display: inline-flex; flex-direction: column; gap: .3rem; }
+
+.psa-field__label {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--psa-ink-muted);
+}
+
+.psa-input {
+  font: inherit;
+  padding: .45rem .6rem;
+  color: var(--psa-ink);
+  background: var(--psa-surface);
+  border: 1px solid var(--psa-border-strong);
+  border-radius: var(--psa-radius-sm);
+}
+
+.psa-input:focus-visible { border-color: var(--psa-navy); box-shadow: var(--psa-focus); }
+
+/* --------------------------------------------------------------------------- */
+/* helpers                                                                     */
+/* --------------------------------------------------------------------------- */
+
+.psa-muted { color: var(--psa-ink-muted); }
+
+.psa-row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+
+.psa-grid { display: grid; gap: .9rem; }
+.psa-grid--cards { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.psa-grid--stats { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+
+.psa-notice {
+  padding: .8rem 1rem;
+  background: var(--psa-surface-2);
+  border-left: 3px solid var(--psa-magenta);
+  border-radius: 0 var(--psa-radius-sm) var(--psa-radius-sm) 0;
+  color: var(--psa-ink);
+}
+
+/* --------------------------------------------------------------------------- */
+/* UI de error de Blazor (heredada de la plantilla, retematizada)              */
+/* --------------------------------------------------------------------------- */
+
+#blazor-error-ui {
+  color-scheme: light dark;
+  background: var(--psa-surface);
+  color: var(--psa-ink);
+  border-top: 3px solid var(--psa-danger);
+  bottom: 0;
+  box-shadow: 0 -1px 12px rgba(0, 0, 0, .12);
+  display: none;
+  left: 0;
+  padding: .9rem 1.25rem;
+  position: fixed;
+  width: 100%;
+  z-index: 1000;
+}
+
+#blazor-error-ui .dismiss {
+  cursor: pointer;
+  position: absolute;
+  right: .9rem;
+  top: .6rem;
+}
