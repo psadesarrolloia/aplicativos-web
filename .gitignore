@@ -482,3 +482,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Artefactos de publicación (F5)
+/publish/
+*.zip
