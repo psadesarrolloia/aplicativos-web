@@ -32,7 +32,18 @@ public class CierreExcelExporterTests
         Assert.NotEmpty(bytes);
         var ws = Abrir(bytes);
         Assert.Equal("CIERRE DE CAJA", ws.Cell("A1").GetString());
-        Assert.Equal("01/08/2026 al 31/08/2026", ws.Cell("B4").GetString());
+        Assert.Equal("01/08/2026 – 31/08/2026", ws.Cell("B4").GetString());
+    }
+
+    [Fact]
+    public void Aplica_la_paleta_PSA_en_el_titulo_y_el_encabezado()
+    {
+        var ws = Abrir(new CierreExcelExporter().Generar(Muestra(), Desde, Hasta));
+
+        Assert.Equal(CierreExcelExporter.Navy, ws.Cell("A1").Style.Fill.BackgroundColor);
+        Assert.Equal(XLColor.White, ws.Cell("A1").Style.Font.FontColor);
+        Assert.Equal(CierreExcelExporter.Navy, ws.Cell("A7").Style.Fill.BackgroundColor);
+        Assert.False(ws.ShowGridLines);
     }
 
     [Fact]
@@ -43,7 +54,7 @@ public class CierreExcelExporterTests
         Assert.Equal("Efectivo", ws.Cell("A8").GetString());
         Assert.Equal(100m, ws.Cell("B8").GetValue<decimal>());
         Assert.Equal("Cheque", ws.Cell("A9").GetString());
-        Assert.Equal("TOTAL COBROS:", ws.Cell("A10").GetString());
+        Assert.Equal("TOTAL COBROS", ws.Cell("A10").GetString());
         Assert.Equal(150m, ws.Cell("B10").GetValue<decimal>());
     }
 
@@ -54,9 +65,29 @@ public class CierreExcelExporterTests
 
         // Fila 10 = TOTAL COBROS; resumen empieza en 12 (10 + 2).
         Assert.Equal("RESUMEN DE CIERRE", ws.Cell("A12").GetString());
-        Assert.Equal("Diferencia:", ws.Cell("A15").GetString());
+        Assert.Equal("Diferencia", ws.Cell("A15").GetString());
         Assert.Equal(25m, ws.Cell("B15").GetValue<decimal>());
-        Assert.Equal(XLColor.Red, ws.Cell("B15").Style.Font.FontColor);
+        Assert.Equal(CierreExcelExporter.Danger, ws.Cell("B15").Style.Font.FontColor);
+    }
+
+    [Fact]
+    public void Diferencia_en_verde_cuando_cuadra()
+    {
+        var cuadra = new ResultadoCierre(Array.Empty<CobroPorTipo>(), 200m, 200m);
+
+        var ws = Abrir(new CierreExcelExporter().Generar(cuadra, Desde, Hasta));
+
+        Assert.Equal(CierreExcelExporter.Ok, ws.Cell("B13").Style.Font.FontColor);
+    }
+
+    [Fact]
+    public void Lleva_la_firma_PSA_al_pie()
+    {
+        var ws = Abrir(new CierreExcelExporter().Generar(Muestra(), Desde, Hasta));
+
+        // pie = 12 + 7 = 19.
+        Assert.Equal(CierreExcelExporter.Firma, ws.Cell("A19").GetString());
+        Assert.Contains("Ecuador", CierreExcelExporter.Firma);
     }
 
     [Fact]
