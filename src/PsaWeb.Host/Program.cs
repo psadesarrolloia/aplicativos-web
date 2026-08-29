@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Authorization;
 using PsaWeb.Host.Auth;
 using PsaWeb.Host.Components;
 using PsaWeb.Modules.CierreDeCaja;
+using PsaWeb.Modules.CierreDeCaja.Data;
+using PsaWeb.Modules.CierreDeCaja.Export;
 using PsaWeb.Sage50;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -66,5 +68,26 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(typeof(ModuleInfo).Assembly);
+
+// Descarga del reporte «Cierre de Caja» en Excel. Re-consulta con las mismas
+// fechas para que el archivo coincida siempre con lo que se ve en pantalla.
+app.MapGet("/cierre-de-caja/export", async (
+        DateOnly desde,
+        DateOnly hasta,
+        ICierreDeCajaRepository repositorio,
+        CierreExcelExporter exportador,
+        CancellationToken cancellationToken) =>
+    {
+        if (desde > hasta)
+        {
+            return Results.BadRequest("La fecha «Desde» no puede ser mayor que «Hasta».");
+        }
+
+        var resultado = await repositorio.ObtenerAsync(desde, hasta, cancellationToken);
+        var bytes = exportador.Generar(resultado, desde, hasta);
+
+        return Results.File(bytes, CierreExcelExporter.ContentType, exportador.NombreArchivo(desde, hasta));
+    })
+    .RequireAuthorization();
 
 app.Run();

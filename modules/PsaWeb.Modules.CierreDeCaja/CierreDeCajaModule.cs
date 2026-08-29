@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PsaWeb.Modules.CierreDeCaja.Data;
+using PsaWeb.Modules.CierreDeCaja.Export;
 using PsaWeb.Sage50;
 
 namespace PsaWeb.Modules.CierreDeCaja;
@@ -22,6 +23,8 @@ public static class CierreDeCajaModule
         {
             services.AddScoped<ICierreDeCajaRepository, OdbcCierreDeCajaRepository>();
         }
+
+        services.AddSingleton<CierreExcelExporter>();
 
         return services;
     }

@@ -4,6 +4,7 @@
 @using PsaWeb.Modules.CierreDeCaja.Data
 @inject ICierreDeCajaRepository Repositorio
 @inject ILogger<CierreDeCaja> Logger
+@inject NavigationManager Nav
 
 <PageTitle>Cierre de Caja — Aplicativos web PSA</PageTitle>
 
@@ -17,7 +18,9 @@
         <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
             @(_cargando ? "Consultando…" : "Consultar")
         </PsaButton>
-        <PsaButton Variant="secondary" Disabled="true">Exportar a Excel</PsaButton>
+        <PsaButton Variant="secondary" OnClick="Exportar" Disabled="@(!PuedeExportar)">
+            Exportar a Excel
+        </PsaButton>
     </div>
 </PsaCard>
 
@@ -86,7 +89,16 @@ else if (_resultado is not null)
     private string? _error;
     private ResultadoCierre? _resultado;
 
+    private bool PuedeExportar =>
+        !_cargando && _error is null && _resultado is { SinMovimientos: false };
+
     private static string Money(decimal value) => "$ " + value.ToString("N2", Ec);
+
+    private void Exportar()
+    {
+        var url = $"cierre-de-caja/export?desde={_desde:yyyy-MM-dd}&hasta={_hasta:yyyy-MM-dd}";
+        Nav.NavigateTo(url, forceLoad: true);
+    }
 
     private async Task Consultar()
     {
