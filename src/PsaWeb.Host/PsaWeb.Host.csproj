@@ -7,6 +7,9 @@
     <!-- El driver Pervasive ODBC de Sage 50 es de 32 bits: el Host debe correr como x86. -->
     <PlatformTarget>x86</PlatformTarget>
     <RootNamespace>PsaWeb.Host</RootNamespace>
+    <!-- Permite `dotnet user-secrets set "Sage50:ConnectionString" "..."` sin `init` previo.
+         Los secretos NO se guardan en git: van a %APPDATA%\Microsoft\UserSecrets. -->
+    <UserSecretsId>psaweb-host-9f2c4e1a-cierre-de-caja</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
