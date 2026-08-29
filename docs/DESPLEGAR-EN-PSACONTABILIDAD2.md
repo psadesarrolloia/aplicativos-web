@@ -42,23 +42,40 @@ Nuevo pool, p. ej. `PsaWebCierreDeCaja`:
 
 ## 3. Sitio / aplicación
 
-- Apuntar a `C:\inetpub\apps\cierre-de-caja`, usando el pool anterior.
-- Binding **https** con certificado (mismo criterio que ya usan para el RDS).
+- Carpeta física: seguir la convención del server (`C:\inetpub\<NombreApp>`,
+  p. ej. `C:\inetpub\CierreDeCaja`) — **no** como aplicación bajo otro sitio
+  (la app tiene `<base href="/">` y se rompe bajo un subpath).
+- Para la primera prueba, binding **http** en un puerto libre (ojo: `8080` suele
+  estar tomado por http.sys). Luego se agrega el binding **https** con certificado.
 - El `web.config` ya viene en el paquete (handler `AspNetCoreModuleV2`,
-  `processPath=".\PsaWeb.Host.exe"`, `hostingModel="inprocess"`). No editarlo salvo
-  el paso 4.
+  `hostingModel="inprocess"`). Solo se toca para el paso 5.
 
-## 4. Autenticación de Windows
+```powershell
+Import-Module WebAdministration
+New-Website -Name "CierreDeCaja" -PhysicalPath "C:\inetpub\CierreDeCaja" -ApplicationPool "CierreDeCaja" -Port 8088
+```
 
-En IIS, sobre el sitio → *Autenticación*:
+## 4. Autenticación de Windows  ← **hacerlo antes de la primera carga**
+
+> Con `hostingModel="inprocess"`, el handler `Negotiate` de la app **exige** que
+> la Autenticación de Windows de IIS esté habilitada. Si no lo está, la app tira
+> **HTTP 500.30** al arrancar (`InvalidOperationException: The Negotiate
+> Authentication handler cannot be used on a server that directly supports
+> Windows Authentication`). Por eso este paso va antes de probar.
+
+Si la característica no está instalada: `Install-WindowsFeature Web-Windows-Auth`.
+
+Luego, sobre el sitio → *Autenticación*:
 
 - **Autenticación de Windows: Habilitada**
 - **Autenticación anónima: Deshabilitada**
 
-En `Development` la app firma como el usuario local (handler de dev); fuera de
-`Development` toma `Negotiate` automáticamente (ver `Program.cs`). No hay que
-tocar código: confirmar solo que `ASPNETCORE_ENVIRONMENT` **no** esté en
-`Development` (por defecto es `Production`).
+```powershell
+Restart-WebAppPool CierreDeCaja
+```
+
+No hay que tocar código: fuera de `Development` la app toma `Negotiate` sola.
+Confirmar solo que `ASPNETCORE_ENVIRONMENT` **no** esté en `Development`.
 
 ## 5. Cadena de conexión a Sage 50
 
@@ -66,15 +83,28 @@ No va en `appsettings.json`. Definir una variable de entorno **del sitio**
 (IIS → *Configuration Editor* → `system.webServer/aspNetCore/environmentVariables`,
 o agregando `<environmentVariables>` dentro de `<aspNetCore>` en `web.config`):
 
-```
-Sage50__ConnectionString = Driver={Pervasive ODBC Client Interface};ServerName=<host-sage>;DBQ=<base>;UID=Peachtree;PWD=<clave>;
+```xml
+<aspNetCore processPath=".\PsaWeb.Host.exe" stdoutLogEnabled="false" stdoutLogFile=".\logs\stdout" hostingModel="inprocess">
+  <environmentVariables>
+    <environmentVariable name="Sage50__ConnectionString"
+      value="Driver={Pervasive ODBC Client Interface};ServerName=localhost;DBQ=<BASE>;UID=Peachtree;PWD=<clave>;" />
+  </environmentVariables>
+</aspNetCore>
 ```
 
-(`__` = separador de sección). Al arrancar, el log debe decir
-`Cierre de Caja: repositorio ODBC / Sage 50.`
+(`__` = separador de sección). `Restart-WebAppPool CierreDeCaja` y el log debe
+decir `Cierre de Caja: repositorio ODBC / Sage 50.`
+
+**El nombre de la base (`DBQ`)** es el nombre de la empresa en Sage 50, en
+mayúsculas y sin caracteres no alfanuméricos: `ROLLERDANCE-E-2025-26` →
+`ROLLERDANCEE202526`. La lista del registro viejo de PSQL
+(`...\PSQL\DBNamesDirectory\dbnames.cfg`) **no** es la del motor Zen — no fiarse
+de ella. Si da `Btrieve Error 2301 / Cannot locate the named database`, abrir esa
+empresa una vez en Sage 50 (registra la base en Zen) y reintentar.
 
 Para ver el log de arranque: poner `stdoutLogEnabled="true"` en `web.config`,
-crear la carpeta `logs\`, reproducir el arranque, y volver a `false`.
+crear la carpeta `logs\`, reproducir el arranque, y volver a `false`. El error
+real también sale en el Visor de eventos (origen `IIS AspNetCore Module V2`).
 
 ## 6. Prueba de humo
 
@@ -91,12 +121,13 @@ crear la carpeta `logs\`, reproducir el arranque, y volver a `false`.
 | Síntoma | Causa | Solución |
 |---|---|---|
 | HTTP 500.19 / no arranca, falta `AspNetCoreModuleV2` | No está el Hosting Bundle | Instalar `dotnet-hosting-9.0.x-win.exe` + `iisreset` |
-| HTTP 500.30 / 500.31 | El `.exe` no levanta | Ver `logs\stdout` (activar `stdoutLogEnabled`); casi siempre es el paso 5 mal |
+| HTTP 500.30 + `Negotiate ... cannot be used on a server that directly supports Windows Authentication` | Falta habilitar Windows Auth en IIS | Paso 4 (habilitar Windows Auth, deshabilitar Anónima) + `Restart-WebAppPool` |
+| HTTP 500.30 / 500.31 (otro) | El `.exe` no levanta | Ver `logs\stdout` o Visor de eventos; suele ser el paso 5 mal |
 | `IM014 architecture mismatch` en el log | Pool no está en 32 bits | App pool → *Habilitar aplicaciones de 32 bits* = True |
 | `28000 Invalid user authorization` | Falta `UID`/`PWD` en la cadena | `UID=Peachtree;PWD=<clave>;` |
+| `Btrieve Error 2301 / Cannot locate the named database` | `DBQ` no está registrado en el motor Zen | Nombre = empresa en mayúsculas sin símbolos; abrir la empresa una vez en Sage 50 para registrarla |
 | El navegador pide usuario/contraseña | El host no está en *Intranet local* del cliente, o SPN | Agregar el sitio a Intranet local; revisar SPN de la cuenta del pool |
 | 403 tras autenticar | La identidad del pool no tiene NTFS sobre la carpeta de Sage | Dar lectura a esa cuenta |
-| Conecta pero 0 filas | `DBQ` equivocado | Confirmar el nombre Pervasive de la empresa en `dbnames.cfg` |
 
 ## Para la ola de 25 (nota para F6)
 
