@@ -4,12 +4,9 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Módulo de Blazor Server: usa ODBC (System.Data.Odbc), nunca corre en navegador.
+         Sin esto, CA1416 marca cada llamada ODBC como "no soportada en browser". -->
   </PropertyGroup>
-
-
-  <ItemGroup>
-    <SupportedPlatform Include="browser" />
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.18" />

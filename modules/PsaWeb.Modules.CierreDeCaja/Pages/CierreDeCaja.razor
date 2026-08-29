@@ -1,5 +1,9 @@
 @page "/cierre-de-caja"
 @namespace PsaWeb.Modules.CierreDeCaja.Pages
+@using System.Globalization
+@using PsaWeb.Modules.CierreDeCaja.Data
+@inject ICierreDeCajaRepository Repositorio
+@inject ILogger<CierreDeCaja> Logger
 
 <PageTitle>Cierre de Caja — Aplicativos web PSA</PageTitle>
 
@@ -7,40 +11,107 @@
                Subtitle="Compara los cobros contra las ventas registradas en Sage 50 para un rango de fechas." />
 
 <PsaCard Title="Parámetros">
-    <PsaDateRange From="_from" To="_to"
-                  FromChanged="v => _from = v" ToChanged="v => _to = v" />
+    <PsaDateRange From="_desde" To="_hasta"
+                  FromChanged="v => _desde = v" ToChanged="v => _hasta = v" />
     <div class="psa-row" style="margin-top: 1.1rem">
-        <PsaButton Variant="primary" OnClick="Consultar">Consultar</PsaButton>
+        <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
+            @(_cargando ? "Consultando…" : "Consultar")
+        </PsaButton>
         <PsaButton Variant="secondary" Disabled="true">Exportar a Excel</PsaButton>
     </div>
 </PsaCard>
 
-@if (_consulted)
+@if (_error is not null)
 {
     <PsaCard Title="Resultado">
-        <p class="psa-notice">
-            La conexión a Sage 50 se cablea en la <strong>Fase 2</strong>. La estructura de la
-            pantalla —rango de fechas, detalle de cobros y totales— ya está lista; falta enganchar
-            el repositorio ODBC (<code>ISageConnectionFactory</code> ya está registrado).
+        <p class="psa-notice psa-notice--danger">@_error</p>
+    </PsaCard>
+}
+else if (_resultado is not null)
+{
+    <PsaCard Title="Resultado">
+        <p class="psa-muted">
+            Rango: <strong>@_desde.ToString("dd/MM/yyyy")</strong> a <strong>@_hasta.ToString("dd/MM/yyyy")</strong>
         </p>
 
-        <p class="psa-muted" style="margin-top: 1rem">
-            Rango seleccionado: <strong>@_from.ToString("dd/MM/yyyy")</strong>
-            a <strong>@_to.ToString("dd/MM/yyyy")</strong>
-        </p>
+        @if (_resultado.SinMovimientos)
+        {
+            <p class="psa-notice" style="margin-top: 1rem">Sin movimientos en el rango seleccionado.</p>
+        }
+        else
+        {
+            <div class="psa-grid psa-grid--stats" style="margin-top: 1rem">
+                <PsaStat Label="Total ventas" Value="@Money(_resultado.TotalVentas)" />
+                <PsaStat Label="Total cobros" Value="@Money(_resultado.TotalCobros)" />
+                <PsaStat Label="Diferencia" Value="@Money(_resultado.Diferencia)"
+                         State="@(_resultado.Diferencia == 0m ? "ok" : "danger")" />
+            </div>
 
-        <div class="psa-grid psa-grid--stats" style="margin-top: 1rem">
-            <PsaStat Label="Total ventas" Value="—" />
-            <PsaStat Label="Total cobros" Value="—" />
-            <PsaStat Label="Diferencia" Value="—" />
-        </div>
+            @if (_resultado.Cobros.Count > 0)
+            {
+                <table class="psa-table" style="margin-top: 1.25rem">
+                    <thead>
+                        <tr>
+                            <th>Recibo</th>
+                            <th class="num">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fila in _resultado.Cobros)
+                        {
+                            <tr>
+                                <td>@fila.Tipo</td>
+                                <td class="num">@Money(fila.Subtotal)</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td>Total cobros</td>
+                            <td class="num">@Money(_resultado.TotalCobros)</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            }
+        }
     </PsaCard>
 }
 
 @code {
-    private DateOnly _from = DateOnly.FromDateTime(DateTime.Today);
-    private DateOnly _to = DateOnly.FromDateTime(DateTime.Today);
-    private bool _consulted;
+    private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
 
-    private void Consultar() => _consulted = true;
+    private DateOnly _desde = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
+    private bool _cargando;
+    private string? _error;
+    private ResultadoCierre? _resultado;
+
+    private static string Money(decimal value) => "$ " + value.ToString("N2", Ec);
+
+    private async Task Consultar()
+    {
+        _error = null;
+        _resultado = null;
+
+        if (_desde > _hasta)
+        {
+            _error = "La fecha «Desde» no puede ser mayor que «Hasta».";
+            return;
+        }
+
+        _cargando = true;
+        try
+        {
+            _resultado = await Repositorio.ObtenerAsync(_desde, _hasta);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error consultando el cierre de caja ({Desde}–{Hasta})", _desde, _hasta);
+            _error = $"No se pudo consultar Sage 50: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
 }

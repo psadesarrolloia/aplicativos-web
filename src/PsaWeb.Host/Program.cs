@@ -11,9 +11,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Acceso a datos de Sage 50 (ODBC / Pervasive). Registrado desde la Fase 1;
-// las consultas reales se cablean en la Fase 2.
+// Acceso a datos de Sage 50 (ODBC / Pervasive) + módulo Cierre de Caja.
+// Sin cadena de conexión configurada, el módulo usa datos de muestra.
 builder.Services.AddSage50(builder.Configuration);
+builder.Services.AddCierreDeCaja(builder.Configuration);
 
 // --- Autenticación -----------------------------------------------------------
 // Producción: Windows Integrated Auth (Negotiate / Kerberos) contra Active Directory.
@@ -44,6 +45,10 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddCascadingAuthenticationState();
 
 var app = builder.Build();
+
+app.Logger.LogInformation(
+    "Cierre de Caja: repositorio {Repo}.",
+    CierreDeCajaModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50");
 
 if (!app.Environment.IsDevelopment())
 {

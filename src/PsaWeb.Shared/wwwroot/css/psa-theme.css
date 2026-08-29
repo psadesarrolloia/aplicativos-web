@@ -331,6 +331,41 @@ a { color: var(--psa-magenta); }
   color: var(--psa-ink);
 }
 
+.psa-notice--danger { border-left-color: var(--psa-danger); }
+
+/* --------------------------------------------------------------------------- */
+/* table                                                                       */
+/* --------------------------------------------------------------------------- */
+
+.psa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .92rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.psa-table th,
+.psa-table td {
+  text-align: left;
+  padding: .55rem .75rem;
+  border-bottom: 1px solid var(--psa-border);
+}
+
+.psa-table thead th {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--psa-ink-muted);
+}
+
+.psa-table .num { text-align: right; }
+
+.psa-table tfoot td {
+  font-weight: 600;
+  border-top: 2px solid var(--psa-border-strong);
+  border-bottom: none;
+}
+
 /* --------------------------------------------------------------------------- */
 /* UI de error de Blazor (heredada de la plantilla, retematizada)              */
 /* --------------------------------------------------------------------------- */
