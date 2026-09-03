@@ -84,18 +84,24 @@ public sealed class TableroRetenciones
         return filas;
     }
 
-    /// <summary>Últimas <paramref name="top"/> retenciones guardadas, de todas las empresas.</summary>
+    /// <summary>
+    /// Retenciones guardadas de todas las empresas, opcionalmente acotadas por
+    /// rango de fechas de emisión (<paramref name="desde"/> inclusive,
+    /// <paramref name="hasta"/> inclusive), las <paramref name="top"/> más nuevas.
+    /// </summary>
     public Task<IReadOnlyList<RetencionReciente>> RecientesAsync(
-        int top = 20, CancellationToken cancellationToken = default)
-        => RecientesInternoAsync(rucFiltro: null, top, cancellationToken);
+        DateTime? desde = null, DateTime? hasta = null, int top = 200,
+        CancellationToken cancellationToken = default)
+        => RecientesInternoAsync(null, desde, hasta, top, cancellationToken);
 
-    /// <summary>Últimas <paramref name="top"/> retenciones guardadas de una empresa.</summary>
+    /// <summary>Igual que <see cref="RecientesAsync"/> pero de una sola empresa.</summary>
     public Task<IReadOnlyList<RetencionReciente>> RecientesPorEmpresaAsync(
-        string ruc, int top = 20, CancellationToken cancellationToken = default)
-        => RecientesInternoAsync(ruc, top, cancellationToken);
+        string ruc, DateTime? desde = null, DateTime? hasta = null, int top = 200,
+        CancellationToken cancellationToken = default)
+        => RecientesInternoAsync(ruc, desde, hasta, top, cancellationToken);
 
     private async Task<IReadOnlyList<RetencionReciente>> RecientesInternoAsync(
-        string? rucFiltro, int top, CancellationToken cancellationToken)
+        string? rucFiltro, DateTime? desde, DateTime? hasta, int top, CancellationToken cancellationToken)
     {
         await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
@@ -103,6 +109,15 @@ public sealed class TableroRetenciones
         if (rucFiltro is not null)
         {
             query = query.Where(t => t.TransmitterRuc == rucFiltro);
+        }
+        if (desde is { } d)
+        {
+            query = query.Where(t => t.DateIssued >= d.Date);
+        }
+        if (hasta is { } h)
+        {
+            var finExclusivo = h.Date.AddDays(1);
+            query = query.Where(t => t.DateIssued < finExclusivo);
         }
 
         var recientes = await query

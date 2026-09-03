@@ -71,4 +71,26 @@ public class TableroRetencionesTests
             recientes.Select(r => r.Numero).ToArray(),
             otra.Select(r => r.Numero).ToArray());
     }
+
+    [SkippableFact]
+    public async Task Recientes_acota_por_rango_de_fechas_inclusive()
+    {
+        Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");
+
+        var tablero = Construir();
+
+        // Tomo la fecha de la retención más nueva y pido solo ese día.
+        var ultima = (await tablero.RecientesAsync(top: 1)).FirstOrDefault();
+        Skip.If(ultima is null, "No hay retenciones guardadas.");
+        var dia = ultima!.Fecha.Date;
+
+        var delDia = await tablero.RecientesAsync(desde: dia, hasta: dia, top: 500);
+
+        Assert.NotEmpty(delDia);
+        Assert.All(delDia, r => Assert.Equal(dia, r.Fecha.Date));
+
+        // Un rango en el futuro no trae nada.
+        var futuro = await tablero.RecientesAsync(desde: dia.AddYears(50), hasta: dia.AddYears(50), top: 10);
+        Assert.Empty(futuro);
+    }
 }

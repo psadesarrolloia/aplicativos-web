@@ -211,37 +211,101 @@ else
             }
         </Actions>
         <ChildContent>
-        @if (_empresaSel is null)
+
+        <div class="psa-row" style="margin-bottom:.8rem; align-items:flex-end; gap:.9rem">
+            <label class="psa-field">
+                <span class="psa-field__lbl">Desde</span>
+                <input class="psa-input psa-input--sm" type="date" @bind="_rDesde" @bind:after="RecargarRecientes" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__lbl">Hasta</span>
+                <input class="psa-input psa-input--sm" type="date" @bind="_rHasta" @bind:after="RecargarRecientes" />
+            </label>
+            @if (_rDesde is not null || _rHasta is not null)
+            {
+                <button type="button" class="psa-linkbtn" @onclick="LimpiarRango">Todo el histórico</button>
+            }
+        </div>
+
+        @if (_rangoInvalido)
         {
-            <p class="psa-muted">Hacé clic en una empresa de la tabla de arriba para ver sus últimas retenciones guardadas.</p>
+            <p class="psa-notice psa-notice--danger">«Desde» no puede ser posterior a «Hasta».</p>
         }
-        else if (_recientesCargando)
+        else if (_empresaSel is null && _rDesde is null && _rHasta is null)
+        {
+            <p class="psa-muted">
+                Mostrando las últimas @TopRecientes de todas las empresas. Elegí un rango de fechas
+                o hacé clic en una empresa de arriba para acotar.
+            </p>
+        }
+
+        @if (_recientesCargando)
         {
             <p class="psa-muted">Cargando…</p>
         }
         else if (_recientes is null || _recientes.Count == 0)
         {
-            <p class="psa-notice">Esta empresa todavía no tiene retenciones guardadas.</p>
+            <p class="psa-notice">No hay retenciones guardadas para ese criterio.</p>
         }
         else
         {
+            var vista = RecientesVista();
+
+            <p class="psa-muted" style="margin-bottom:.4rem">
+                Mostrando @vista.Count de @_recientes.Count traídas@(_recientes.Count >= TopRecientes ? $" (tope {TopRecientes} — acotá por fecha)" : "").
+                @if (TieneFiltrosRec)
+                {
+                    <button type="button" class="psa-linkbtn" @onclick="LimpiarFiltrosRec">Limpiar filtros</button>
+                }
+            </p>
+
             <div style="overflow-x:auto">
-            <table class="psa-table">
+            <table class="psa-table psa-table--interactiva">
                 <thead>
                     <tr>
-                        <th>Fecha</th>
-                        <th>Número</th>
+                        <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Fecha))">Fecha @FlechaRec(ColR.Fecha)</th>
+                        @if (_empresaSel is null)
+                        {
+                            <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Empresa))">Empresa @FlechaRec(ColR.Empresa)</th>
+                        }
+                        <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Numero))">Número @FlechaRec(ColR.Numero)</th>
                         <th>Secuencial</th>
-                        <th>Proveedor</th>
-                        <th>Ambiente</th>
+                        <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Proveedor))">Proveedor @FlechaRec(ColR.Proveedor)</th>
+                        <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Ambiente))">Ambiente @FlechaRec(ColR.Ambiente)</th>
                         <th>Datil</th>
+                    </tr>
+                    <tr class="psa-table__filtros">
+                        <th></th>
+                        @if (_empresaSel is null)
+                        {
+                            <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_rfEmpresa" @bind:event="oninput" /></th>
+                        }
+                        <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_rfNumero" @bind:event="oninput" /></th>
+                        <th></th>
+                        <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_rfProveedor" @bind:event="oninput" /></th>
+                        <th>
+                            <select class="psa-input psa-input--sm" @bind="_rfAmbiente">
+                                <option value="">todos</option>
+                                <option value="1">Pruebas</option>
+                                <option value="2">Producción</option>
+                            </select>
+                        </th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var r in _recientes)
+                    @if (vista.Count == 0)
+                    {
+                        <tr><td colspan="@(_empresaSel is null ? 7 : 6)" class="psa-muted">Ninguna retención coincide con el filtro.</td></tr>
+                    }
+                    @foreach (var r in vista)
                     {
                         <tr>
                             <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+                            @if (_empresaSel is null)
+                            {
+                                <td>@r.Empresa</td>
+                            }
                             <td>@r.Numero</td>
                             <td>@r.Secuencial</td>
                             <td>@r.Contacto</td>
@@ -261,6 +325,9 @@ else
     private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
 
     private enum Col { Ruc, Empresa, Ambiente, Pendientes, UltimaEmision }
+    private enum ColR { Fecha, Empresa, Numero, Proveedor, Ambiente }
+
+    private const int TopRecientes = 200;
 
     private TableroRetenciones? _tablero;
     private ProcesadorRetenciones? _procesador;
@@ -284,19 +351,34 @@ else
     private int? _fPendientesMin;
     private string _fEmision = "";
 
-    // Selección de empresa + su historial.
+    // Selección de empresa + card de retenciones guardadas.
     private string? _empresaSel;
     private string? _empresaSelNombre;
     private IReadOnlyList<RetencionReciente>? _recientes;
     private bool _recientesCargando;
+
+    // Filtros / orden de la card de retenciones guardadas.
+    private DateOnly? _rDesde;
+    private DateOnly? _rHasta;
+    private bool _rangoInvalido;
+    private string _rfEmpresa = "";
+    private string _rfNumero = "";
+    private string _rfProveedor = "";
+    private string _rfAmbiente = "";
+    private ColR _sortColRec = ColR.Fecha;
+    private bool _sortAscRec;
 
     private bool TieneFiltros =>
         !string.IsNullOrWhiteSpace(_fRuc) || !string.IsNullOrWhiteSpace(_fEmpresa)
         || !string.IsNullOrEmpty(_fAmbiente) || _fPendientesMin is not null
         || !string.IsNullOrEmpty(_fEmision);
 
+    private bool TieneFiltrosRec =>
+        !string.IsNullOrWhiteSpace(_rfEmpresa) || !string.IsNullOrWhiteSpace(_rfNumero)
+        || !string.IsNullOrWhiteSpace(_rfProveedor) || !string.IsNullOrEmpty(_rfAmbiente);
+
     private string TituloRecientes =>
-        _empresaSel is null ? "Últimas retenciones guardadas" : $"Últimas retenciones — {_empresaSelNombre}";
+        _empresaSel is null ? "Retenciones guardadas" : $"Retenciones guardadas — {_empresaSelNombre}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -312,6 +394,7 @@ else
         }
 
         await CargarPanorama();
+        await RecargarRecientes();
     }
 
     private IReadOnlyList<FilaTablero> FilasVista()
@@ -366,25 +449,48 @@ else
     private async Task SeleccionarEmpresa(FilaTablero fila)
     {
         // Segundo clic sobre la misma empresa: la deselecciona.
-        if (_empresaSel == fila.Ruc) { QuitarSeleccion(); return; }
-        await CargarRecientesEmpresa(fila.Ruc, fila.Nombre);
+        if (_empresaSel == fila.Ruc)
+        {
+            await QuitarSeleccion();
+            return;
+        }
+
+        _empresaSel = fila.Ruc;
+        _empresaSelNombre = fila.Nombre;
+        await RecargarRecientes();
     }
 
-    private async Task CargarRecientesEmpresa(string ruc, string nombre)
+    private async Task QuitarSeleccion()
+    {
+        _empresaSel = null;
+        _empresaSelNombre = null;
+        await RecargarRecientes();
+    }
+
+    private async Task RecargarRecientes()
     {
         if (_tablero is null) return;
 
-        _empresaSel = ruc;
-        _empresaSelNombre = nombre;
-        _recientes = null;
+        _rangoInvalido = _rDesde is { } d && _rHasta is { } h && d > h;
+        if (_rangoInvalido)
+        {
+            _recientes = Array.Empty<RetencionReciente>();
+            return;
+        }
+
+        var desde = _rDesde?.ToDateTime(TimeOnly.MinValue);
+        var hasta = _rHasta?.ToDateTime(TimeOnly.MinValue);
+
         _recientesCargando = true;
         try
         {
-            _recientes = await _tablero.RecientesPorEmpresaAsync(ruc);
+            _recientes = _empresaSel is null
+                ? await _tablero.RecientesAsync(desde, hasta, TopRecientes)
+                : await _tablero.RecientesPorEmpresaAsync(_empresaSel, desde, hasta, TopRecientes);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error cargando retenciones de {Ruc}", ruc);
+            Logger.LogError(ex, "Error cargando retenciones guardadas");
             _recientes = Array.Empty<RetencionReciente>();
         }
         finally
@@ -393,11 +499,55 @@ else
         }
     }
 
-    private void QuitarSeleccion()
+    private IReadOnlyList<RetencionReciente> RecientesVista()
     {
-        _empresaSel = null;
-        _empresaSelNombre = null;
-        _recientes = null;
+        if (_recientes is null) return Array.Empty<RetencionReciente>();
+
+        IEnumerable<RetencionReciente> q = _recientes;
+
+        if (!string.IsNullOrWhiteSpace(_rfEmpresa))
+            q = q.Where(r => r.Empresa.Contains(_rfEmpresa.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(_rfNumero))
+            q = q.Where(r => r.Numero.Contains(_rfNumero.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(_rfProveedor))
+            q = q.Where(r => (r.Contacto ?? "").Contains(_rfProveedor.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (short.TryParse(_rfAmbiente, out var amb))
+            q = q.Where(r => r.Ambiente == amb);
+
+        IEnumerable<RetencionReciente> Ordenar<TKey>(Func<RetencionReciente, TKey> clave) =>
+            _sortAscRec ? q.OrderBy(clave) : q.OrderByDescending(clave);
+
+        q = _sortColRec switch
+        {
+            ColR.Empresa => Ordenar(r => r.Empresa),
+            ColR.Numero => Ordenar(r => r.Numero),
+            ColR.Proveedor => Ordenar(r => r.Contacto ?? ""),
+            ColR.Ambiente => Ordenar(r => r.Ambiente),
+            _ => Ordenar(r => r.Fecha),
+        };
+
+        return q.ToList();
+    }
+
+    private void OrdenarRec(ColR col)
+    {
+        if (_sortColRec == col) _sortAscRec = !_sortAscRec;
+        else { _sortColRec = col; _sortAscRec = false; }
+    }
+
+    private MarkupString FlechaRec(ColR col) =>
+        new(_sortColRec == col ? (_sortAscRec ? "&#9650;" : "&#9660;") : "");
+
+    private void LimpiarFiltrosRec()
+    {
+        _rfEmpresa = _rfNumero = _rfProveedor = _rfAmbiente = "";
+    }
+
+    private async Task LimpiarRango()
+    {
+        _rDesde = null;
+        _rHasta = null;
+        await RecargarRecientes();
     }
 
     private async Task CargarPanorama()
@@ -409,12 +559,11 @@ else
         {
             _panorama = await _tablero.PanoramaAsync();
 
-            // Si la empresa seleccionada sigue existiendo, refrescá su historial.
-            if (_empresaSel is not null)
+            // Si la empresa seleccionada ya no está activa, volvé a la vista global.
+            if (_empresaSel is not null && _panorama.All(f => f.Ruc != _empresaSel))
             {
-                var sigue = _panorama.FirstOrDefault(f => f.Ruc == _empresaSel);
-                if (sigue is null) QuitarSeleccion();
-                else await CargarRecientesEmpresa(sigue.Ruc, sigue.Nombre);
+                _empresaSel = null;
+                _empresaSelNombre = null;
             }
         }
         catch (Exception ex)
@@ -449,6 +598,7 @@ else
 
             _resumen = resultado.Resumen;
             await CargarPanorama();
+            await RecargarRecientes();
         }
         catch (Exception ex)
         {

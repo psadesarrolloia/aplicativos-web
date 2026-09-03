@@ -313,6 +313,15 @@ a { color: var(--psa-magenta); }
 
 .psa-input--sm { width: 100%; padding: .25rem .4rem; font-size: .82rem; }
 
+.psa-field { display: inline-flex; flex-direction: column; gap: .2rem; }
+.psa-field__lbl {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--psa-ink-muted);
+}
+.psa-field .psa-input { width: auto; }
+
 .psa-linkbtn {
   border: 0;
   background: none;
