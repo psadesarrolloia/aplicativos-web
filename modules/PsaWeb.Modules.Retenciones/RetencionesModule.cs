@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using PsaWeb.Comprobantes.Retenciones;
 using PsaWeb.Modules.Retenciones.Data;
 
@@ -14,7 +15,8 @@ public static class RetencionesModule
 {
     /// <summary>
     /// Registra el módulo de Retenciones: lookups contra PeachEBills, el
-    /// <see cref="RetencionBuilder"/> y el repositorio de pendientes.
+    /// <see cref="RetencionBuilder"/>, el repositorio de pendientes, el
+    /// orquestador, el candado single-flight y el worker en segundo plano.
     /// Requiere <c>AddPeachEbills</c>, <c>AddDatil</c> y <c>AddSage50</c>.
     /// </summary>
     public static IServiceCollection AddRetenciones(this IServiceCollection services, IConfiguration configuration)
@@ -29,6 +31,11 @@ public static class RetencionesModule
         services.AddScoped<RepositorioRetenciones>();
         services.AddScoped<ProcesadorRetenciones>();
         services.AddScoped<TableroRetenciones>();
+
+        // Candado compartido (botón «Ejecutar ahora» + worker) y el worker mismo.
+        // El worker arranca siempre pero se autolimita si Worker:Habilitado = false.
+        services.AddSingleton<EjecucionRetencionesGate>();
+        services.AddHostedService<RetencionesWorker>();
 
         return services;
     }

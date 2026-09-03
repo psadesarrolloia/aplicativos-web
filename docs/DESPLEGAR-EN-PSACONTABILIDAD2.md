@@ -141,3 +141,44 @@ El procedimiento es el mismo.
   con compat level < 130 se traduce a `OPENJSON` y falla). El backup de
   `PeachEBills` viene en compat 120; conviene subirlo a 150+ en el servidor:
   `ALTER DATABASE [PeachEBills] SET COMPATIBILITY_LEVEL = 150`.
+
+## Módulo Retenciones (Ola 1) — configuración en el servidor
+
+El módulo `/retenciones` se **activa solo si** está `PeachEbills__ConnectionString`.
+Sin esa variable, el resto del sitio (piloto Cierre de Caja) funciona igual y la
+página muestra "Módulo no configurado".
+
+Variables de entorno del sitio (mismo `<environmentVariables>` del paso 5):
+
+```xml
+<environmentVariable name="PeachEbills__ConnectionString"
+  value="Server=localhost;Database=PeachEBills;Trusted_Connection=True;TrustServerCertificate=True" />
+<!-- DryRun=true: arma y valida cada retención pero NO la envía a Datil ni la guarda.
+     Enviar de verdad autoriza el comprobante ante el SRI (irreversible): dejarlo en
+     true hasta validar contra Datil EN EL SERVIDOR. -->
+<environmentVariable name="Datil__DryRun" value="true" />
+<!-- Worker en segundo plano: apagado por defecto. Prender recién cuando DryRun=false
+     esté validado y se quiera emisión automática. -->
+<environmentVariable name="Retenciones__Worker__Habilitado" value="false" />
+<environmentVariable name="Retenciones__Worker__Intervalo" value="01:00:00" />
+<environmentVariable name="Retenciones__Worker__RetrasoInicial" value="00:02:00" />
+<!-- RUCs a saltar (opcional): índice por variable -->
+<!-- <environmentVariable name="Retenciones__OmitirRucs__0" value="1790000000001" /> -->
+```
+
+- La cuenta del app pool necesita acceso a SQL Server `PeachEBills` (login +
+  `db_datareader`/`db_datawriter`; el alta de retenciones **escribe**
+  `TaxWithHoldings` + `THDetails` + `DatilRequests`). Con `Trusted_Connection` el
+  login es la identidad del pool (`IIS APPPOOL\<pool>` o la cuenta de servicio).
+- Log de arranque esperado: `Retenciones: módulo ACTIVO (PeachEBills configurado).`
+  y, si el worker está prendido, `Worker de retenciones ACTIVO. Primera corrida
+  en … luego cada …`.
+- El botón "Ejecutar ahora" de la página y el worker comparten un candado de un
+  solo cupo (`EjecucionRetencionesGate`): nunca corren dos generaciones a la vez;
+  la segunda recibe "Ya hay una corrida en curso".
+- Cada empresa cuyo Sage 50 multi-empresa no se pueda abrir cuenta como "con
+  error" en el resumen y la corrida sigue con las demás (no aborta).
+- Orden de puesta en marcha: (1) subir con `DryRun=true` y worker apagado, revisar
+  el panorama y correr "Ejecutar ahora" una vez — todo debe quedar en "armadas
+  OK"; (2) pasar `Datil__DryRun=false` y volver a correr a mano validando en
+  Datil; (3) recién ahí `Retenciones__Worker__Habilitado=true`.

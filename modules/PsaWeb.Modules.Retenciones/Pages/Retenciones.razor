@@ -58,6 +58,10 @@ else
         </Actions>
         <ChildContent>
 
+        @if (_avisoCorrida is not null)
+        {
+            <p class="psa-notice">@_avisoCorrida</p>
+        }
         @if (_errorPanorama is not null)
         {
             <p class="psa-notice psa-notice--danger">@_errorPanorama</p>
@@ -209,8 +213,10 @@ else
 
     private TableroRetenciones? _tablero;
     private ProcesadorRetenciones? _procesador;
+    private EjecucionRetencionesGate? _gate;
     private bool _dryRun = true;
     private short? _ambienteForzado;
+    private string? _avisoCorrida;
 
     private IReadOnlyList<FilaTablero>? _panorama;
     private IReadOnlyList<RetencionReciente>? _recientes;
@@ -223,6 +229,7 @@ else
     {
         _tablero = Sp.GetService<TableroRetenciones>();
         _procesador = Sp.GetService<ProcesadorRetenciones>();
+        _gate = Sp.GetService<EjecucionRetencionesGate>();
         _dryRun = (Sp.GetService<IOptions<DatilOptions>>()?.Value ?? new DatilOptions()).DryRun;
         _ambienteForzado = (Sp.GetService<IOptions<RetencionesOptions>>()?.Value ?? new RetencionesOptions()).AmbienteForzado;
 
@@ -271,13 +278,24 @@ else
 
     private async Task EjecutarAhora()
     {
-        if (_procesador is null) return;
+        if (_procesador is null || _gate is null) return;
         _ejecutando = true;
         _resumen = null;
+        _avisoCorrida = null;
         try
         {
             var usuario = await UsuarioActual();
-            _resumen = await _procesador.ProcesarTodasAsync(usuario);
+            var procesador = _procesador;
+            var resultado = await _gate.EjecutarAsync(
+                usuario, ct => procesador.ProcesarTodasAsync(usuario, ct));
+
+            if (!resultado.Ejecuto)
+            {
+                _avisoCorrida = resultado.Motivo;
+                return;
+            }
+
+            _resumen = resultado.Resumen;
             await CargarPanorama();
             await CargarRecientes();
         }
