@@ -72,6 +72,7 @@ public sealed class TableroRetenciones
             var ultima = await db.TaxWithHoldings.AsNoTracking()
                 .Where(t => t.TransmitterRuc == empresa.Ruc && t.Ambient == empresa.Ambiente)
                 .OrderByDescending(t => t.DateIssued)
+                .ThenByDescending(t => t.Thid)
                 .Select(t => new { t.DateIssued, t.NumberPech })
                 .FirstOrDefaultAsync(cancellationToken);
 
@@ -90,6 +91,7 @@ public sealed class TableroRetenciones
 
         var recientes = await db.TaxWithHoldings.AsNoTracking()
             .OrderByDescending(t => t.DateIssued)
+            .ThenByDescending(t => t.Thid)
             .Take(top)
             .Select(t => new
             {

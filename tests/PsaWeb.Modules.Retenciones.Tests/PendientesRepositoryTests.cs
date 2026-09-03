@@ -11,7 +11,7 @@ namespace PsaWeb.Modules.Retenciones.Tests;
 public class PendientesRepositoryTests
 {
     private const string LocalConnectionString =
-        @"Server=.\SQLEXPRESS;Database=PeachEBills;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=3";
+        @"Server=.\SQLEXPRESS;Database=PeachEBills;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=15";
 
     private sealed class Factory : IDbContextFactory<PeachEbillsContext>
     {

@@ -13,7 +13,7 @@ namespace PsaWeb.Modules.Retenciones.Tests;
 public class TableroRetencionesTests
 {
     private const string LocalConnectionString =
-        @"Server=.\SQLEXPRESS;Database=PeachEBills;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=3";
+        @"Server=.\SQLEXPRESS;Database=PeachEBills;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=15";
 
     private sealed class Factory : IDbContextFactory<PeachEbillsContext>
     {
@@ -55,12 +55,20 @@ public class TableroRetencionesTests
     {
         Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");
 
-        var recientes = await Construir().RecientesAsync(top: 10);
+        var tablero = Construir();
+        var recientes = await tablero.RecientesAsync(top: 10);
 
         Assert.True(recientes.Count <= 10);
         for (var i = 1; i < recientes.Count; i++)
         {
             Assert.True(recientes[i - 1].Fecha >= recientes[i].Fecha);
         }
+
+        // El desempate por THId hace el orden determinista: dos lecturas seguidas
+        // deben devolver exactamente la misma secuencia de números.
+        var otra = await tablero.RecientesAsync(top: 10);
+        Assert.Equal(
+            recientes.Select(r => r.Numero).ToArray(),
+            otra.Select(r => r.Numero).ToArray());
     }
 }
