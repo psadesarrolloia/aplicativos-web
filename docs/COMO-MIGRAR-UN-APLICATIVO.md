@@ -5,6 +5,26 @@ Cada aplicativo de escritorio que se lleve a web entra como **un módulo** en
 `modules/` y reutiliza el Host, el sistema de diseño y la capa de acceso a Sage 50
 sin tocarlos.
 
+## Flujo de trabajo por aplicativo
+
+1. **Desarrollo y pruebas en PREDATOR** — se programa el módulo y se prueba local
+   (`dotnet run --project src/PsaWeb.Host`), primero con el repo de muestra y
+   luego contra Sage 50 real vía User Secrets
+   (ver `VALIDAR-CONTRA-SAGE50.md`).
+2. **Despliegue en el servidor** (`Peach2015` / `psacontabilidad2`) — `dotnet
+   publish` + copiar al IIS (ver `DESPLEGAR-EN-PSACONTABILIDAD2.md`).
+3. **Conectar la base** — variable de entorno `Sage50__ConnectionString` en el
+   `web.config` del sitio.
+4. **Asignar una ruta/URL interna** al aplicativo (registro DNS interno o
+   sitio/puerto propio en IIS). Cada aplicativo tiene la suya.
+5. Se sigue modificando el aplicativo y se repite 1→2 con cada cambio.
+
+**Acceso remoto (hasta terminar la migración):** los usuarios fuera de la
+oficina entran por el RDS existente (`psacontabilidad2.paredes.com.ec/RDWeb`) y
+abren la app desde la sesión remota — ahí el SSO de Windows funciona. Un canal
+público propio (VPN, OIDC o proxy con pre-autenticación) es una decisión de la
+retro, común a los 26 aplicativos.
+
 ## Lo que se reutiliza tal cual
 
 | Proyecto | Qué da |
