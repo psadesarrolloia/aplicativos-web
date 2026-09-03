@@ -81,4 +81,28 @@ public sealed class NumeroDocumentoSri
 
         return Invalido();
     }
+
+    /// <summary>
+    /// Normaliza un número de factura al formato <c>000-000-000000000</c> cuando el
+    /// secuencial viene corto pero es numérico (port de <c>SolveLongPurchaseNumber</c>).
+    /// Si no puede, devuelve el número original.
+    /// </summary>
+    public static string NormalizarNumeroFactura(string? numero)
+    {
+        numero ??= string.Empty;
+        var estricto = AnalizarEstricto(numero);
+        if (estricto.EsValido)
+        {
+            return numero;
+        }
+
+        if (!string.IsNullOrEmpty(estricto.Secuencial) && estricto.Secuencial.All(char.IsDigit)
+            && long.TryParse(estricto.Secuencial, out var sec))
+        {
+            var candidato = $"{estricto.CodigoEstablecimiento}-{estricto.PuntoEmision}-{sec:000000000}";
+            return AnalizarEstricto(candidato).EsValido ? candidato : numero;
+        }
+
+        return numero;
+    }
 }
