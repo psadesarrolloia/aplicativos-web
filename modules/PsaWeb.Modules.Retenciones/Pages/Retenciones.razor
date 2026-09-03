@@ -76,26 +76,62 @@ else
         }
         else
         {
+            var vista = FilasVista();
+
             <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
-                <PsaStat Label="Empresas" Value="@_panorama.Count.ToString()" />
-                <PsaStat Label="Retenciones pendientes" Value="@_panorama.Sum(f => f.Pendientes).ToString()"
-                         State="@(_panorama.Sum(f => f.Pendientes) > 0 ? "warn" : "ok")" />
+                <PsaStat Label="Empresas" Value="@($"{vista.Count} / {_panorama.Count}")" />
+                <PsaStat Label="Retenciones pendientes" Value="@vista.Sum(f => f.Pendientes).ToString()"
+                         State="@(vista.Sum(f => f.Pendientes) > 0 ? "warn" : "ok")" />
             </div>
 
-            <table class="psa-table">
+            <p class="psa-muted" style="margin-bottom:.4rem">
+                Clic en el encabezado para ordenar · clic en una fila para ver sus retenciones guardadas.
+                @if (TieneFiltros)
+                {
+                    <button type="button" class="psa-linkbtn" @onclick="LimpiarFiltros">Limpiar filtros</button>
+                }
+            </p>
+
+            <div style="overflow-x:auto">
+            <table class="psa-table psa-table--interactiva">
                 <thead>
                     <tr>
-                        <th>RUC</th>
-                        <th>Empresa</th>
-                        <th>Ambiente</th>
-                        <th class="num">Pendientes</th>
-                        <th>Última emisión</th>
+                        <th class="sortable" @onclick="@(() => Ordenar(Col.Ruc))">RUC @Flecha(Col.Ruc)</th>
+                        <th class="sortable" @onclick="@(() => Ordenar(Col.Empresa))">Empresa @Flecha(Col.Empresa)</th>
+                        <th class="sortable" @onclick="@(() => Ordenar(Col.Ambiente))">Ambiente @Flecha(Col.Ambiente)</th>
+                        <th class="sortable num" @onclick="@(() => Ordenar(Col.Pendientes))">Pendientes @Flecha(Col.Pendientes)</th>
+                        <th class="sortable" @onclick="@(() => Ordenar(Col.UltimaEmision))">Última emisión @Flecha(Col.UltimaEmision)</th>
+                    </tr>
+                    <tr class="psa-table__filtros">
+                        <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_fRuc" @bind:event="oninput" /></th>
+                        <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_fEmpresa" @bind:event="oninput" /></th>
+                        <th>
+                            <select class="psa-input psa-input--sm" @bind="_fAmbiente">
+                                <option value="">todos</option>
+                                <option value="1">Pruebas</option>
+                                <option value="2">Producción</option>
+                            </select>
+                        </th>
+                        <th class="num">
+                            <input class="psa-input psa-input--sm" type="number" min="0" placeholder="mín." @bind="_fPendientesMin" @bind:event="oninput" />
+                        </th>
+                        <th>
+                            <select class="psa-input psa-input--sm" @bind="_fEmision">
+                                <option value="">todas</option>
+                                <option value="con">con emisiones</option>
+                                <option value="sin">sin emisiones</option>
+                            </select>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var f in _panorama)
+                    @if (vista.Count == 0)
                     {
-                        <tr>
+                        <tr><td colspan="5" class="psa-muted">Ninguna empresa coincide con el filtro.</td></tr>
+                    }
+                    @foreach (var f in vista)
+                    {
+                        <tr class="@(f.Ruc == _empresaSel ? "sel" : null)" @onclick="@(() => SeleccionarEmpresa(f))">
                             <td>@f.Ruc</td>
                             <td>@f.Nombre</td>
                             <td>@AmbienteTexto(f.Ambiente)</td>
@@ -123,6 +159,7 @@ else
                     }
                 </tbody>
             </table>
+            </div>
         }
         </ChildContent>
     </PsaCard>
@@ -166,22 +203,33 @@ else
         </PsaCard>
     }
 
-    <PsaCard Title="Últimas retenciones guardadas">
-        @if (_recientes is null)
+    <PsaCard Title="@TituloRecientes">
+        <Actions>
+            @if (_empresaSel is not null)
+            {
+                <button type="button" class="psa-linkbtn" @onclick="QuitarSeleccion">Ver todas</button>
+            }
+        </Actions>
+        <ChildContent>
+        @if (_empresaSel is null)
+        {
+            <p class="psa-muted">Hacé clic en una empresa de la tabla de arriba para ver sus últimas retenciones guardadas.</p>
+        }
+        else if (_recientesCargando)
         {
             <p class="psa-muted">Cargando…</p>
         }
-        else if (_recientes.Count == 0)
+        else if (_recientes is null || _recientes.Count == 0)
         {
-            <p class="psa-notice">Todavía no hay retenciones guardadas.</p>
+            <p class="psa-notice">Esta empresa todavía no tiene retenciones guardadas.</p>
         }
         else
         {
+            <div style="overflow-x:auto">
             <table class="psa-table">
                 <thead>
                     <tr>
                         <th>Fecha</th>
-                        <th>Empresa</th>
                         <th>Número</th>
                         <th>Secuencial</th>
                         <th>Proveedor</th>
@@ -194,7 +242,6 @@ else
                     {
                         <tr>
                             <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
-                            <td>@r.Empresa</td>
                             <td>@r.Numero</td>
                             <td>@r.Secuencial</td>
                             <td>@r.Contacto</td>
@@ -204,12 +251,16 @@ else
                     }
                 </tbody>
             </table>
+            </div>
         }
+        </ChildContent>
     </PsaCard>
 }
 
 @code {
     private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
+
+    private enum Col { Ruc, Empresa, Ambiente, Pendientes, UltimaEmision }
 
     private TableroRetenciones? _tablero;
     private ProcesadorRetenciones? _procesador;
@@ -219,11 +270,33 @@ else
     private string? _avisoCorrida;
 
     private IReadOnlyList<FilaTablero>? _panorama;
-    private IReadOnlyList<RetencionReciente>? _recientes;
     private ResumenCorrida? _resumen;
     private string? _errorPanorama;
     private bool _cargando;
     private bool _ejecutando;
+
+    // Orden y filtros de la tabla de empresas.
+    private Col _sortCol = Col.Empresa;
+    private bool _sortAsc = true;
+    private string _fRuc = "";
+    private string _fEmpresa = "";
+    private string _fAmbiente = "";
+    private int? _fPendientesMin;
+    private string _fEmision = "";
+
+    // Selección de empresa + su historial.
+    private string? _empresaSel;
+    private string? _empresaSelNombre;
+    private IReadOnlyList<RetencionReciente>? _recientes;
+    private bool _recientesCargando;
+
+    private bool TieneFiltros =>
+        !string.IsNullOrWhiteSpace(_fRuc) || !string.IsNullOrWhiteSpace(_fEmpresa)
+        || !string.IsNullOrEmpty(_fAmbiente) || _fPendientesMin is not null
+        || !string.IsNullOrEmpty(_fEmision);
+
+    private string TituloRecientes =>
+        _empresaSel is null ? "Últimas retenciones guardadas" : $"Últimas retenciones — {_empresaSelNombre}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -239,7 +312,92 @@ else
         }
 
         await CargarPanorama();
-        await CargarRecientes();
+    }
+
+    private IReadOnlyList<FilaTablero> FilasVista()
+    {
+        if (_panorama is null) return Array.Empty<FilaTablero>();
+
+        IEnumerable<FilaTablero> q = _panorama;
+
+        if (!string.IsNullOrWhiteSpace(_fRuc))
+            q = q.Where(f => f.Ruc.Contains(_fRuc.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(_fEmpresa))
+            q = q.Where(f => f.Nombre.Contains(_fEmpresa.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (short.TryParse(_fAmbiente, out var amb))
+            q = q.Where(f => f.Ambiente == amb);
+        if (_fPendientesMin is { } min)
+            q = q.Where(f => f.Pendientes >= min);
+        if (_fEmision == "con")
+            q = q.Where(f => f.UltimaEmision is not null);
+        else if (_fEmision == "sin")
+            q = q.Where(f => f.UltimaEmision is null);
+
+        IEnumerable<FilaTablero> AplicarOrden<TKey>(Func<FilaTablero, TKey> clave) =>
+            _sortAsc ? q.OrderBy(clave) : q.OrderByDescending(clave);
+
+        q = _sortCol switch
+        {
+            Col.Ruc => AplicarOrden(f => f.Ruc),
+            Col.Ambiente => AplicarOrden(f => f.Ambiente),
+            Col.Pendientes => AplicarOrden(f => f.Pendientes),
+            Col.UltimaEmision => AplicarOrden(f => f.UltimaEmision ?? DateTime.MinValue),
+            _ => AplicarOrden(f => f.Nombre),
+        };
+
+        return q.ToList();
+    }
+
+    private void Ordenar(Col col)
+    {
+        if (_sortCol == col) _sortAsc = !_sortAsc;
+        else { _sortCol = col; _sortAsc = true; }
+    }
+
+    private MarkupString Flecha(Col col) =>
+        new(_sortCol == col ? (_sortAsc ? "&#9650;" : "&#9660;") : "");
+
+    private void LimpiarFiltros()
+    {
+        _fRuc = _fEmpresa = _fAmbiente = _fEmision = "";
+        _fPendientesMin = null;
+    }
+
+    private async Task SeleccionarEmpresa(FilaTablero fila)
+    {
+        // Segundo clic sobre la misma empresa: la deselecciona.
+        if (_empresaSel == fila.Ruc) { QuitarSeleccion(); return; }
+        await CargarRecientesEmpresa(fila.Ruc, fila.Nombre);
+    }
+
+    private async Task CargarRecientesEmpresa(string ruc, string nombre)
+    {
+        if (_tablero is null) return;
+
+        _empresaSel = ruc;
+        _empresaSelNombre = nombre;
+        _recientes = null;
+        _recientesCargando = true;
+        try
+        {
+            _recientes = await _tablero.RecientesPorEmpresaAsync(ruc);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando retenciones de {Ruc}", ruc);
+            _recientes = Array.Empty<RetencionReciente>();
+        }
+        finally
+        {
+            _recientesCargando = false;
+        }
+    }
+
+    private void QuitarSeleccion()
+    {
+        _empresaSel = null;
+        _empresaSelNombre = null;
+        _recientes = null;
     }
 
     private async Task CargarPanorama()
@@ -250,6 +408,14 @@ else
         try
         {
             _panorama = await _tablero.PanoramaAsync();
+
+            // Si la empresa seleccionada sigue existiendo, refrescá su historial.
+            if (_empresaSel is not null)
+            {
+                var sigue = _panorama.FirstOrDefault(f => f.Ruc == _empresaSel);
+                if (sigue is null) QuitarSeleccion();
+                else await CargarRecientesEmpresa(sigue.Ruc, sigue.Nombre);
+            }
         }
         catch (Exception ex)
         {
@@ -259,20 +425,6 @@ else
         finally
         {
             _cargando = false;
-        }
-    }
-
-    private async Task CargarRecientes()
-    {
-        if (_tablero is null) return;
-        try
-        {
-            _recientes = await _tablero.RecientesAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error cargando el historial de retenciones");
-            _recientes = Array.Empty<RetencionReciente>();
         }
     }
 
@@ -297,7 +449,6 @@ else
 
             _resumen = resultado.Resumen;
             await CargarPanorama();
-            await CargarRecientes();
         }
         catch (Exception ex)
         {

@@ -311,6 +311,19 @@ a { color: var(--psa-magenta); }
 
 .psa-input:focus-visible { border-color: var(--psa-navy); box-shadow: var(--psa-focus); }
 
+.psa-input--sm { width: 100%; padding: .25rem .4rem; font-size: .82rem; }
+
+.psa-linkbtn {
+  border: 0;
+  background: none;
+  padding: 0;
+  margin-left: .5rem;
+  font: inherit;
+  color: var(--psa-navy);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* --------------------------------------------------------------------------- */
 /* helpers                                                                     */
 /* --------------------------------------------------------------------------- */
@@ -375,6 +388,21 @@ a { color: var(--psa-magenta); }
   font-weight: 600;
   border-top: 2px solid var(--psa-border-strong);
   border-bottom: none;
+}
+
+.psa-table thead th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.psa-table thead th.sortable:hover { color: var(--psa-navy); }
+
+.psa-table__filtros th {
+  padding: .3rem .5rem .5rem;
+  border-bottom: 2px solid var(--psa-border-strong);
+}
+
+.psa-table--interactiva tbody tr { cursor: pointer; }
+.psa-table--interactiva tbody tr:hover td { background: var(--psa-surface-2); }
+.psa-table--interactiva tbody tr.sel td {
+  background: var(--psa-surface-2);
+  box-shadow: inset 3px 0 0 var(--psa-magenta);
 }
 
 /* --------------------------------------------------------------------------- */

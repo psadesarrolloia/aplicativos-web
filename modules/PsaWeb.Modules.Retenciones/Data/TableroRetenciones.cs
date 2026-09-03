@@ -84,12 +84,28 @@ public sealed class TableroRetenciones
         return filas;
     }
 
-    public async Task<IReadOnlyList<RetencionReciente>> RecientesAsync(
+    /// <summary>Últimas <paramref name="top"/> retenciones guardadas, de todas las empresas.</summary>
+    public Task<IReadOnlyList<RetencionReciente>> RecientesAsync(
         int top = 20, CancellationToken cancellationToken = default)
+        => RecientesInternoAsync(rucFiltro: null, top, cancellationToken);
+
+    /// <summary>Últimas <paramref name="top"/> retenciones guardadas de una empresa.</summary>
+    public Task<IReadOnlyList<RetencionReciente>> RecientesPorEmpresaAsync(
+        string ruc, int top = 20, CancellationToken cancellationToken = default)
+        => RecientesInternoAsync(ruc, top, cancellationToken);
+
+    private async Task<IReadOnlyList<RetencionReciente>> RecientesInternoAsync(
+        string? rucFiltro, int top, CancellationToken cancellationToken)
     {
         await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var recientes = await db.TaxWithHoldings.AsNoTracking()
+        var query = db.TaxWithHoldings.AsNoTracking();
+        if (rucFiltro is not null)
+        {
+            query = query.Where(t => t.TransmitterRuc == rucFiltro);
+        }
+
+        var recientes = await query
             .OrderByDescending(t => t.DateIssued)
             .ThenByDescending(t => t.Thid)
             .Take(top)
