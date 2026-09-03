@@ -239,20 +239,41 @@ else
             </p>
         }
 
+        @if (_empresaSel is not null && _rDesde is null && _rHasta is null)
+        {
+            <label class="psa-check" style="margin-bottom:.6rem; display:inline-flex; gap:.4rem; align-items:center">
+                <input type="checkbox" @bind="_incluirPendientes" @bind:after="RecargarRecientes" />
+                <span>Incluir las pendientes de emitir@(_pendientesTotal > 0 ? $" ({_pendientesTotal})" : "")</span>
+            </label>
+        }
+
         @if (_recientesCargando)
         {
             <p class="psa-muted">Cargando…</p>
         }
-        else if (_recientes is null || _recientes.Count == 0)
+        else if ((_recientes is null || _recientes.Count == 0) && _pendientesFilas.Count == 0)
         {
-            <p class="psa-notice">No hay retenciones guardadas para ese criterio.</p>
+            <p class="psa-notice">No hay retenciones para ese criterio.</p>
         }
         else
         {
             var vista = RecientesVista();
+            var colspan = _empresaSel is null ? 7 : 6;
 
             <p class="psa-muted" style="margin-bottom:.4rem">
-                Mostrando @vista.Count de @_recientes.Count traídas@(_recientes.Count >= TopRecientes ? $" (tope {TopRecientes} — acotá por fecha)" : "").
+                @vista.Count emitida@(vista.Count == 1 ? "" : "s")
+                @if (_recientes is not null && vista.Count != _recientes.Count)
+                {
+                    <text>de @_recientes.Count traídas</text>
+                }
+                @if (_recientes is not null && _recientes.Count >= TopRecientes)
+                {
+                    <text> (tope @TopRecientes — acotá por fecha)</text>
+                }
+                @if (_incluirPendientes)
+                {
+                    <text> · @_pendientesFilas.Count pendiente@(_pendientesFilas.Count == 1 ? "" : "s")@(_pendientesTotal > _pendientesFilas.Count ? $" de {_pendientesTotal}" : "")</text>
+                }
                 @if (TieneFiltrosRec)
                 {
                     <button type="button" class="psa-linkbtn" @onclick="LimpiarFiltrosRec">Limpiar filtros</button>
@@ -272,7 +293,7 @@ else
                         <th>Secuencial</th>
                         <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Proveedor))">Proveedor @FlechaRec(ColR.Proveedor)</th>
                         <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Ambiente))">Ambiente @FlechaRec(ColR.Ambiente)</th>
-                        <th>Datil</th>
+                        <th class="num">Datil</th>
                     </tr>
                     <tr class="psa-table__filtros">
                         <th></th>
@@ -294,9 +315,9 @@ else
                     </tr>
                 </thead>
                 <tbody>
-                    @if (vista.Count == 0)
+                    @if (vista.Count == 0 && _pendientesFilas.Count == 0)
                     {
-                        <tr><td colspan="@(_empresaSel is null ? 7 : 6)" class="psa-muted">Ninguna retención coincide con el filtro.</td></tr>
+                        <tr><td colspan="@colspan" class="psa-muted">Ninguna retención coincide con el filtro.</td></tr>
                     }
                     @foreach (var r in vista)
                     {
@@ -308,12 +329,52 @@ else
                             }
                             <td>@r.Numero</td>
                             <td>@r.Secuencial</td>
-                            <td>@r.Contacto</td>
+                            <td title="@r.ProveedorId">@(r.ProveedorNombre ?? r.ProveedorId ?? "—")</td>
                             <td>@AmbienteTexto(r.Ambiente)</td>
-                            <td>@(r.DatilId ?? "—")</td>
+                            <td class="num">
+                                @if (r.Emitida)
+                                {
+                                    <span class="psa-estado psa-estado--ok" title="Enviada a Datil · @r.DatilId">&#10003;</span>
+                                }
+                                else
+                                {
+                                    <span class="psa-estado psa-estado--warn" title="Guardada sin id de Datil">&#8211;</span>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
+                @if (_pendientesFilas.Count > 0)
+                {
+                    <tbody>
+                        <tr class="psa-table__grupo">
+                            <td colspan="@colspan">
+                                Pendientes de emitir — @_pendientesTotal
+                                @if (_pendientesTotal > _pendientesFilas.Count)
+                                {
+                                    <text>(mostrando @_pendientesFilas.Count)</text>
+                                }
+                            </td>
+                        </tr>
+                        @foreach (var p in _pendientesFilas)
+                        {
+                            <tr>
+                                <td class="psa-muted">—</td>
+                                @if (_empresaSel is null)
+                                {
+                                    <td>@p.Empresa</td>
+                                }
+                                <td class="psa-muted">—</td>
+                                <td class="psa-muted" title="Referencia de la compra en Sage 50">@p.Referencia</td>
+                                <td class="psa-muted">—</td>
+                                <td>@AmbienteTexto(p.Ambiente)</td>
+                                <td class="num">
+                                    <span class="psa-estado psa-estado--bad" title="Pendiente de emitir">&#10007;</span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                }
             </table>
             </div>
         }
@@ -354,8 +415,14 @@ else
     // Selección de empresa + card de retenciones guardadas.
     private string? _empresaSel;
     private string? _empresaSelNombre;
+    private short _empresaSelAmbiente;
     private IReadOnlyList<RetencionReciente>? _recientes;
     private bool _recientesCargando;
+
+    // Pendientes de emitir (solo con empresa seleccionada y sin rango de fechas).
+    private bool _incluirPendientes;
+    private IReadOnlyList<RetencionPendiente> _pendientesFilas = Array.Empty<RetencionPendiente>();
+    private int _pendientesTotal;
 
     // Filtros / orden de la card de retenciones guardadas.
     private DateOnly? _rDesde;
@@ -457,6 +524,7 @@ else
 
         _empresaSel = fila.Ruc;
         _empresaSelNombre = fila.Nombre;
+        _empresaSelAmbiente = fila.Ambiente;
         await RecargarRecientes();
     }
 
@@ -464,6 +532,9 @@ else
     {
         _empresaSel = null;
         _empresaSelNombre = null;
+        _incluirPendientes = false;
+        _pendientesFilas = Array.Empty<RetencionPendiente>();
+        _pendientesTotal = 0;
         await RecargarRecientes();
     }
 
@@ -475,6 +546,8 @@ else
         if (_rangoInvalido)
         {
             _recientes = Array.Empty<RetencionReciente>();
+            _pendientesFilas = Array.Empty<RetencionPendiente>();
+            _pendientesTotal = 0;
             return;
         }
 
@@ -487,11 +560,28 @@ else
             _recientes = _empresaSel is null
                 ? await _tablero.RecientesAsync(desde, hasta, TopRecientes)
                 : await _tablero.RecientesPorEmpresaAsync(_empresaSel, desde, hasta, TopRecientes);
+
+            var pediblePendientes = _empresaSel is not null && _incluirPendientes
+                && _rDesde is null && _rHasta is null;
+            if (pediblePendientes)
+            {
+                var (filas, total) = await _tablero.PendientesDetalleAsync(
+                    _empresaSel!, _empresaSelNombre ?? _empresaSel!, _empresaSelAmbiente, TopRecientes);
+                _pendientesFilas = filas;
+                _pendientesTotal = total;
+            }
+            else
+            {
+                _pendientesFilas = Array.Empty<RetencionPendiente>();
+                _pendientesTotal = 0;
+            }
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error cargando retenciones guardadas");
             _recientes = Array.Empty<RetencionReciente>();
+            _pendientesFilas = Array.Empty<RetencionPendiente>();
+            _pendientesTotal = 0;
         }
         finally
         {
@@ -510,7 +600,12 @@ else
         if (!string.IsNullOrWhiteSpace(_rfNumero))
             q = q.Where(r => r.Numero.Contains(_rfNumero.Trim(), StringComparison.OrdinalIgnoreCase));
         if (!string.IsNullOrWhiteSpace(_rfProveedor))
-            q = q.Where(r => (r.Contacto ?? "").Contains(_rfProveedor.Trim(), StringComparison.OrdinalIgnoreCase));
+        {
+            var f = _rfProveedor.Trim();
+            q = q.Where(r =>
+                (r.ProveedorNombre ?? "").Contains(f, StringComparison.OrdinalIgnoreCase)
+                || (r.ProveedorId ?? "").Contains(f, StringComparison.OrdinalIgnoreCase));
+        }
         if (short.TryParse(_rfAmbiente, out var amb))
             q = q.Where(r => r.Ambiente == amb);
 
@@ -521,7 +616,7 @@ else
         {
             ColR.Empresa => Ordenar(r => r.Empresa),
             ColR.Numero => Ordenar(r => r.Numero),
-            ColR.Proveedor => Ordenar(r => r.Contacto ?? ""),
+            ColR.Proveedor => Ordenar(r => r.ProveedorNombre ?? r.ProveedorId ?? ""),
             ColR.Ambiente => Ordenar(r => r.Ambiente),
             _ => Ordenar(r => r.Fecha),
         };

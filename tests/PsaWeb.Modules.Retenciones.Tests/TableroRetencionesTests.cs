@@ -93,4 +93,37 @@ public class TableroRetencionesTests
         var futuro = await tablero.RecientesAsync(desde: dia.AddYears(50), hasta: dia.AddYears(50), top: 10);
         Assert.Empty(futuro);
     }
+
+    [SkippableFact]
+    public async Task Recientes_resuelve_el_nombre_del_proveedor_desde_Persons()
+    {
+        Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");
+
+        var recientes = await Construir().RecientesAsync(top: 100);
+        Skip.If(recientes.Count == 0, "No hay retenciones guardadas.");
+
+        // La base tiene la tabla Persons poblada: al menos alguna debe resolver.
+        Assert.Contains(recientes, r => !string.IsNullOrWhiteSpace(r.ProveedorNombre));
+        // Y cuando resuelve, el id sigue disponible para el tooltip.
+        Assert.All(recientes.Where(r => r.ProveedorNombre is not null),
+            r => Assert.False(string.IsNullOrWhiteSpace(r.ProveedorId)));
+    }
+
+    [SkippableFact]
+    public async Task PendientesDetalle_cap_y_total()
+    {
+        Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");
+
+        var tablero = Construir();
+        var conPendientes = (await tablero.PanoramaAsync()).FirstOrDefault(f => f.Pendientes > 0);
+        Skip.If(conPendientes is null, "Ninguna empresa tiene pendientes.");
+
+        var (filas, total) = await tablero.PendientesDetalleAsync(
+            conPendientes!.Ruc, conPendientes.Nombre, conPendientes.Ambiente, top: 5);
+
+        Assert.Equal(conPendientes.Pendientes, total);
+        Assert.True(filas.Count <= 5);
+        Assert.True(filas.Count <= total);
+        Assert.All(filas, p => Assert.False(string.IsNullOrWhiteSpace(p.Referencia)));
+    }
 }

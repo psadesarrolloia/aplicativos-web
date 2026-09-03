@@ -21,9 +21,17 @@ public sealed record RetencionReciente(
     string Numero,
     DateTime Fecha,
     string Secuencial,
-    string? Contacto,
+    string? ProveedorId,
+    string? ProveedorNombre,
     string? DatilId,
-    short Ambiente);
+    short Ambiente)
+{
+    /// <summary>true si la retención llegó a Datil (tiene id externo).</summary>
+    public bool Emitida => !string.IsNullOrWhiteSpace(DatilId);
+}
+
+/// <summary>Una compra pendiente de generar la retención (referencia de Sage 50).</summary>
+public sealed record RetencionPendiente(string Ruc, string Empresa, string Referencia, short Ambiente);
 
 /// <summary>
 /// Consultas de solo lectura para la página del módulo: panorama por empresa
@@ -141,6 +149,30 @@ public sealed class TableroRetenciones
             .ToListAsync(cancellationToken);
         var mapaNombre = nombres.ToDictionary(x => x.Ruc, x => x.Nombre);
 
+        // Nombre del proveedor: (RUC emisor, identificación) -> Persons.Name.
+        // EF.Constant fuerza un IN con literales (evita OPENJSON en SQL Server viejo).
+        var rucs = recientes.Select(t => t.TransmitterRuc).Distinct().ToArray();
+        var contactos = recientes
+            .Select(t => t.Contact)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct()
+            .ToArray();
+
+        var mapaProveedor = new Dictionary<(string, string), string>();
+        if (contactos.Length > 0)
+        {
+            var personas = await db.Persons.AsNoTracking()
+                .Where(p => EF.Constant(rucs).Contains(p.Ructransmitter)
+                         && EF.Constant(contactos).Contains(p.PersonId))
+                .Select(p => new { p.Ructransmitter, p.PersonId, p.Name })
+                .ToListAsync(cancellationToken);
+
+            foreach (var p in personas)
+            {
+                mapaProveedor[(p.Ructransmitter, p.PersonId)] = p.Name;
+            }
+        }
+
         return recientes
             .Select(t => new RetencionReciente(
                 t.TransmitterRuc,
@@ -149,8 +181,25 @@ public sealed class TableroRetenciones
                 t.DateIssued,
                 t.Secuencial,
                 t.Contact,
+                t.Contact is not null && mapaProveedor.TryGetValue((t.TransmitterRuc, t.Contact), out var n) ? n : null,
                 t.DatilId,
                 t.Ambient))
             .ToList();
+    }
+
+    /// <summary>
+    /// Compras pendientes de generar la retención para una empresa: las primeras
+    /// <paramref name="top"/> referencias y el total. Puede fallar si Sage 50 no
+    /// está accesible (lo maneja el llamador).
+    /// </summary>
+    public async Task<(IReadOnlyList<RetencionPendiente> Filas, int Total)> PendientesDetalleAsync(
+        string ruc, string empresa, short ambiente, int top = 200, CancellationToken cancellationToken = default)
+    {
+        var todas = await _pendientes.PendientesAsync(ruc, ambiente, cancellationToken);
+        var filas = todas
+            .Take(top)
+            .Select(r => new RetencionPendiente(ruc, empresa, r, ambiente))
+            .ToList();
+        return (filas, todas.Count);
     }
 }

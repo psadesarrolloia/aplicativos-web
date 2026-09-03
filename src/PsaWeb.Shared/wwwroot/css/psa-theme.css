@@ -414,6 +414,20 @@ a { color: var(--psa-magenta); }
   box-shadow: inset 3px 0 0 var(--psa-magenta);
 }
 
+.psa-table__grupo td {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--psa-ink-muted);
+  background: var(--psa-surface-2);
+  font-weight: 600;
+}
+
+.psa-estado { font-weight: 700; font-size: 1rem; line-height: 1; }
+.psa-estado--ok { color: var(--psa-ok); }
+.psa-estado--bad { color: var(--psa-danger); }
+.psa-estado--warn { color: var(--psa-warn); }
+
 /* --------------------------------------------------------------------------- */
 /* UI de error de Blazor (heredada de la plantilla, retematizada)              */
 /* --------------------------------------------------------------------------- */
