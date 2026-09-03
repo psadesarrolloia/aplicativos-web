@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PsaWeb.Sage50\PsaWeb.Sage50.csproj" />
+    <ProjectReference Include="..\PsaWeb.Datil\PsaWeb.Datil.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
