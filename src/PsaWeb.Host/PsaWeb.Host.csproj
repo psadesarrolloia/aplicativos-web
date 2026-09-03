@@ -19,7 +19,10 @@
   <ItemGroup>
     <ProjectReference Include="..\PsaWeb.Shared\PsaWeb.Shared.csproj" />
     <ProjectReference Include="..\PsaWeb.Sage50\PsaWeb.Sage50.csproj" />
+    <ProjectReference Include="..\PsaWeb.PeachEbills\PsaWeb.PeachEbills.csproj" />
+    <ProjectReference Include="..\PsaWeb.Datil\PsaWeb.Datil.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.CierreDeCaja\PsaWeb.Modules.CierreDeCaja.csproj" />
+    <ProjectReference Include="..\..\modules\PsaWeb.Modules.Retenciones\PsaWeb.Modules.Retenciones.csproj" />
   </ItemGroup>
 
   <!-- Antes de compilar, cierra cualquier instancia colgada del Host de una sesión

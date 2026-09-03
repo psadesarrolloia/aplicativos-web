@@ -1,7 +1,7 @@
 @using PsaWeb.Modules.CierreDeCaja
 
 <Router AppAssembly="typeof(Program).Assembly"
-        AdditionalAssemblies="new[] { typeof(ModuleInfo).Assembly }">
+        AdditionalAssemblies="new[] { typeof(ModuleInfo).Assembly, typeof(PsaWeb.Modules.Retenciones.RetencionesModule).Assembly }">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

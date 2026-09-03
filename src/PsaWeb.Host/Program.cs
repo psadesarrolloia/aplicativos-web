@@ -6,6 +6,9 @@ using PsaWeb.Host.Components;
 using PsaWeb.Modules.CierreDeCaja;
 using PsaWeb.Modules.CierreDeCaja.Data;
 using PsaWeb.Modules.CierreDeCaja.Export;
+using PsaWeb.Datil;
+using PsaWeb.PeachEbills;
+using PsaWeb.Modules.Retenciones;
 using PsaWeb.Sage50;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,6 +20,18 @@ builder.Services.AddRazorComponents()
 // Sin cadena de conexión configurada, el módulo usa datos de muestra.
 builder.Services.AddSage50(builder.Configuration);
 builder.Services.AddCierreDeCaja(builder.Configuration);
+
+// Módulo Retenciones (Ola 1). Solo se registra si hay cadena a PeachEBills; sin
+// ella la página /retenciones muestra un aviso de "no configurado" y el resto del
+// sitio (piloto Cierre de Caja) sigue funcionando igual.
+var peachEbillsConfigurado = !string.IsNullOrWhiteSpace(
+    builder.Configuration.GetSection(PeachEbillsOptions.SectionName)["ConnectionString"]);
+if (peachEbillsConfigurado)
+{
+    builder.Services.AddPeachEbills(builder.Configuration);
+    builder.Services.AddDatil(builder.Configuration);
+    builder.Services.AddRetenciones(builder.Configuration);
+}
 
 // --- Autenticación -----------------------------------------------------------
 // Producción: Windows Integrated Auth (Negotiate / Kerberos) contra Active Directory.
@@ -51,6 +66,9 @@ var app = builder.Build();
 app.Logger.LogInformation(
     "Cierre de Caja: repositorio {Repo}.",
     CierreDeCajaModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50");
+app.Logger.LogInformation(
+    "Retenciones: módulo {Estado}.",
+    peachEbillsConfigurado ? "ACTIVO (PeachEBills configurado)" : "INACTIVO (sin PeachEbills:ConnectionString)");
 
 if (!app.Environment.IsDevelopment())
 {
@@ -67,7 +85,9 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
-    .AddAdditionalAssemblies(typeof(ModuleInfo).Assembly);
+    .AddAdditionalAssemblies(
+        typeof(PsaWeb.Modules.CierreDeCaja.ModuleInfo).Assembly,
+        typeof(RetencionesModule).Assembly);
 
 // Descarga del reporte «Cierre de Caja» en Excel. Re-consulta con las mismas
 // fechas para que el archivo coincida siempre con lo que se ve en pantalla.

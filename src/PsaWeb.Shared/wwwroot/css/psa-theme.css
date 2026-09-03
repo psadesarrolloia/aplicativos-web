@@ -333,6 +333,17 @@ a { color: var(--psa-magenta); }
 
 .psa-notice--danger { border-left-color: var(--psa-danger); }
 
+.psa-details {
+  margin-top: .6rem;
+  padding: .55rem .8rem;
+  background: var(--psa-surface-2);
+  border: 1px solid var(--psa-border);
+  border-radius: var(--psa-radius-sm);
+}
+.psa-details > summary { cursor: pointer; font-size: .92rem; }
+.psa-details ul { margin: .5rem 0 0; padding-left: 1.2rem; font-size: .88rem; color: var(--psa-ink-muted); }
+.psa-details li { margin: .15rem 0; }
+
 /* --------------------------------------------------------------------------- */
 /* table                                                                       */
 /* --------------------------------------------------------------------------- */

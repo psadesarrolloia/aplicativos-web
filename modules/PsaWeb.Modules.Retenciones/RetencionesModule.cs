@@ -28,6 +28,7 @@ public static class RetencionesModule
         services.AddScoped<EmpresaLookup>();
         services.AddScoped<RepositorioRetenciones>();
         services.AddScoped<ProcesadorRetenciones>();
+        services.AddScoped<TableroRetenciones>();
 
         return services;
     }

@@ -1,0 +1,302 @@
+@page "/retenciones"
+@namespace PsaWeb.Modules.Retenciones.Pages
+@using System.Globalization
+@using PsaWeb.Datil
+@using PsaWeb.Modules.Retenciones
+@using PsaWeb.Modules.Retenciones.Data
+@inject IServiceProvider Sp
+@inject ILogger<Retenciones> Logger
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Retenciones — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Retenciones"
+               Subtitle="Genera las retenciones de compra pendientes en Sage 50 y las emite en Datil." />
+
+@if (_tablero is null || _procesador is null)
+{
+    <PsaCard Title="Módulo no configurado">
+        <p class="psa-notice psa-notice--danger">
+            Falta la cadena de conexión <code>PeachEbills:ConnectionString</code>. Configúrala en el Host
+            (User Secrets en desarrollo, variable de entorno en el servidor) y reinicia la aplicación.
+        </p>
+    </PsaCard>
+}
+else
+{
+    <PsaCard Title="Modo de emisión">
+        @if (_dryRun)
+        {
+            <p class="psa-notice">
+                <strong>DRY-RUN activo.</strong> Se arma y valida cada retención pero <strong>no</strong> se envía a
+                Datil ni se guarda nada. Para emitir de verdad: <code>Datil:DryRun=false</code> en el Host.
+            </p>
+        }
+        else
+        {
+            <p class="psa-notice psa-notice--danger">
+                <strong>EMISIÓN REAL.</strong> «Ejecutar ahora» enviará las retenciones a Datil (autoriza ante el SRI,
+                es irreversible) y las guardará en PeachEBills.
+            </p>
+        }
+        @if (_ambienteForzado is { } amb)
+        {
+            <p class="psa-muted" style="margin-top:.5rem">
+                Ambiente forzado por configuración: <strong>@AmbienteTexto(amb)</strong>.
+            </p>
+        }
+    </PsaCard>
+
+    <PsaCard Title="Empresas activas">
+        <Actions>
+            <PsaButton Variant="secondary" OnClick="CargarPanorama" Disabled="_cargando || _ejecutando">
+                @(_cargando ? "Actualizando…" : "Actualizar")
+            </PsaButton>
+            <PsaButton Variant="primary" OnClick="EjecutarAhora" Disabled="_cargando || _ejecutando">
+                @(_ejecutando ? "Ejecutando…" : "Ejecutar ahora")
+            </PsaButton>
+        </Actions>
+        <ChildContent>
+
+        @if (_errorPanorama is not null)
+        {
+            <p class="psa-notice psa-notice--danger">@_errorPanorama</p>
+        }
+        else if (_panorama is null)
+        {
+            <p class="psa-muted">Cargando…</p>
+        }
+        else if (_panorama.Count == 0)
+        {
+            <p class="psa-notice">No hay empresas activas.</p>
+        }
+        else
+        {
+            <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
+                <PsaStat Label="Empresas" Value="@_panorama.Count.ToString()" />
+                <PsaStat Label="Retenciones pendientes" Value="@_panorama.Sum(f => f.Pendientes).ToString()"
+                         State="@(_panorama.Sum(f => f.Pendientes) > 0 ? "warn" : "ok")" />
+            </div>
+
+            <table class="psa-table">
+                <thead>
+                    <tr>
+                        <th>RUC</th>
+                        <th>Empresa</th>
+                        <th>Ambiente</th>
+                        <th class="num">Pendientes</th>
+                        <th>Última emisión</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in _panorama)
+                    {
+                        <tr>
+                            <td>@f.Ruc</td>
+                            <td>@f.Nombre</td>
+                            <td>@AmbienteTexto(f.Ambiente)</td>
+                            <td class="num">
+                                @if (f.Error is not null)
+                                {
+                                    <span title="@f.Error">—</span>
+                                }
+                                else
+                                {
+                                    @f.Pendientes
+                                }
+                            </td>
+                            <td>
+                                @if (f.UltimaEmision is { } fecha)
+                                {
+                                    @($"{fecha:dd/MM/yyyy} · {f.UltimoNumero}")
+                                }
+                                else
+                                {
+                                    <span class="psa-muted">sin emisiones</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        </ChildContent>
+    </PsaCard>
+
+    @if (_resumen is not null)
+    {
+        <PsaCard Title="Resultado de la corrida">
+            <p class="psa-muted">
+                @_resumen.Inicio.ToString("dd/MM/yyyy HH:mm:ss") — duró
+                @((_resumen.Fin - _resumen.Inicio).TotalSeconds.ToString("N1", Ec)) s.
+            </p>
+
+            @if (_resumen.DryRun)
+            {
+                <p class="psa-notice">DRY-RUN: nada se envió a Datil ni se guardó.</p>
+            }
+
+            <div class="psa-grid psa-grid--stats" style="margin:1rem 0">
+                <PsaStat Label="@(_resumen.DryRun ? "Armadas OK" : "Emitidas")"
+                         Value="@_resumen.TotalEmitidas.ToString()" State="ok" />
+                <PsaStat Label="Con errores" Value="@_resumen.TotalConErrores.ToString()"
+                         State="@(_resumen.TotalConErrores > 0 ? "danger" : "neutral")" />
+                <PsaStat Label="Pendientes vistas" Value="@_resumen.TotalPendientes.ToString()" />
+            </div>
+
+            @foreach (var e in _resumen.Empresas.Where(x => x.Pendientes > 0 || x.ConErrores > 0))
+            {
+                <details class="psa-details">
+                    <summary>
+                        <strong>@e.Nombre</strong> (@e.Ruc) — @e.Emitidas ok, @e.ConErrores con error,
+                        @e.Pendientes pendientes
+                    </summary>
+                    <ul>
+                        @foreach (var m in e.Mensajes)
+                        {
+                            <li>@m</li>
+                        }
+                    </ul>
+                </details>
+            }
+        </PsaCard>
+    }
+
+    <PsaCard Title="Últimas retenciones guardadas">
+        @if (_recientes is null)
+        {
+            <p class="psa-muted">Cargando…</p>
+        }
+        else if (_recientes.Count == 0)
+        {
+            <p class="psa-notice">Todavía no hay retenciones guardadas.</p>
+        }
+        else
+        {
+            <table class="psa-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Empresa</th>
+                        <th>Número</th>
+                        <th>Secuencial</th>
+                        <th>Proveedor</th>
+                        <th>Ambiente</th>
+                        <th>Datil</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in _recientes)
+                    {
+                        <tr>
+                            <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+                            <td>@r.Empresa</td>
+                            <td>@r.Numero</td>
+                            <td>@r.Secuencial</td>
+                            <td>@r.Contacto</td>
+                            <td>@AmbienteTexto(r.Ambiente)</td>
+                            <td>@(r.DatilId ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </PsaCard>
+}
+
+@code {
+    private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
+
+    private TableroRetenciones? _tablero;
+    private ProcesadorRetenciones? _procesador;
+    private bool _dryRun = true;
+    private short? _ambienteForzado;
+
+    private IReadOnlyList<FilaTablero>? _panorama;
+    private IReadOnlyList<RetencionReciente>? _recientes;
+    private ResumenCorrida? _resumen;
+    private string? _errorPanorama;
+    private bool _cargando;
+    private bool _ejecutando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _tablero = Sp.GetService<TableroRetenciones>();
+        _procesador = Sp.GetService<ProcesadorRetenciones>();
+        _dryRun = (Sp.GetService<IOptions<DatilOptions>>()?.Value ?? new DatilOptions()).DryRun;
+        _ambienteForzado = (Sp.GetService<IOptions<RetencionesOptions>>()?.Value ?? new RetencionesOptions()).AmbienteForzado;
+
+        if (_tablero is null)
+        {
+            return;
+        }
+
+        await CargarPanorama();
+        await CargarRecientes();
+    }
+
+    private async Task CargarPanorama()
+    {
+        if (_tablero is null) return;
+        _cargando = true;
+        _errorPanorama = null;
+        try
+        {
+            _panorama = await _tablero.PanoramaAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando el panorama de retenciones");
+            _errorPanorama = $"No se pudo leer PeachEBills: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task CargarRecientes()
+    {
+        if (_tablero is null) return;
+        try
+        {
+            _recientes = await _tablero.RecientesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando el historial de retenciones");
+            _recientes = Array.Empty<RetencionReciente>();
+        }
+    }
+
+    private async Task EjecutarAhora()
+    {
+        if (_procesador is null) return;
+        _ejecutando = true;
+        _resumen = null;
+        try
+        {
+            var usuario = await UsuarioActual();
+            _resumen = await _procesador.ProcesarTodasAsync(usuario);
+            await CargarPanorama();
+            await CargarRecientes();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error ejecutando la corrida de retenciones");
+            _errorPanorama = $"La corrida falló: {ex.Message}";
+        }
+        finally
+        {
+            _ejecutando = false;
+        }
+    }
+
+    private async Task<string> UsuarioActual()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        return state.User.Identity?.Name ?? "web";
+    }
+
+    private static string AmbienteTexto(short ambiente) => ambiente == 1 ? "Pruebas" : "Producción";
+}
