@@ -25,6 +25,9 @@ public static class RetencionesModule
         services.AddScoped<IInfoAdicionalLookup, InfoAdicionalLookupEf>();
         services.AddScoped<RetencionBuilder>();
         services.AddScoped<PendientesRepository>();
+        services.AddScoped<EmpresaLookup>();
+        services.AddScoped<RepositorioRetenciones>();
+        services.AddScoped<ProcesadorRetenciones>();
 
         return services;
     }
