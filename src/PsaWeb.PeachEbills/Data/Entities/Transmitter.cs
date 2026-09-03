@@ -40,6 +40,15 @@ public partial class Transmitter
     [InverseProperty("RucNavigation")]
     public virtual ICollection<DatilApi> DatilApi { get; set; } = new List<DatilApi>();
 
+    [InverseProperty("RucNavigation")]
+    public virtual ICollection<Establishments> Establishments { get; set; } = new List<Establishments>();
+
+    [InverseProperty("RucNavigation")]
+    public virtual ICollection<PeachConnString> PeachConnString { get; set; } = new List<PeachConnString>();
+
+    [InverseProperty("RuctransmitterNavigation")]
+    public virtual ICollection<Persons> Persons { get; set; } = new List<Persons>();
+
     [InverseProperty("TransmitterRucNavigation")]
     public virtual ICollection<TaxWithHoldings> TaxWithHoldings { get; set; } = new List<TaxWithHoldings>();
 

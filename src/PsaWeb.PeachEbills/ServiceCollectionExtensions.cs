@@ -25,6 +25,8 @@ public static class ServiceCollectionExtensions
         services.AddDbContextFactory<PeachEbillsContext>(options =>
             options.UseSqlServer(connectionString));
 
+        services.AddScoped<PeachConnStringResolver>();
+
         return services;
     }
 }

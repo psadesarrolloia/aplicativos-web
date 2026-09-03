@@ -22,4 +22,14 @@ internal sealed class OdbcSageConnectionFactory : ISageConnectionFactory
 
         return new OdbcConnection(_options.ConnectionString);
     }
+
+    public OdbcConnection CreateConnection(string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new ArgumentException("La cadena de conexión ODBC no puede estar vacía.", nameof(connectionString));
+        }
+
+        return new OdbcConnection(connectionString);
+    }
 }

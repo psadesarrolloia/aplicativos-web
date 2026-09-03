@@ -57,6 +57,13 @@ public partial class TaxWithHoldings
     [StringLength(100)]
     public string? ClaveAcceso { get; set; }
 
+    [InverseProperty("TaxWithHoldingNavigation")]
+    public virtual ICollection<Thdetails> Thdetails { get; set; } = new List<Thdetails>();
+
+    [ForeignKey("TransmitterEstablishment")]
+    [InverseProperty("TaxWithHoldings")]
+    public virtual Establishments? TransmitterEstablishmentNavigation { get; set; }
+
     [ForeignKey("TransmitterRuc")]
     [InverseProperty("TaxWithHoldings")]
     public virtual Transmitter TransmitterRucNavigation { get; set; } = null!;

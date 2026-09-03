@@ -13,6 +13,14 @@ Pendientes y mejoras que no bloquean el piloto.
 - [ ] `SELECT` de humo contra producción desde el proceso x86 (pendiente de F0).
 - [ ] Revisión de la pantalla por un usuario contable de PSA (criterio de F3).
 
+## Seguridad
+
+- [ ] **Migrar el almacenamiento de secretos de `PeachEBills`.** Las contraseñas
+      (ODBC de Sage por empresa en `PeachConnString.pwd`, etc.) están cifradas con
+      TripleDES/ECB y clave embebida en el código (`DbSecret`, ex `PasswordSecurity`).
+      Se mantiene solo para leer lo existente. Mover a un secret store / DPAPI /
+      columna con `ALWAYS ENCRYPTED`.
+
 ## Plantilla / ola de 25 aplicativos
 
 - [ ] Servidor de aplicaciones dedicado en vez de co-hospedar en el host RDS
