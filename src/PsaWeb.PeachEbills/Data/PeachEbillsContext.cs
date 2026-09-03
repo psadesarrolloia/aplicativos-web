@@ -17,6 +17,8 @@ public partial class PeachEbillsContext : DbContext
 
     public virtual DbSet<DatilRequests> DatilRequests { get; set; }
 
+    public virtual DbSet<EpoofGeneralAditionalInfo> EpoofGeneralAditionalInfo { get; set; }
+
     public virtual DbSet<Establishments> Establishments { get; set; }
 
     public virtual DbSet<PeachConnString> PeachConnString { get; set; }
@@ -49,6 +51,15 @@ public partial class PeachEbillsContext : DbContext
             entity.HasOne(d => d.RucNavigation).WithMany(p => p.DatilApi)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_DatilAPI_Transmitter");
+        });
+
+        modelBuilder.Entity<EpoofGeneralAditionalInfo>(entity =>
+        {
+            entity.Property(e => e.CodDoc).IsFixedLength();
+
+            entity.HasOne(d => d.RucNavigation).WithMany(p => p.EpoofGeneralAditionalInfo)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_EPoofGeneralAditionalInfo_Transmitter");
         });
 
         modelBuilder.Entity<Establishments>(entity =>

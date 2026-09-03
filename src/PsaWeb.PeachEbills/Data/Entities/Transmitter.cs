@@ -41,6 +41,9 @@ public partial class Transmitter
     public virtual ICollection<DatilApi> DatilApi { get; set; } = new List<DatilApi>();
 
     [InverseProperty("RucNavigation")]
+    public virtual ICollection<EpoofGeneralAditionalInfo> EpoofGeneralAditionalInfo { get; set; } = new List<EpoofGeneralAditionalInfo>();
+
+    [InverseProperty("RucNavigation")]
     public virtual ICollection<Establishments> Establishments { get; set; } = new List<Establishments>();
 
     [InverseProperty("RucNavigation")]

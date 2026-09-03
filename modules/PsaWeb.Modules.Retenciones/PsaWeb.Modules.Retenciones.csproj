@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+
+  <!-- Módulo de Blazor Server: usa ODBC y EF Core, nunca corre en navegador. -->
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.18" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PsaWeb.Comprobantes\PsaWeb.Comprobantes.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.PeachEbills\PsaWeb.PeachEbills.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Datil\PsaWeb.Datil.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Sage50\PsaWeb.Sage50.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Shared\PsaWeb.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

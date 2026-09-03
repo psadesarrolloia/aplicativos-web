@@ -134,3 +134,10 @@ real también sale en el Visor de eventos (origen `IIS AspNetCore Module V2`).
 Evaluar un **servidor de aplicaciones dedicado** en vez de co-hospedar en el
 host RDS: no competir por CPU/RAM con las sesiones RDP y desacoplar reinicios.
 El procedimiento es el mismo.
+
+## Notas de base de datos
+
+- `PsaWeb.PeachEbills` consultas: evitar `List.Contains` en LINQ (en SQL Server
+  con compat level < 130 se traduce a `OPENJSON` y falla). El backup de
+  `PeachEBills` viene en compat 120; conviene subirlo a 150+ en el servidor:
+  `ALTER DATABASE [PeachEBills] SET COMPATIBILITY_LEVEL = 150`.
