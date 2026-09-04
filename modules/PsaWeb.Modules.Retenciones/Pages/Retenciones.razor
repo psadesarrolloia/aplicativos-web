@@ -234,11 +234,12 @@ else
         else if (_empresaSel is null && _rDesde is null && _rHasta is null)
         {
             <p class="psa-muted">
-                Mostrando las últimas @TopRecientes de todas las empresas. Elegí un rango de fechas
-                o hacé clic en una empresa de arriba para acotar.
+                Hacé clic en una empresa de la tabla de arriba para ver sus retenciones guardadas.
+                También podés elegir un rango de fechas para verlas de todas las empresas.
             </p>
         }
-
+        else
+        {
         @if (_empresaSel is not null && _rDesde is null && _rHasta is null)
         {
             <label class="psa-check" style="margin-bottom:.6rem; display:inline-flex; gap:.4rem; align-items:center">
@@ -386,6 +387,7 @@ else
             </table>
             </div>
         }
+        }
         </ChildContent>
     </PsaCard>
 }
@@ -428,7 +430,7 @@ else
     private bool _recientesCargando;
 
     // Pendientes de emitir (solo con empresa seleccionada y sin rango de fechas).
-    private bool _incluirPendientes;
+    private bool _incluirPendientes = true;
     private IReadOnlyList<RetencionPendiente> _pendientesFilas = Array.Empty<RetencionPendiente>();
     private int _pendientesTotal;
 
@@ -542,7 +544,6 @@ else
     {
         _empresaSel = null;
         _empresaSelNombre = null;
-        _incluirPendientes = false;
         _pendientesFilas = Array.Empty<RetencionPendiente>();
         _pendientesTotal = 0;
         await RecargarRecientes();
@@ -556,6 +557,15 @@ else
         if (_rangoInvalido)
         {
             _recientes = Array.Empty<RetencionReciente>();
+            _pendientesFilas = Array.Empty<RetencionPendiente>();
+            _pendientesTotal = 0;
+            return;
+        }
+
+        // Sin empresa y sin rango: no se muestra ningún detalle.
+        if (_empresaSel is null && _rDesde is null && _rHasta is null)
+        {
+            _recientes = null;
             _pendientesFilas = Array.Empty<RetencionPendiente>();
             _pendientesTotal = 0;
             return;
