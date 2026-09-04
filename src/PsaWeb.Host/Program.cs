@@ -10,6 +10,7 @@ using PsaWeb.Datil;
 using PsaWeb.PeachEbills;
 using PsaWeb.Modules.Retenciones;
 using PsaWeb.Sage50;
+using PsaWeb.Seguridad;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,6 +32,9 @@ if (peachEbillsConfigurado)
     builder.Services.AddPeachEbills(builder.Configuration);
     builder.Services.AddDatil(builder.Configuration);
     builder.Services.AddRetenciones(builder.Configuration);
+    // Shell F-Shell-0: directorio de seguridad (empresas + permisos por usuario)
+    // y estado de sesión de empresa/ambiente. Registrado, todavía sin pantallas.
+    builder.Services.AddSeguridad();
 }
 
 // --- Autenticación -----------------------------------------------------------

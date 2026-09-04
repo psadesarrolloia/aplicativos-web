@@ -23,14 +23,14 @@
     <ProjectReference Include="..\PsaWeb.Datil\PsaWeb.Datil.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.CierreDeCaja\PsaWeb.Modules.CierreDeCaja.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.Retenciones\PsaWeb.Modules.Retenciones.csproj" />
+    <ProjectReference Include="..\PsaWeb.Seguridad\PsaWeb.Seguridad.csproj" />
   </ItemGroup>
 
   <!-- Antes de compilar, cierra cualquier instancia colgada del Host de una sesión
        anterior de Visual Studio. Evita el error MSB3021/MSB3026 "no se puede copiar
        PsaWeb.Host.exe: en uso por otro proceso". Solo Windows; nunca falla la build. -->
   <Target Name="KillStaleHost" BeforeTargets="PrepareForBuild" Condition="'$(OS)' == 'Windows_NT'">
-    <Exec Command="taskkill /F /IM $(AssemblyName).exe /T 2&gt;nul" IgnoreExitCode="true"
-          StandardOutputImportance="low" StandardErrorImportance="low" />
+    <Exec Command="taskkill /F /IM $(AssemblyName).exe /T 2&gt;nul" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low" />
   </Target>
 
 </Project>
