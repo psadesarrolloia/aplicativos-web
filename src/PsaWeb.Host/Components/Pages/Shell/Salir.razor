@@ -1,0 +1,26 @@
+@page "/salir"
+@layout PsaWeb.Host.Components.Layout.ShellLayout
+@attribute [ExcludeFromInteractiveRouting]
+@using PsaWeb.Identidad
+@inject IProveedorAutenticacion Auth
+@inject NavigationManager Nav
+
+<PageTitle>Salir — Aplicativos web PSA</PageTitle>
+
+<h1>Cerrar sesión</h1>
+<p class="psa-muted">¿Querés cerrar la sesión?</p>
+
+<EditForm Model="_dummy" method="post" OnValidSubmit="Cerrar" FormName="salir">
+    <button type="submit" class="psa-btn psa-btn--primary" style="width:100%">Cerrar sesión</button>
+</EditForm>
+<a class="psa-linkbtn" style="display:inline-block;margin-top:.8rem" href="/">Volver</a>
+
+@code {
+    private readonly object _dummy = new();
+
+    private async Task Cerrar()
+    {
+        await Auth.CerrarSesionAsync();
+        Nav.NavigateTo("/bienvenida", forceLoad: true);
+    }
+}

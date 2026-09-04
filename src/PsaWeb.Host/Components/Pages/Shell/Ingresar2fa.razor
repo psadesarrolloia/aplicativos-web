@@ -1,0 +1,64 @@
+@page "/ingresar/2fa"
+@layout PsaWeb.Host.Components.Layout.ShellLayout
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [EnableRateLimiting("login")]
+@using System.ComponentModel.DataAnnotations
+@using PsaWeb.Identidad
+@inject IProveedorAutenticacion Auth
+@inject NavigationManager Nav
+
+<PageTitle>Verificación — Aplicativos web PSA</PageTitle>
+
+<h1>Verificación en dos pasos</h1>
+<p class="psa-muted">Ingresá el código de tu app de autenticación.</p>
+
+@if (_error is not null)
+{
+    <p class="psa-notice psa-notice--danger">@_error</p>
+}
+
+<EditForm Model="Input" method="post" OnValidSubmit="Enviar" FormName="ingresar-2fa">
+    <DataAnnotationsValidator />
+    <div class="psa-field" style="width:100%">
+        <span class="psa-field__lbl">Código</span>
+        <InputText class="psa-input" @bind-Value="Input.Codigo" inputmode="numeric" autocomplete="one-time-code" />
+        <ValidationMessage For="() => Input.Codigo" />
+    </div>
+    <label class="psa-check" style="display:flex;gap:.4rem;align-items:center;margin-top:.8rem">
+        <InputCheckbox @bind-Value="Input.RecordarDispositivo" />
+        <span>Confiar en este dispositivo por 30 días</span>
+    </label>
+    <button type="submit" class="psa-btn psa-btn--primary" style="margin-top:1.2rem;width:100%">Verificar</button>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private Datos2fa Input { get; set; } = new();
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    private string? ReturnUrl { get; set; }
+
+    private string? _error;
+
+    private async Task Enviar()
+    {
+        var r = await Auth.VerificarSegundoFactorAsync(Input.Codigo, Input.RecordarDispositivo);
+        if (r.Exito)
+        {
+            var destino = !string.IsNullOrEmpty(ReturnUrl) && ReturnUrl.StartsWith('/') && !ReturnUrl.StartsWith("//")
+                ? ReturnUrl : "/";
+            Nav.NavigateTo(destino, forceLoad: true);
+            return;
+        }
+        _error = r.Bloqueado ? r.Motivo : "El código no es válido o expiró.";
+    }
+
+    public sealed class Datos2fa
+    {
+        [Required(ErrorMessage = "Ingresá el código.")]
+        public string Codigo { get; set; } = "";
+
+        public bool RecordarDispositivo { get; set; }
+    }
+}

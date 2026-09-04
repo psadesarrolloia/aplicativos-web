@@ -12,3 +12,44 @@
 }
 
 .validation-message { color: var(--psa-danger, #d64545); }
+
+/* --- Shell: pantallas previas al ingreso ---------------------------------- */
+
+.psa-shell-plain {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    background: var(--psa-navy, #163154);
+}
+
+.psa-shell-plain__card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--psa-surface, #fff);
+    border-radius: var(--psa-radius, 12px);
+    padding: 2rem 1.75rem;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, .28);
+}
+
+.psa-shell-plain__card h1 {
+    font-size: 1.35rem;
+    margin: .2rem 0 1rem;
+}
+
+.psa-portada { text-align: center; }
+.psa-portada__logo-wrap { text-align: center; margin-bottom: .5rem; }
+.psa-portada__logo { height: 46px; width: auto; }
+.psa-portada h1 { margin: 1rem 0 .5rem; }
+.psa-portada p { color: var(--psa-ink-muted, #667); font-size: .92rem; margin-bottom: 1.5rem; }
+.psa-portada .psa-btn { width: 100%; }
+
+.psa-user__salir {
+    margin-left: .9rem;
+    color: inherit;
+    text-decoration: underline;
+    opacity: .85;
+    font-size: .85rem;
+}
+.psa-user__salir:hover { opacity: 1; }

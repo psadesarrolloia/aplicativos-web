@@ -9,7 +9,10 @@
         <NavMenu />
         <div class="psa-user">
             <AuthorizeView>
-                <Authorized>@context.User.Identity?.Name</Authorized>
+                <Authorized>
+                    <span>@context.User.Identity?.Name</span>
+                    <a class="psa-user__salir" href="/salir">Salir</a>
+                </Authorized>
             </AuthorizeView>
         </div>
     </header>

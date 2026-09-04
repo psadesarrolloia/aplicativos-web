@@ -10,12 +10,22 @@
     <link rel="stylesheet" href="@Assets["PsaWeb.Host.styles.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
-    <HeadOutlet />
+    <HeadOutlet @rendermode="@RenderMode" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="@RenderMode" />
     <script src="_framework/blazor.web.js"></script>
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    // Estático (null) para las pantallas del shell marcadas con
+    // [ExcludeFromInteractiveRouting] (login por cookie); interactivo para el resto.
+    private IComponentRenderMode? RenderMode =>
+        HttpContext.AceptaRuteoInteractivo() ? InteractiveServer : null;
+}

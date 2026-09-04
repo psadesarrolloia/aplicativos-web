@@ -1,0 +1,92 @@
+@page "/ingresar"
+@layout PsaWeb.Host.Components.Layout.ShellLayout
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [EnableRateLimiting("login")]
+@using System.ComponentModel.DataAnnotations
+@using PsaWeb.Identidad
+@inject IProveedorAutenticacion Auth
+@inject NavigationManager Nav
+
+<PageTitle>Ingresar — Aplicativos web PSA</PageTitle>
+
+<div class="psa-portada__logo-wrap">
+    <img class="psa-portada__logo" src="_content/PsaWeb.Shared/img/psa-logo-white.png" alt="PSA" />
+</div>
+<h1>Ingresar</h1>
+
+@if (_error is not null)
+{
+    <p class="psa-notice psa-notice--danger">@_error</p>
+}
+
+<EditForm Model="Input" method="post" OnValidSubmit="Enviar" FormName="ingresar">
+    <DataAnnotationsValidator />
+    <div class="psa-field" style="width:100%">
+        <span class="psa-field__lbl">Usuario</span>
+        <InputText class="psa-input" @bind-Value="Input.Usuario" autocomplete="username" />
+        <ValidationMessage For="() => Input.Usuario" />
+    </div>
+    <div class="psa-field" style="width:100%;margin-top:.8rem">
+        <span class="psa-field__lbl">Contraseña</span>
+        <InputText type="password" class="psa-input" @bind-Value="Input.Clave" autocomplete="current-password" />
+        <ValidationMessage For="() => Input.Clave" />
+    </div>
+    <label class="psa-check" style="display:flex;gap:.4rem;align-items:center;margin-top:.8rem">
+        <InputCheckbox @bind-Value="Input.Recordarme" />
+        <span>Mantener la sesión iniciada</span>
+    </label>
+    <button type="submit" class="psa-btn psa-btn--primary" style="margin-top:1.2rem;width:100%">Ingresar</button>
+</EditForm>
+
+@code {
+    [SupplyParameterFromForm]
+    private DatosIngreso Input { get; set; } = new();
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    private string? ReturnUrl { get; set; }
+
+    private string? _error;
+
+    private async Task Enviar()
+    {
+        var r = await Auth.IniciarSesionAsync(Input.Usuario, Input.Clave, Input.Recordarme);
+
+        if (r.Exito)
+        {
+            Nav.NavigateTo(DestinoSeguro(), forceLoad: true);
+            return;
+        }
+        if (r.RequiereSegundoFactor)
+        {
+            var qs = string.IsNullOrEmpty(ReturnUrl) ? "" : $"?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+            Nav.NavigateTo($"/ingresar/2fa{qs}", forceLoad: true);
+            return;
+        }
+        _error = r.Motivo ?? "No se pudo iniciar sesión.";
+    }
+
+    private string DestinoSeguro()
+    {
+        // Solo rutas locales, nunca redirección abierta.
+        if (!string.IsNullOrEmpty(ReturnUrl)
+            && Uri.TryCreate(ReturnUrl, UriKind.Relative, out _)
+            && ReturnUrl.StartsWith('/')
+            && !ReturnUrl.StartsWith("//"))
+        {
+            return ReturnUrl;
+        }
+        return "/";
+    }
+
+    public sealed class DatosIngreso
+    {
+        [Required(ErrorMessage = "Ingresá el usuario.")]
+        public string Usuario { get; set; } = "";
+
+        [Required(ErrorMessage = "Ingresá la contraseña.")]
+        public string Clave { get; set; } = "";
+
+        public bool Recordarme { get; set; }
+    }
+}

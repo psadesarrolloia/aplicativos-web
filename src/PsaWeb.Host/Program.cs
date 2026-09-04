@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Negotiate;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using PsaWeb.Host.Auth;
 using PsaWeb.Host.Components;
 using PsaWeb.Modules.CierreDeCaja;
@@ -50,21 +51,45 @@ if (plataformaConfigurada)
 }
 
 // --- Autenticación -----------------------------------------------------------
-// Producción: Windows Integrated Auth (Negotiate / Kerberos) contra Active Directory.
-// Desarrollo (PREDATOR no está en el dominio): un handler firma como el usuario de
-// Windows local para poder trabajar sin dominio. La validación real de AD es parte
-// de la Fase 5 (promoción a psacontabilidad2).
-const string devScheme = "DevWindows";
 var isDevelopment = builder.Environment.IsDevelopment();
 
-var authentication = builder.Services.AddAuthentication(options =>
+if (plataformaConfigurada)
 {
-    options.DefaultScheme = isDevelopment ? devScheme : NegotiateDefaults.AuthenticationScheme;
-});
-authentication.AddNegotiate();
-if (isDevelopment)
+    // Shell F-Shell-1: autenticación por cookie de ASP.NET Core Identity (login local).
+    builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = Microsoft.AspNetCore.Identity.IdentityConstants.ApplicationScheme;
+        options.DefaultSignInScheme = Microsoft.AspNetCore.Identity.IdentityConstants.ExternalScheme;
+    }).AddIdentityCookies();
+
+    builder.Services.ConfigureApplicationCookie(options =>
+    {
+        options.LoginPath = "/ingresar";
+        options.LogoutPath = "/salir";
+        options.AccessDeniedPath = "/ingresar";
+        options.ExpireTimeSpan = TimeSpan.FromHours(8);
+        options.SlidingExpiration = true;
+        options.Cookie.Name = "PsaWeb.Auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
+        options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest;
+    });
+}
+else
 {
-    authentication.AddScheme<AuthenticationSchemeOptions, DevWindowsAuthHandler>(devScheme, _ => { });
+    // Sin plataforma: piloto standalone con Windows Integrated Auth (Negotiate /
+    // Kerberos contra AD). En Development, un handler firma como el usuario de
+    // Windows local (PREDATOR no está en el dominio).
+    const string devScheme = "DevWindows";
+    var authentication = builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultScheme = isDevelopment ? devScheme : NegotiateDefaults.AuthenticationScheme;
+    });
+    authentication.AddNegotiate();
+    if (isDevelopment)
+    {
+        authentication.AddScheme<AuthenticationSchemeOptions, DevWindowsAuthHandler>(devScheme, _ => { });
+    }
 }
 
 builder.Services.AddAuthorization(options =>
@@ -89,11 +114,24 @@ app.Logger.LogInformation(
     "Plataforma (identidad local): {Estado}.",
     plataformaConfigurada ? "ACTIVA" : "INACTIVA (sin Plataforma:ConnectionString)");
 
-// En desarrollo, mantené el esquema de PsaWebPlataforma al día automáticamente.
+// En desarrollo, mantené el esquema de PsaWebPlataforma al día y sembrá un
+// usuario de prueba (mapeado a un usuario real de PeachEBills para tener empresas
+// y permisos). NUNCA en producción.
 if (plataformaConfigurada && app.Environment.IsDevelopment())
 {
     await using var scope = app.Services.CreateAsyncScope();
-    await scope.ServiceProvider.GetRequiredService<PsaWeb.Identidad.IdentidadSeeder>().MigrarAsync();
+    var seeder = scope.ServiceProvider.GetRequiredService<PsaWeb.Identidad.IdentidadSeeder>();
+    await seeder.MigrarAsync();
+
+    var usuarioDev = app.Configuration["Plataforma:UsuarioDev"];
+    var claveDev = app.Configuration["Plataforma:ClaveDev"];
+    if (!string.IsNullOrWhiteSpace(usuarioDev) && !string.IsNullOrWhiteSpace(claveDev))
+    {
+        var creado = await seeder.CrearSiNoExisteAsync(
+            usuarioDev, claveDev, nombreCompleto: usuarioDev, peachUsername: usuarioDev);
+        app.Logger.LogInformation(
+            "Usuario de desarrollo {Usuario}: {Estado}.", usuarioDev, creado ? "creado" : "ya existía");
+    }
 }
 
 if (!app.Environment.IsDevelopment())
@@ -112,7 +150,10 @@ if (plataformaConfigurada)
 }
 app.UseAntiforgery();
 
-app.MapStaticAssets();
+// Los recursos estáticos (CSS, JS del framework, imágenes) no pasan por la
+// política de autenticación: si no, un usuario sin sesión no puede ni ver la
+// pantalla de login con estilos.
+app.MapStaticAssets().AllowAnonymous();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(
