@@ -1,4 +1,7 @@
 @inherits LayoutComponentBase
+@using PsaWeb.Seguridad
+@inject EmpresaActualService EmpresaActual
+@implements IDisposable
 
 <div class="psa-shell">
     <header class="psa-topbar">
@@ -10,12 +13,22 @@
         <div class="psa-user">
             <AuthorizeView>
                 <Authorized>
-                    <span>@context.User.Identity?.Name</span>
+                    @if (EmpresaActual.HaySeleccion)
+                    {
+                        <span class="psa-empresa">
+                            @EmpresaActual.Nombre
+                            <span class="psa-empresa__amb">@(EmpresaActual.Ambiente == Ambiente.Pruebas ? "Pruebas" : "Producción")</span>
+                            <a href="/seleccionar-empresa">cambiar</a>
+                        </span>
+                    }
+                    <a class="psa-user__link" href="/mi-cuenta/seguridad">@context.User.Identity?.Name</a>
                     <a class="psa-user__salir" href="/salir">Salir</a>
                 </Authorized>
             </AuthorizeView>
         </div>
     </header>
+
+    <GuardiaEmpresa />
 
     <main class="psa-main">
         @Body
@@ -27,3 +40,9 @@
     <a href="." class="reload">Recargar</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    protected override void OnInitialized() => EmpresaActual.Cambio += Refrescar;
+    private void Refrescar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => EmpresaActual.Cambio -= Refrescar;
+}

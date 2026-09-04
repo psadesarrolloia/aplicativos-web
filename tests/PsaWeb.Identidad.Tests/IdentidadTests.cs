@@ -41,6 +41,8 @@ public class IdentidadTests : IDisposable
         .AddEntityFrameworkStores<PlataformaDbContext>()
         .AddDefaultTokenProviders();
 
+        services.AddScoped<GestorSegundoFactor>();
+
         _sp = services.BuildServiceProvider();
     }
 
@@ -136,5 +138,70 @@ public class IdentidadTests : IDisposable
         // Un código inventado no valida.
         var ok = await users.VerifyTwoFactorTokenAsync(u, TokenOptions.DefaultAuthenticatorProvider, "000000");
         Assert.False(ok);
+    }
+
+    [SkippableFact]
+    public async Task GestorSegundoFactor_enrola_activa_y_desactiva()
+    {
+        Skip.IfNot(DbDisponible(), "PsaWebPlataforma local no disponible.");
+        var users = Users();
+        var gestor = _sp.GetRequiredService<GestorSegundoFactor>();
+        var u = await CrearUsuario(users);
+
+        Assert.False((await gestor.EstadoAsync(u)).Habilitado);
+
+        var enrol = await gestor.PrepararEnrolamientoAsync(u);
+        Assert.False(string.IsNullOrWhiteSpace(enrol.ClavePlana));
+        Assert.Contains("otpauth://totp/", enrol.OtpAuthUri);
+        Assert.Contains("<svg", enrol.QrSvg);
+
+        // Código TOTP actual, calculado desde la clave base32 (RFC 6238).
+        var codigo = TotpActual(enrol.ClavePlana);
+        var (activado, recuperacion) = await gestor.ActivarAsync(u, codigo);
+        Assert.True(activado);
+        Assert.Equal(10, recuperacion.Count);
+
+        var estado = await gestor.EstadoAsync(u);
+        Assert.True(estado.Habilitado);
+        Assert.Equal(10, estado.CodigosRecuperacionRestantes);
+
+        // Código inválido no activa (probamos sobre un segundo usuario).
+        var u2 = await CrearUsuario(users);
+        await gestor.PrepararEnrolamientoAsync(u2);
+        var (falla, _) = await gestor.ActivarAsync(u2, "000000");
+        Assert.False(falla);
+
+        await gestor.DesactivarAsync(u);
+        Assert.False((await gestor.EstadoAsync(u)).Habilitado);
+    }
+
+    /// <summary>TOTP RFC 6238 (SHA1, 30 s, 6 dígitos) desde una clave base32.</summary>
+    private static string TotpActual(string base32Key)
+    {
+        var key = Base32Decode(base32Key);
+        var contador = (long)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
+        var msg = new byte[8];
+        for (var i = 7; i >= 0; i--) { msg[i] = (byte)(contador & 0xff); contador >>= 8; }
+
+        using var hmac = new System.Security.Cryptography.HMACSHA1(key);
+        var hash = hmac.ComputeHash(msg);
+        var offset = hash[^1] & 0x0f;
+        var bin = ((hash[offset] & 0x7f) << 24) | (hash[offset + 1] << 16)
+                  | (hash[offset + 2] << 8) | hash[offset + 3];
+        return (bin % 1_000_000).ToString("D6");
+    }
+
+    private static byte[] Base32Decode(string s)
+    {
+        const string abc = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        s = s.Trim().TrimEnd('=').ToUpperInvariant().Replace(" ", "");
+        var bits = 0; var value = 0; var outp = new List<byte>();
+        foreach (var c in s)
+        {
+            value = (value << 5) | abc.IndexOf(c);
+            bits += 5;
+            if (bits >= 8) { outp.Add((byte)((value >> (bits - 8)) & 0xff)); bits -= 8; }
+        }
+        return outp.ToArray();
     }
 }

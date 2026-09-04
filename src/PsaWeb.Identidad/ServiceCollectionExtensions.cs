@@ -54,6 +54,7 @@ public static class ServiceCollectionExtensions
         .AddDefaultTokenProviders();
 
         services.AddScoped<IProveedorAutenticacion, IdentityProveedorAutenticacion>();
+        services.AddScoped<GestorSegundoFactor>();
         services.AddScoped<IdentidadSeeder>();
 
         return services;

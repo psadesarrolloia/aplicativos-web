@@ -1,0 +1,98 @@
+@page "/seleccionar-empresa"
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using PsaWeb.Seguridad
+@inject ISecurityDirectory Seguridad
+@inject EmpresaActualService EmpresaActual
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ProtectedLocalStorage LocalStorage
+
+<PageTitle>Elegí una empresa — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Elegí una empresa"
+               Subtitle="El resto de los aplicativos trabajan sobre la empresa y el ambiente que elijas acá." />
+
+@if (_cargando)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else if (_empresas.Count == 0)
+{
+    <PsaCard Title="Sin empresas asignadas">
+        <p class="psa-notice psa-notice--danger">
+            Tu usuario no tiene ninguna empresa asignada. Contactá al administrador.
+        </p>
+        <div class="psa-row" style="margin-top:1rem">
+            <a class="psa-btn psa-btn--secondary" href="/salir">Salir</a>
+        </div>
+    </PsaCard>
+}
+else
+{
+    <PsaCard Title="Empresa">
+        <div class="psa-opciones">
+            @foreach (var e in _empresas)
+            {
+                <label class="psa-opcion @(_ruc == e.Ruc ? "sel" : null)">
+                    <input type="radio" name="empresa" value="@e.Ruc"
+                           checked="@(_ruc == e.Ruc)" @onchange="() => _ruc = e.Ruc" />
+                    <span class="psa-opcion__nombre">@e.Nombre</span>
+                    <span class="psa-opcion__ruc">@e.Ruc</span>
+                </label>
+            }
+        </div>
+    </PsaCard>
+
+    <PsaCard Title="Ambiente">
+        <div class="psa-row">
+            <label class="psa-check" style="display:inline-flex;gap:.4rem;align-items:center">
+                <input type="radio" name="amb" checked="@(_ambiente == Ambiente.Produccion)"
+                       @onchange="() => _ambiente = Ambiente.Produccion" />
+                <span>Producción</span>
+            </label>
+            <label class="psa-check" style="display:inline-flex;gap:.4rem;align-items:center">
+                <input type="radio" name="amb" checked="@(_ambiente == Ambiente.Pruebas)"
+                       @onchange="() => _ambiente = Ambiente.Pruebas" />
+                <span>Pruebas</span>
+            </label>
+        </div>
+    </PsaCard>
+
+    <PsaButton Variant="primary" OnClick="Confirmar" Disabled="@(_ruc is null)">Entrar</PsaButton>
+}
+
+@code {
+    private IReadOnlyList<EmpresaDelUsuario> _empresas = Array.Empty<EmpresaDelUsuario>();
+    private string? _ruc;
+    private Ambiente _ambiente = Ambiente.Produccion;
+    private bool _cargando = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var usuario = state.User.Identity?.Name ?? "";
+        _empresas = await Seguridad.EmpresasDelUsuarioAsync(usuario);
+        _cargando = false;
+
+        if (_empresas.Count == 1)
+        {
+            await Elegir(_empresas[0], Ambiente.Produccion);
+        }
+    }
+
+    private async Task Confirmar()
+    {
+        var elegida = _empresas.FirstOrDefault(e => e.Ruc == _ruc);
+        if (elegida is not null)
+        {
+            await Elegir(elegida, _ambiente);
+        }
+    }
+
+    private async Task Elegir(EmpresaDelUsuario empresa, Ambiente ambiente)
+    {
+        EmpresaActual.Fijar(empresa, ambiente);
+        await LocalStorage.SetAsync("psa.empresa", new EmpresaGuardada(empresa.Ruc, ambiente));
+        Nav.NavigateTo("/");
+    }
+}

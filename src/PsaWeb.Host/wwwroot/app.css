@@ -59,6 +59,9 @@
     --_bd: var(--psa-magenta, #b40046);
 }
 
+.psa-user__link { color: inherit; text-decoration: none; }
+.psa-user__link:hover { text-decoration: underline; }
+
 .psa-user__salir {
     margin-left: .9rem;
     color: inherit;
@@ -67,3 +70,96 @@
     font-size: .85rem;
 }
 .psa-user__salir:hover { opacity: 1; }
+
+/* --- 2FA / seguridad ---------------------------------------------------------- */
+
+.psa-qr {
+    display: inline-block;
+    padding: .5rem;
+    background: #fff;
+    border: 1px solid var(--psa-border, #d8dde3);
+    border-radius: var(--psa-radius-sm, 8px);
+    margin: 1rem 0;
+}
+.psa-qr svg { display: block; width: 190px; height: 190px; }
+
+.psa-pasos { margin: 0 0 .5rem 1.1rem; padding: 0; font-size: .92rem; }
+.psa-pasos li { margin: .3rem 0; }
+
+.psa-codigos {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: .4rem;
+}
+.psa-codigos code {
+    display: block;
+    padding: .35rem .5rem;
+    background: var(--psa-surface-2, #f1f3f6);
+    border-radius: var(--psa-radius-sm, 8px);
+    text-align: center;
+    letter-spacing: .05em;
+}
+
+/* --- dashboard de aplicativos ---------------------------------------------- */
+
+.psa-app-card {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    padding: 1.25rem;
+    background: var(--psa-surface, #fff);
+    border: 1px solid var(--psa-border, #d8dde3);
+    border-radius: var(--psa-radius, 12px);
+    text-decoration: none;
+    color: var(--psa-ink, #1a2431);
+    transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease;
+}
+.psa-app-card:hover {
+    border-color: var(--psa-magenta, #b40046);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .08);
+    transform: translateY(-2px);
+}
+.psa-app-card__icon { font-size: 2rem; line-height: 1; }
+.psa-app-card__nombre { font-weight: 700; font-size: 1.05rem; }
+.psa-app-card__desc { color: var(--psa-ink-muted, #667); font-size: .88rem; }
+
+/* --- readout de empresa/ambiente en la barra ----------------------------- */
+
+.psa-empresa {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    margin-right: 1rem;
+    font-size: .82rem;
+    opacity: .9;
+}
+.psa-empresa__amb {
+    padding: .05rem .45rem;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .18);
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+}
+.psa-empresa a { color: inherit; text-decoration: underline; opacity: .8; }
+.psa-empresa a:hover { opacity: 1; }
+
+/* --- selector de empresa ------------------------------------------------- */
+
+.psa-opciones { display: grid; gap: .5rem; }
+.psa-opcion {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: .6rem;
+    padding: .6rem .8rem;
+    border: 1px solid var(--psa-border, #d8dde3);
+    border-radius: var(--psa-radius-sm, 8px);
+    cursor: pointer;
+}
+.psa-opcion.sel { border-color: var(--psa-magenta, #b40046); background: var(--psa-surface-2, #f7f8fa); }
+.psa-opcion__nombre { font-weight: 600; }
+.psa-opcion__ruc { color: var(--psa-ink-muted, #667); font-size: .82rem; font-variant-numeric: tabular-nums; }

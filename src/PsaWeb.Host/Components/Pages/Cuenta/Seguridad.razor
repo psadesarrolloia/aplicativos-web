@@ -1,0 +1,154 @@
+@page "/mi-cuenta/seguridad"
+@using Microsoft.AspNetCore.Identity
+@using PsaWeb.Identidad
+@inject UserManager<UsuarioApp> Users
+@inject GestorSegundoFactor Gestor
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Seguridad — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Seguridad de la cuenta"
+               Subtitle="Verificación en dos pasos con una app de autenticación (TOTP)." />
+
+@if (_cargando)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else if (_usuario is null)
+{
+    <p class="psa-notice psa-notice--danger">No se pudo identificar tu usuario.</p>
+}
+else if (_estado!.Habilitado && _enrolamiento is null)
+{
+    <PsaCard Title="Verificación en dos pasos">
+        <p class="psa-notice">Está <strong>activa</strong>. Quedan @_estado.CodigosRecuperacionRestantes códigos de recuperación.</p>
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="secondary" OnClick="Regenerar">Regenerar códigos de recuperación</PsaButton>
+            <PsaButton Variant="danger" OnClick="Desactivar">Desactivar</PsaButton>
+        </div>
+        @if (_codigos is not null)
+        {
+            <CodigosRecuperacion Codigos="_codigos" />
+        }
+    </PsaCard>
+}
+else if (_enrolamiento is not null)
+{
+    <PsaCard Title="Configurar la app de autenticación">
+        @if (_codigos is null)
+        {
+            <ol class="psa-pasos">
+                <li>Abrí Google Authenticator / Microsoft Authenticator y escaneá el código.</li>
+                <li>O cargá la clave manualmente: <code>@_enrolamiento.ClaveFormateada</code></li>
+                <li>Ingresá el código de 6 dígitos que muestra la app.</li>
+            </ol>
+
+            <div class="psa-qr">@((MarkupString)_enrolamiento.QrSvg)</div>
+
+            <div class="psa-field" style="max-width:220px">
+                <span class="psa-field__lbl">Código</span>
+                <input class="psa-input" inputmode="numeric" @bind="_codigo" @bind:event="oninput" />
+            </div>
+            @if (_error is not null)
+            {
+                <p class="psa-notice psa-notice--danger" style="margin-top:.6rem">@_error</p>
+            }
+            <div class="psa-row" style="margin-top:1rem">
+                <PsaButton Variant="primary" OnClick="Activar" Disabled="_procesando">
+                    @(_procesando ? "Verificando…" : "Activar")
+                </PsaButton>
+                <PsaButton Variant="ghost" OnClick="Cancelar">Cancelar</PsaButton>
+            </div>
+        }
+        else
+        {
+            <p class="psa-notice">La verificación en dos pasos quedó <strong>activada</strong>.</p>
+            <CodigosRecuperacion Codigos="_codigos" />
+        }
+    </PsaCard>
+}
+else
+{
+    <PsaCard Title="Verificación en dos pasos">
+        <p class="psa-muted">No está configurada. Recomendado para todas las cuentas.</p>
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="primary" OnClick="Configurar">Configurar</PsaButton>
+        </div>
+    </PsaCard>
+}
+
+@code {
+    private UsuarioApp? _usuario;
+    private EstadoSegundoFactor? _estado;
+    private EnrolamientoTotp? _enrolamiento;
+    private IReadOnlyList<string>? _codigos;
+    private string _codigo = "";
+    private string? _error;
+    private bool _cargando = true;
+    private bool _procesando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var nombre = state.User.Identity?.Name;
+        if (!string.IsNullOrEmpty(nombre))
+        {
+            _usuario = await Users.FindByNameAsync(nombre);
+        }
+        if (_usuario is not null)
+        {
+            _estado = await Gestor.EstadoAsync(_usuario);
+        }
+        _cargando = false;
+    }
+
+    private async Task Configurar()
+    {
+        _error = null;
+        _codigos = null;
+        _enrolamiento = await Gestor.PrepararEnrolamientoAsync(_usuario!);
+    }
+
+    private void Cancelar()
+    {
+        _enrolamiento = null;
+        _codigo = "";
+        _error = null;
+    }
+
+    private async Task Activar()
+    {
+        _procesando = true;
+        _error = null;
+        try
+        {
+            var (ok, codigos) = await Gestor.ActivarAsync(_usuario!, _codigo);
+            if (!ok)
+            {
+                _error = "El código no es válido. Probá con el siguiente que muestre la app.";
+                return;
+            }
+            _codigos = codigos;
+            _estado = await Gestor.EstadoAsync(_usuario!);
+        }
+        finally
+        {
+            _procesando = false;
+        }
+    }
+
+    private async Task Regenerar()
+    {
+        _codigos = await Gestor.RegenerarCodigosRecuperacionAsync(_usuario!);
+        _estado = await Gestor.EstadoAsync(_usuario!);
+    }
+
+    private async Task Desactivar()
+    {
+        await Gestor.DesactivarAsync(_usuario!);
+        _enrolamiento = null;
+        _codigos = null;
+        _codigo = "";
+        _estado = await Gestor.EstadoAsync(_usuario!);
+    }
+}

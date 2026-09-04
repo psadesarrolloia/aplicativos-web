@@ -6,6 +6,9 @@ public enum Ambiente : short
     Produccion = 2,
 }
 
+/// <summary>Selección persistida en el navegador para rehidratar tras un refresh.</summary>
+public sealed record EmpresaGuardada(string Ruc, Ambiente Ambiente);
+
 /// <summary>
 /// Estado de sesión (circuito Blazor): empresa y ambiente elegidos por el usuario
 /// tras el login. Lo consumen los aplicativos para saber contra qué empresa
