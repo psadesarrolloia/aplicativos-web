@@ -40,6 +40,9 @@
 </EditForm>
 
 @code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
     [SupplyParameterFromForm]
     private DatosIngreso Input { get; set; } = new();
 
@@ -47,6 +50,14 @@
     private string? ReturnUrl { get; set; }
 
     private string? _error;
+
+    protected override void OnInitialized()
+    {
+        if (HttpContext?.User.Identity?.IsAuthenticated == true)
+        {
+            Nav.NavigateTo(DestinoSeguro(), forceLoad: true);
+        }
+    }
 
     private async Task Enviar()
     {

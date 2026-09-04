@@ -64,9 +64,11 @@ if (plataformaConfigurada)
 
     builder.Services.ConfigureApplicationCookie(options =>
     {
-        options.LoginPath = "/ingresar";
+        // La puerta para quien no tiene sesión es la bienvenida; desde ahí se
+        // pasa al formulario de login (llevando el returnUrl).
+        options.LoginPath = "/bienvenida";
         options.LogoutPath = "/salir";
-        options.AccessDeniedPath = "/ingresar";
+        options.AccessDeniedPath = "/bienvenida";
         options.ExpireTimeSpan = TimeSpan.FromHours(8);
         options.SlidingExpiration = true;
         options.Cookie.Name = "PsaWeb.Auth";

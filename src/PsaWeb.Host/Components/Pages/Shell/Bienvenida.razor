@@ -2,6 +2,7 @@
 @layout PsaWeb.Host.Components.Layout.ShellLayout
 @attribute [AllowAnonymous]
 @attribute [ExcludeFromInteractiveRouting]
+@inject NavigationManager Nav
 
 <PageTitle>Aplicativos web PSA</PageTitle>
 
@@ -12,5 +13,35 @@
         Portal interno de PSA · Soluciones Inteligentes. Facturación electrónica,
         retenciones, ATS y reportes de Sage 50, en la web.
     </p>
-    <a class="psa-btn psa-btn--primary" href="/ingresar">Ingresar</a>
+    <a class="psa-btn psa-btn--primary" href="@_hrefIngresar">Ingresar</a>
 </div>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    private string? ReturnUrl { get; set; }
+
+    private string _hrefIngresar = "/ingresar";
+
+    protected override void OnInitialized()
+    {
+        // Ya autenticado: no tiene sentido la bienvenida.
+        if (HttpContext?.User.Identity?.IsAuthenticated == true)
+        {
+            Nav.NavigateTo(DestinoLocal(), forceLoad: true);
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(ReturnUrl) && EsLocal(ReturnUrl))
+        {
+            _hrefIngresar = $"/ingresar?returnUrl={Uri.EscapeDataString(ReturnUrl)}";
+        }
+    }
+
+    private string DestinoLocal() => EsLocal(ReturnUrl) ? ReturnUrl! : "/";
+
+    private static bool EsLocal(string? url) =>
+        !string.IsNullOrEmpty(url) && url.StartsWith('/') && !url.StartsWith("//");
+}
