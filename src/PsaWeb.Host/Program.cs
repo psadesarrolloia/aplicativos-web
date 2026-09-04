@@ -11,6 +11,7 @@ using PsaWeb.PeachEbills;
 using PsaWeb.Modules.Retenciones;
 using PsaWeb.Sage50;
 using PsaWeb.Seguridad;
+using PsaWeb.Identidad;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,6 +36,17 @@ if (peachEbillsConfigurado)
     // Shell F-Shell-0: directorio de seguridad (empresas + permisos por usuario)
     // y estado de sesión de empresa/ambiente. Registrado, todavía sin pantallas.
     builder.Services.AddSeguridad();
+}
+
+// Shell F-Shell-0: identidad local (ASP.NET Core Identity) + rate-limiting del
+// login. Solo se registra si hay cadena a PsaWebPlataforma. Todavía NO fija el
+// esquema de auth por defecto — eso lo hace F-Shell-1 con las pantallas de login.
+var plataformaConfigurada = !string.IsNullOrWhiteSpace(
+    builder.Configuration.GetSection(PsaWeb.Identidad.ServiceCollectionExtensions.SectionName)["ConnectionString"]);
+if (plataformaConfigurada)
+{
+    builder.Services.AddIdentidadPlataforma(builder.Configuration);
+    builder.Services.AddRateLimiter(PsaWeb.Identidad.ServiceCollectionExtensions.AgregarPoliticaLimiteLogin);
 }
 
 // --- Autenticación -----------------------------------------------------------
@@ -73,6 +85,16 @@ app.Logger.LogInformation(
 app.Logger.LogInformation(
     "Retenciones: módulo {Estado}.",
     peachEbillsConfigurado ? "ACTIVO (PeachEBills configurado)" : "INACTIVO (sin PeachEbills:ConnectionString)");
+app.Logger.LogInformation(
+    "Plataforma (identidad local): {Estado}.",
+    plataformaConfigurada ? "ACTIVA" : "INACTIVA (sin Plataforma:ConnectionString)");
+
+// En desarrollo, mantené el esquema de PsaWebPlataforma al día automáticamente.
+if (plataformaConfigurada && app.Environment.IsDevelopment())
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    await scope.ServiceProvider.GetRequiredService<PsaWeb.Identidad.IdentidadSeeder>().MigrarAsync();
+}
 
 if (!app.Environment.IsDevelopment())
 {
@@ -84,6 +106,10 @@ app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
+if (plataformaConfigurada)
+{
+    app.UseRateLimiter();
+}
 app.UseAntiforgery();
 
 app.MapStaticAssets();
