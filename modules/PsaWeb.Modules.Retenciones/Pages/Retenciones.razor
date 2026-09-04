@@ -259,12 +259,13 @@ else
         {
             var vista = RecientesVista();
             var colspan = _empresaSel is null ? 7 : 6;
+            var mostrarPendientes = _pendientesFilas.Count > 0 && (_rfDatil is "" or "pend");
 
             <p class="psa-muted" style="margin-bottom:.4rem">
                 @vista.Count emitida@(vista.Count == 1 ? "" : "s")
                 @if (_recientes is not null && vista.Count != _recientes.Count)
                 {
-                    <text>de @_recientes.Count traídas</text>
+                    <text> de @_recientes.Count traídas</text>
                 }
                 @if (_recientes is not null && _recientes.Count >= TopRecientes)
                 {
@@ -272,7 +273,7 @@ else
                 }
                 @if (_incluirPendientes)
                 {
-                    <text> · @_pendientesFilas.Count pendiente@(_pendientesFilas.Count == 1 ? "" : "s")@(_pendientesTotal > _pendientesFilas.Count ? $" de {_pendientesTotal}" : "")</text>
+                    <text> · @(mostrarPendientes ? _pendientesFilas.Count : 0) pendiente@((mostrarPendientes ? _pendientesFilas.Count : 0) == 1 ? "" : "s")@(_pendientesTotal > _pendientesFilas.Count ? $" de {_pendientesTotal}" : "")</text>
                 }
                 @if (TieneFiltrosRec)
                 {
@@ -311,11 +312,18 @@ else
                                 <option value="2">Producción</option>
                             </select>
                         </th>
-                        <th></th>
+                        <th class="num">
+                            <select class="psa-input psa-input--sm" @bind="_rfDatil">
+                                <option value="">todos</option>
+                                <option value="ok">✓ emitida</option>
+                                <option value="sinid">– sin id</option>
+                                <option value="pend">✗ pendiente</option>
+                            </select>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
-                    @if (vista.Count == 0 && _pendientesFilas.Count == 0)
+                    @if (vista.Count == 0 && !mostrarPendientes)
                     {
                         <tr><td colspan="@colspan" class="psa-muted">Ninguna retención coincide con el filtro.</td></tr>
                     }
@@ -344,7 +352,7 @@ else
                         </tr>
                     }
                 </tbody>
-                @if (_pendientesFilas.Count > 0)
+                @if (mostrarPendientes)
                 {
                     <tbody>
                         <tr class="psa-table__grupo">
@@ -432,6 +440,7 @@ else
     private string _rfNumero = "";
     private string _rfProveedor = "";
     private string _rfAmbiente = "";
+    private string _rfDatil = "";
     private ColR _sortColRec = ColR.Fecha;
     private bool _sortAscRec;
 
@@ -442,7 +451,8 @@ else
 
     private bool TieneFiltrosRec =>
         !string.IsNullOrWhiteSpace(_rfEmpresa) || !string.IsNullOrWhiteSpace(_rfNumero)
-        || !string.IsNullOrWhiteSpace(_rfProveedor) || !string.IsNullOrEmpty(_rfAmbiente);
+        || !string.IsNullOrWhiteSpace(_rfProveedor) || !string.IsNullOrEmpty(_rfAmbiente)
+        || !string.IsNullOrEmpty(_rfDatil);
 
     private string TituloRecientes =>
         _empresaSel is null ? "Retenciones guardadas" : $"Retenciones guardadas — {_empresaSelNombre}";
@@ -608,6 +618,12 @@ else
         }
         if (short.TryParse(_rfAmbiente, out var amb))
             q = q.Where(r => r.Ambiente == amb);
+        if (_rfDatil == "ok")
+            q = q.Where(r => r.Emitida);
+        else if (_rfDatil == "sinid")
+            q = q.Where(r => !r.Emitida);
+        else if (_rfDatil == "pend")
+            q = Enumerable.Empty<RetencionReciente>();
 
         IEnumerable<RetencionReciente> Ordenar<TKey>(Func<RetencionReciente, TKey> clave) =>
             _sortAscRec ? q.OrderBy(clave) : q.OrderByDescending(clave);
@@ -635,7 +651,7 @@ else
 
     private void LimpiarFiltrosRec()
     {
-        _rfEmpresa = _rfNumero = _rfProveedor = _rfAmbiente = "";
+        _rfEmpresa = _rfNumero = _rfProveedor = _rfAmbiente = _rfDatil = "";
     }
 
     private async Task LimpiarRango()
