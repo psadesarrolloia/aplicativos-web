@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\PsaWeb.PeachEbills\PsaWeb.PeachEbills.csproj" />
     <ProjectReference Include="..\..\src\PsaWeb.Datil\PsaWeb.Datil.csproj" />
     <ProjectReference Include="..\..\src\PsaWeb.Sage50\PsaWeb.Sage50.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Seguridad\PsaWeb.Seguridad.csproj" />
     <ProjectReference Include="..\..\src\PsaWeb.Shared\PsaWeb.Shared.csproj" />
   </ItemGroup>
 

@@ -97,4 +97,27 @@ public class ProcesadorRetencionesTests
                 e.Mensajes.Any(m => m.Contains("Sage 50") || m.Contains("Configuración")),
                 $"RUC {e.Ruc}: {string.Join(" ; ", e.Mensajes)}"));
     }
+
+    [SkippableFact]
+    public async Task ProcesarUna_acota_a_una_empresa_o_reporta_que_no_esta_activa()
+    {
+        Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");
+        var proc = Construir();
+
+        // RUC inventado: 1 empresa en el resumen, con error explicativo.
+        var inexistente = await proc.ProcesarUnaAsync("00000000000000", "test");
+        Assert.Single(inexistente.Empresas);
+        Assert.Equal(1, inexistente.TotalConErrores);
+        Assert.Contains(inexistente.Empresas[0].Mensajes, m => m.Contains("no está activa"));
+
+        // RUC de una empresa activa real: exactamente 1 empresa en el resumen.
+        var todas = await proc.ProcesarTodasAsync("test");
+        var rucActivo = todas.Empresas.FirstOrDefault()?.Ruc;
+        Skip.If(rucActivo is null, "No hay empresas activas.");
+
+        var una = await proc.ProcesarUnaAsync(rucActivo!, "test");
+        Assert.Single(una.Empresas);
+        Assert.Equal(rucActivo, una.Empresas[0].Ruc);
+        Assert.True(una.DryRun);
+    }
 }

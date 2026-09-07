@@ -4,6 +4,7 @@
 @using PsaWeb.Datil
 @using PsaWeb.Modules.Retenciones
 @using PsaWeb.Modules.Retenciones.Data
+@using PsaWeb.Seguridad
 @inject IServiceProvider Sp
 @inject ILogger<Retenciones> Logger
 @inject AuthenticationStateProvider AuthState
@@ -47,13 +48,20 @@ else
         }
     </PsaCard>
 
-    <PsaCard Title="Empresas activas">
+    <PsaCard Title="@(EnfocadoEnMiEmpresa ? "Mi empresa" : "Empresas activas")">
         <Actions>
+            @if (_puedeTodas)
+            {
+                <PsaButton Variant="ghost" OnClick="AlternarAlcance" Disabled="_cargando || _ejecutando">
+                    @(_verTodas ? "Ver solo mi empresa" : "Ver todas las empresas")
+                </PsaButton>
+            }
             <PsaButton Variant="secondary" OnClick="CargarPanorama" Disabled="_cargando || _ejecutando">
                 @(_cargando ? "Actualizando…" : "Actualizar")
             </PsaButton>
             <PsaButton Variant="primary" OnClick="EjecutarAhora" Disabled="_cargando || _ejecutando">
-                @(_ejecutando ? "Ejecutando…" : "Ejecutar ahora")
+                @(_ejecutando ? "Ejecutando…"
+                    : EnfocadoEnMiEmpresa ? "Ejecutar (mi empresa)" : "Ejecutar todas")
             </PsaButton>
         </Actions>
         <ChildContent>
@@ -392,6 +400,8 @@ else
     </PsaCard>
 }
 
+@implements IDisposable
+
 @code {
     private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
 
@@ -412,6 +422,12 @@ else
     private string? _errorPanorama;
     private bool _cargando;
     private bool _ejecutando;
+
+    // Alcance: empresa de la sesión (shell) vs. todas (requiere permiso de lote).
+    private EmpresaActualService? _empresaActual;
+    private string? _rucSesion;
+    private bool _puedeTodas;
+    private bool _verTodas;
 
     // Orden y filtros de la tabla de empresas.
     private Col _sortCol = Col.Empresa;
@@ -472,8 +488,89 @@ else
             return;
         }
 
+        // Alcance por empresa de sesión (shell). Sin shell, _empresaActual queda
+        // null y la página funciona como antes (todas las empresas).
+        _empresaActual = Sp.GetService<EmpresaActualService>();
+        if (_empresaActual is not null)
+        {
+            _empresaActual.Cambio += AlCambiarEmpresaSesion;
+        }
+
+        // Con shell pero sin empresa rehidratada todavía: esperamos el evento
+        // Cambio (lo dispara GuardiaEmpresa). Evita cargar "todas" y después
+        // volver a cargar acotado.
+        if (_empresaActual is not null && _empresaActual.Ruc is null)
+        {
+            return;
+        }
+
+        await AplicarAlcanceYCargar();
+    }
+
+    private bool _aplicandoAlcance;
+
+    private async void AlCambiarEmpresaSesion()
+    {
+        await AplicarAlcanceYCargar();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AplicarAlcanceYCargar()
+    {
+        if (_aplicandoAlcance) return;
+        _aplicandoAlcance = true;
+        try
+        {
+            await AplicarAlcanceYCargarNucleo();
+        }
+        finally
+        {
+            _aplicandoAlcance = false;
+        }
+    }
+
+    private async Task AplicarAlcanceYCargarNucleo()
+    {
+        _rucSesion = _empresaActual?.Ruc;
+        _puedeTodas = false;
+
+        if (_empresaActual is null)
+        {
+            _verTodas = true; // sin shell: comportamiento global de siempre
+        }
+        else if (_rucSesion is not null)
+        {
+            var dir = Sp.GetService<ISecurityDirectory>();
+            if (dir is not null)
+            {
+                var usuario = await UsuarioActual();
+                _puedeTodas = await dir.TienePermisoAsync(usuario, _rucSesion, Permisos.HacerRetencionesLote);
+            }
+            if (!_puedeTodas) _verTodas = false;
+        }
+
         await CargarPanorama();
+
+        // En modo "mi empresa", el detalle de guardadas arranca en esa empresa.
+        if (EnfocadoEnMiEmpresa && _panorama is not null)
+        {
+            var fila = _panorama.FirstOrDefault(f => f.Ruc == _rucSesion);
+            if (fila is not null)
+            {
+                _empresaSel = fila.Ruc;
+                _empresaSelNombre = fila.Nombre;
+                _empresaSelAmbiente = fila.Ambiente;
+            }
+        }
+
         await RecargarRecientes();
+    }
+
+    private bool EnfocadoEnMiEmpresa => _rucSesion is not null && !_verTodas;
+
+    public void Dispose()
+    {
+        if (_empresaActual is not null) _empresaActual.Cambio -= AlCambiarEmpresaSesion;
     }
 
     private IReadOnlyList<FilaTablero> FilasVista()
@@ -481,6 +578,9 @@ else
         if (_panorama is null) return Array.Empty<FilaTablero>();
 
         IEnumerable<FilaTablero> q = _panorama;
+
+        if (EnfocadoEnMiEmpresa)
+            q = q.Where(f => f.Ruc == _rucSesion);
 
         if (!string.IsNullOrWhiteSpace(_fRuc))
             q = q.Where(f => f.Ruc.Contains(_fRuc.Trim(), StringComparison.OrdinalIgnoreCase));
@@ -508,6 +608,25 @@ else
         };
 
         return q.ToList();
+    }
+
+    private async Task AlternarAlcance()
+    {
+        _verTodas = !_verTodas;
+        _resumen = null;
+        _avisoCorrida = null;
+
+        if (EnfocadoEnMiEmpresa && _panorama is not null)
+        {
+            var fila = _panorama.FirstOrDefault(f => f.Ruc == _rucSesion);
+            if (fila is not null)
+            {
+                _empresaSel = fila.Ruc;
+                _empresaSelNombre = fila.Nombre;
+                _empresaSelAmbiente = fila.Ambiente;
+            }
+        }
+        await RecargarRecientes();
     }
 
     private void Ordenar(Col col)
@@ -708,8 +827,9 @@ else
         {
             var usuario = await UsuarioActual();
             var procesador = _procesador;
-            var resultado = await _gate.EjecutarAsync(
-                usuario, ct => procesador.ProcesarTodasAsync(usuario, ct));
+            var resultado = EnfocadoEnMiEmpresa
+                ? await _gate.EjecutarAsync(usuario, ct => procesador.ProcesarUnaAsync(_rucSesion!, usuario, ct))
+                : await _gate.EjecutarAsync(usuario, ct => procesador.ProcesarTodasAsync(usuario, ct));
 
             if (!resultado.Ejecuto)
             {

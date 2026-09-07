@@ -77,6 +77,26 @@ public sealed class ProcesadorRetenciones
         return new ResumenCorrida(inicio, DateTimeOffset.Now, _dryRun, resumenes);
     }
 
+    /// <summary>Procesa una sola empresa (la de la sesión). Falla con gracia si no está activa.</summary>
+    public async Task<ResumenCorrida> ProcesarUnaAsync(
+        string ruc, string usuario, CancellationToken cancellationToken = default)
+    {
+        var inicio = DateTimeOffset.Now;
+        var empresas = await _pendientes.EmpresasActivasAsync(
+            _opciones.OmitirRucs, _opciones.AmbienteForzado, cancellationToken);
+
+        var empresa = empresas.FirstOrDefault(e => e.Ruc == ruc);
+        if (empresa is null)
+        {
+            var fallo = new ResumenEmpresa(ruc, ruc, 0, 0, 1,
+                new[] { "La empresa no está activa o está en la lista de omitidas." });
+            return new ResumenCorrida(inicio, DateTimeOffset.Now, _dryRun, new[] { fallo });
+        }
+
+        var resumen = await ProcesarEmpresaAsync(empresa, usuario, cancellationToken);
+        return new ResumenCorrida(inicio, DateTimeOffset.Now, _dryRun, new[] { resumen });
+    }
+
     public async Task<ResumenEmpresa> ProcesarEmpresaAsync(
         EmpresaActiva empresa, string usuario, CancellationToken cancellationToken = default)
     {
