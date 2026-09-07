@@ -122,23 +122,56 @@ app.Logger.LogInformation(
     "Plataforma (identidad local): {Estado}.",
     plataformaConfigurada ? "ACTIVA" : "INACTIVA (sin Plataforma:ConnectionString)");
 
-// En desarrollo, mantené el esquema de PsaWebPlataforma al día y sembrá un
-// usuario de prueba (mapeado a un usuario real de PeachEBills para tener empresas
-// y permisos). NUNCA en producción.
-if (plataformaConfigurada && app.Environment.IsDevelopment())
+// Puesta al día del esquema de PsaWebPlataforma + siembra del primer usuario.
+// - En Development: siembra el usuario de prueba (Plataforma:UsuarioDev/ClaveDev).
+// - En Producción: aplica migraciones (salvo Plataforma:MigrarAlArrancar=false) y,
+//   SOLO si la base no tiene ningún usuario, crea el admin inicial desde
+//   Plataforma:AdminInicial:Usuario/Clave. Quitar esas variables tras el 1er arranque.
+if (plataformaConfigurada)
 {
     await using var scope = app.Services.CreateAsyncScope();
     var seeder = scope.ServiceProvider.GetRequiredService<PsaWeb.Identidad.IdentidadSeeder>();
-    await seeder.MigrarAsync();
 
-    var usuarioDev = app.Configuration["Plataforma:UsuarioDev"];
-    var claveDev = app.Configuration["Plataforma:ClaveDev"];
-    if (!string.IsNullOrWhiteSpace(usuarioDev) && !string.IsNullOrWhiteSpace(claveDev))
+    var migrarAlArrancar = app.Configuration.GetValue("Plataforma:MigrarAlArrancar", true);
+    if (migrarAlArrancar)
     {
-        var creado = await seeder.CrearSiNoExisteAsync(
-            usuarioDev, claveDev, nombreCompleto: usuarioDev, peachUsername: usuarioDev);
-        app.Logger.LogInformation(
-            "Usuario de desarrollo {Usuario}: {Estado}.", usuarioDev, creado ? "creado" : "ya existía");
+        await seeder.MigrarAsync();
+        app.Logger.LogInformation("PsaWebPlataforma: migraciones aplicadas.");
+    }
+
+    if (app.Environment.IsDevelopment())
+    {
+        var usuarioDev = app.Configuration["Plataforma:UsuarioDev"];
+        var claveDev = app.Configuration["Plataforma:ClaveDev"];
+        if (!string.IsNullOrWhiteSpace(usuarioDev) && !string.IsNullOrWhiteSpace(claveDev))
+        {
+            var creado = await seeder.CrearSiNoExisteAsync(
+                usuarioDev, claveDev, nombreCompleto: usuarioDev, peachUsername: usuarioDev);
+            app.Logger.LogInformation(
+                "Usuario de desarrollo {Usuario}: {Estado}.", usuarioDev, creado ? "creado" : "ya existía");
+        }
+    }
+    else
+    {
+        var adminUsuario = app.Configuration["Plataforma:AdminInicial:Usuario"];
+        var adminClave = app.Configuration["Plataforma:AdminInicial:Clave"];
+        if (!string.IsNullOrWhiteSpace(adminUsuario) && !string.IsNullOrWhiteSpace(adminClave))
+        {
+            if (await seeder.HayAlgunUsuarioAsync())
+            {
+                app.Logger.LogWarning(
+                    "Plataforma:AdminInicial está definido pero ya hay usuarios: no se creó nada. " +
+                    "Quitá esas variables de entorno.");
+            }
+            else
+            {
+                await seeder.CrearSiNoExisteAsync(
+                    adminUsuario, adminClave, nombreCompleto: adminUsuario, peachUsername: adminUsuario);
+                app.Logger.LogWarning(
+                    "Admin inicial {Usuario} creado. Verificá que esté en Plataforma:Admins y " +
+                    "quitá Plataforma:AdminInicial:* del entorno.", adminUsuario);
+            }
+        }
     }
 }
 

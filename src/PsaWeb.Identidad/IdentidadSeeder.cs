@@ -25,6 +25,10 @@ public sealed class IdentidadSeeder
     public Task MigrarAsync(CancellationToken cancellationToken = default)
         => _db.Database.MigrateAsync(cancellationToken);
 
+    /// <summary>true si ya hay al menos un usuario en la plataforma.</summary>
+    public Task<bool> HayAlgunUsuarioAsync(CancellationToken cancellationToken = default)
+        => _users.Users.AnyAsync(cancellationToken);
+
     /// <summary>
     /// Crea el usuario si no existe (no cambia la clave de uno existente).
     /// Devuelve true si lo creó.
