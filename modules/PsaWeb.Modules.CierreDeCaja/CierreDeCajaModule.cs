@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using PsaWeb.Modules.CierreDeCaja.Data;
 using PsaWeb.Modules.CierreDeCaja.Export;
 using PsaWeb.Sage50;
@@ -23,6 +24,10 @@ public static class CierreDeCajaModule
         {
             services.AddScoped<ICierreDeCajaRepository, OdbcCierreDeCajaRepository>();
         }
+
+        // Sin shell: la empresa es siempre la de config. El Host reemplaza este
+        // registro por la implementación real cuando el shell está activo.
+        services.TryAddScoped<IResolverEmpresaSage, SinShellResolverEmpresaSage>();
 
         services.AddSingleton<CierreExcelExporter>();
 

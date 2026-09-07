@@ -1,4 +1,3 @@
-using System.Data;
 using System.Data.Odbc;
 using PsaWeb.Sage50;
 
@@ -8,6 +7,8 @@ namespace PsaWeb.Modules.CierreDeCaja.Data;
 /// Implementación real contra la base de Sage 50 (Pervasive / Actian Zen vía ODBC).
 /// Reproduce las dos consultas del ejecutable original <c>ReceiptsReportRollerD</c>,
 /// ahora con parámetros (<see cref="OdbcParameter"/>) en vez de interpolar fechas.
+/// La empresa la resuelve <see cref="IResolverEmpresaSage"/>: con shell, por el RUC
+/// de sesión; sin shell, la cadena de <c>Sage50:ConnectionString</c>.
 /// </summary>
 internal sealed class OdbcCierreDeCajaRepository : ICierreDeCajaRepository
 {
@@ -34,15 +35,38 @@ internal sealed class OdbcCierreDeCajaRepository : ICierreDeCajaRepository
         """;
 
     private readonly ISageConnectionFactory _connections;
+    private readonly IResolverEmpresaSage _resolver;
 
-    public OdbcCierreDeCajaRepository(ISageConnectionFactory connections)
+    public OdbcCierreDeCajaRepository(ISageConnectionFactory connections, IResolverEmpresaSage resolver)
     {
         _connections = connections;
+        _resolver = resolver;
     }
 
-    public async Task<ResultadoCierre> ObtenerAsync(DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default)
+    public async Task<ResultadoCierre> ObtenerAsync(
+        DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default)
     {
-        await using var connection = _connections.CreateConnection();
+        string? cadena = null;
+        if (_resolver.RucSesion is { } ruc)
+        {
+            cadena = await _resolver.CadenaOdbcAsync(ruc, cancellationToken);
+        }
+        return await EjecutarAsync(cadena, desde, hasta, cancellationToken);
+    }
+
+    public async Task<ResultadoCierre> ObtenerParaRucAsync(
+        string ruc, DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default)
+    {
+        var cadena = await _resolver.CadenaOdbcAsync(ruc, cancellationToken);
+        return await EjecutarAsync(cadena, desde, hasta, cancellationToken);
+    }
+
+    private async Task<ResultadoCierre> EjecutarAsync(
+        string? cadena, DateOnly desde, DateOnly hasta, CancellationToken cancellationToken)
+    {
+        await using var connection = cadena is null
+            ? _connections.CreateConnection()
+            : _connections.CreateConnection(cadena);
         await connection.OpenAsync(cancellationToken);
 
         var cobros = await LeerCobrosAsync(connection, desde, hasta, cancellationToken);

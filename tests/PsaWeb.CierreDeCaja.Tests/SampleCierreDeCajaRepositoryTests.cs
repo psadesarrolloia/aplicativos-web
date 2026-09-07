@@ -29,4 +29,26 @@ public class SampleCierreDeCajaRepositoryTests
         Assert.True(r.SinMovimientos);
         Assert.Empty(r.Cobros);
     }
+
+    [Fact]
+    public async Task ObtenerParaRuc_del_sample_ignora_el_ruc()
+    {
+        var repo = new SampleCierreDeCajaRepository();
+
+        var porRuc = await repo.ObtenerParaRucAsync("1790000000001", Hoy, Hoy);
+        var normal = await repo.ObtenerAsync(Hoy, Hoy);
+
+        Assert.Equal(normal.TotalCobros, porRuc.TotalCobros);
+        Assert.Equal(normal.Cobros.Count, porRuc.Cobros.Count);
+    }
+
+    [Fact]
+    public void ResolverSinShell_no_tiene_empresa_y_no_fuerza_cadena()
+    {
+        var r = new SinShellResolverEmpresaSage();
+
+        Assert.Null(r.RucSesion);
+        Assert.Null(r.CadenaOdbcAsync("1790000000001").Result);
+        r.Cambio += () => { }; // el evento no-op no revienta
+    }
 }

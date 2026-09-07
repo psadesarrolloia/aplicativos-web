@@ -3,13 +3,16 @@
 @using System.Globalization
 @using PsaWeb.Modules.CierreDeCaja.Data
 @inject ICierreDeCajaRepository Repositorio
+@inject IResolverEmpresaSage EmpresaSage
 @inject ILogger<CierreDeCaja> Logger
 @inject NavigationManager Nav
 
 <PageTitle>Cierre de Caja — Aplicativos web PSA</PageTitle>
 
 <PsaPageHeader Title="Cierre de Caja"
-               Subtitle="Compara los cobros contra las ventas registradas en Sage 50 para un rango de fechas." />
+               Subtitle="@(EmpresaSage.RucSesion is null
+                   ? "Compara los cobros contra las ventas registradas en Sage 50 para un rango de fechas."
+                   : $"Empresa {EmpresaSage.RucSesion} · cobros contra ventas de Sage 50 para un rango de fechas.")" />
 
 <PsaCard Title="Parámetros">
     <PsaDateRange From="_desde" To="_hasta"
@@ -80,6 +83,8 @@ else if (_resultado is not null)
     </PsaCard>
 }
 
+@implements IDisposable
+
 @code {
     private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
 
@@ -89,6 +94,10 @@ else if (_resultado is not null)
     private string? _error;
     private ResultadoCierre? _resultado;
 
+    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+    private void Refrescar() => InvokeAsync(StateHasChanged);
+    public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+
     private bool PuedeExportar =>
         !_cargando && _error is null && _resultado is { SinMovimientos: false };
 
@@ -97,6 +106,10 @@ else if (_resultado is not null)
     private void Exportar()
     {
         var url = $"cierre-de-caja/export?desde={_desde:yyyy-MM-dd}&hasta={_hasta:yyyy-MM-dd}";
+        if (EmpresaSage.RucSesion is { } ruc)
+        {
+            url += $"&ruc={Uri.EscapeDataString(ruc)}";
+        }
         Nav.NavigateTo(url, forceLoad: true);
     }
 

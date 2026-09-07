@@ -27,4 +27,8 @@ internal sealed class SampleCierreDeCajaRepository : ICierreDeCajaRepository
 
         return Task.FromResult(new ResultadoCierre(cobros, totalCobros, totalVentas));
     }
+
+    public Task<ResultadoCierre> ObtenerParaRucAsync(
+        string ruc, DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default)
+        => ObtenerAsync(desde, hasta, cancellationToken);
 }

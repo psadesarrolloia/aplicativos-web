@@ -35,8 +35,14 @@ if (peachEbillsConfigurado)
     builder.Services.AddDatil(builder.Configuration);
     builder.Services.AddRetenciones(builder.Configuration);
     // Shell F-Shell-0: directorio de seguridad (empresas + permisos por usuario)
-    // y estado de sesión de empresa/ambiente. Registrado, todavía sin pantallas.
+    // y estado de sesión de empresa/ambiente.
     builder.Services.AddSeguridad();
+
+    // Shell F-Shell-3b: Cierre de Caja resuelve la empresa/conexión Sage por el
+    // RUC de sesión (reemplaza el resolver "sin shell" del módulo).
+    builder.Services.AddScoped<
+        PsaWeb.Modules.CierreDeCaja.Data.IResolverEmpresaSage,
+        PsaWeb.Host.Cierre.HostResolverEmpresaSage>();
 }
 
 // Shell F-Shell-0: identidad local (ASP.NET Core Identity) + rate-limiting del
@@ -167,8 +173,11 @@ app.MapRazorComponents<App>()
 app.MapGet("/cierre-de-caja/export", async (
         DateOnly desde,
         DateOnly hasta,
+        string? ruc,
+        System.Security.Claims.ClaimsPrincipal usuario,
         ICierreDeCajaRepository repositorio,
         CierreExcelExporter exportador,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
         CancellationToken cancellationToken) =>
     {
         if (desde > hasta)
@@ -176,9 +185,27 @@ app.MapGet("/cierre-de-caja/export", async (
             return Results.BadRequest("La fecha «Desde» no puede ser mayor que «Hasta».");
         }
 
-        var resultado = await repositorio.ObtenerAsync(desde, hasta, cancellationToken);
-        var bytes = exportador.Generar(resultado, desde, hasta);
+        ResultadoCierre resultado;
+        if (!string.IsNullOrWhiteSpace(ruc))
+        {
+            // Con shell: el RUC viene de la página. Sólo se exporta una empresa
+            // a la que el usuario tenga acceso.
+            var nombre = usuario.Identity?.Name ?? string.Empty;
+            var tieneAcceso = seguridad is not null
+                && (await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken))
+                    .Any(e => e.Ruc == ruc);
+            if (!tieneAcceso)
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            resultado = await repositorio.ObtenerParaRucAsync(ruc, desde, hasta, cancellationToken);
+        }
+        else
+        {
+            resultado = await repositorio.ObtenerAsync(desde, hasta, cancellationToken);
+        }
 
+        var bytes = exportador.Generar(resultado, desde, hasta);
         return Results.File(bytes, CierreExcelExporter.ContentType, exportador.NombreArchivo(desde, hasta));
     })
     .RequireAuthorization();
