@@ -29,7 +29,7 @@ public static class AppCatalogo
 
         new("retenciones", "Retenciones",
             "Genera y emite en Datil las retenciones de compra pendientes.",
-            "🧾", "/retenciones",
+            "📄", "/retenciones",
             new[] { Permisos.VerRetenciones, Permisos.HacerRetencion, Permisos.HacerRetencionesLote }),
     };
 
