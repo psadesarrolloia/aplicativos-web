@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <!-- Varios proyectos de test pegan a la misma instancia local .\SQLEXPRESS
+       (PeachEBills y PsaWebPlataforma). Corriendo los ensamblados en paralelo se
+       satura y algunos SkippableFact fallan por timeout. MaxCpuCount=1 los
+       serializa. -->
+  <RunConfiguration>
+    <MaxCpuCount>1</MaxCpuCount>
+  </RunConfiguration>
+</RunSettings>

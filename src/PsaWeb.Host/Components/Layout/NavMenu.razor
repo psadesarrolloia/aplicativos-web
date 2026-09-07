@@ -1,6 +1,43 @@
+@using PsaWeb.Seguridad
+@inject ISecurityDirectory Seguridad
+@inject EmpresaActualService EmpresaActual
+@inject AuthenticationStateProvider AuthState
+@implements IDisposable
+
 <nav class="psa-nav">
     <NavLink class="psa-nav__link" href="/" Match="NavLinkMatch.All">Inicio</NavLink>
-    <NavLink class="psa-nav__link" href="/cierre-de-caja">Cierre de Caja</NavLink>
-    <NavLink class="psa-nav__link" href="/retenciones">Retenciones</NavLink>
-    <NavLink class="psa-nav__link" href="/componentes">Componentes</NavLink>
+    @foreach (var app in _apps)
+    {
+        <NavLink class="psa-nav__link" href="@app.Ruta">@app.Nombre</NavLink>
+    }
 </nav>
+
+@code {
+    private IReadOnlyList<AppWeb> _apps = Array.Empty<AppWeb>();
+
+    protected override void OnInitialized() => EmpresaActual.Cambio += AlCambiar;
+
+    protected override async Task OnInitializedAsync() => await CargarAsync();
+
+    private async void AlCambiar()
+    {
+        await CargarAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CargarAsync()
+    {
+        if (!EmpresaActual.HaySeleccion)
+        {
+            _apps = Array.Empty<AppWeb>();
+            return;
+        }
+
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var usuario = state.User.Identity?.Name ?? "";
+        var ctx = await Seguridad.ContextoAsync(usuario, EmpresaActual.Ruc!);
+        _apps = AppCatalogo.Habilitadas(ctx).ToList();
+    }
+
+    public void Dispose() => EmpresaActual.Cambio -= AlCambiar;
+}

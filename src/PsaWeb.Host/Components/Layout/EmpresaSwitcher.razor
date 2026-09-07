@@ -1,0 +1,100 @@
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using PsaWeb.Seguridad
+@inject ISecurityDirectory Seguridad
+@inject EmpresaActualService EmpresaActual
+@inject AuthenticationStateProvider AuthState
+@inject ProtectedLocalStorage LocalStorage
+@implements IDisposable
+
+@if (EmpresaActual.HaySeleccion)
+{
+    <div class="psa-switcher @(_abierto ? "abierto" : null)">
+        <button type="button" class="psa-switcher__btn" @onclick="Alternar">
+            <span class="psa-switcher__empresa">@EmpresaActual.Nombre</span>
+            <span class="psa-switcher__amb">@AmbTexto(EmpresaActual.Ambiente)</span>
+            <span class="psa-switcher__caret">▾</span>
+        </button>
+
+        @if (_abierto)
+        {
+            <div class="psa-switcher__backdrop" @onclick="Cerrar"></div>
+            <div class="psa-switcher__panel">
+                <div class="psa-switcher__seccion">Ambiente</div>
+                <div class="psa-switcher__ambientes">
+                    <button type="button" class="@AmbCls(Ambiente.Produccion)"
+                            @onclick="() => CambiarAmbiente(Ambiente.Produccion)">Producción</button>
+                    <button type="button" class="@AmbCls(Ambiente.Pruebas)"
+                            @onclick="() => CambiarAmbiente(Ambiente.Pruebas)">Pruebas</button>
+                </div>
+
+                <div class="psa-switcher__seccion">Empresa</div>
+                <ul class="psa-switcher__empresas">
+                    @foreach (var e in _empresas)
+                    {
+                        <li>
+                            <button type="button"
+                                    class="@(e.Ruc == EmpresaActual.Ruc ? "sel" : null)"
+                                    @onclick="() => CambiarEmpresa(e)">
+                                <span>@e.Nombre</span>
+                                <span class="psa-switcher__ruc">@e.Ruc</span>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private bool _abierto;
+    private IReadOnlyList<EmpresaDelUsuario> _empresas = Array.Empty<EmpresaDelUsuario>();
+
+    protected override void OnInitialized() => EmpresaActual.Cambio += Refrescar;
+
+    private async Task Alternar()
+    {
+        _abierto = !_abierto;
+        if (_abierto && _empresas.Count == 0)
+        {
+            var state = await AuthState.GetAuthenticationStateAsync();
+            var usuario = state.User.Identity?.Name ?? "";
+            _empresas = await Seguridad.EmpresasDelUsuarioAsync(usuario);
+        }
+    }
+
+    private void Cerrar() => _abierto = false;
+
+    private async Task CambiarEmpresa(EmpresaDelUsuario empresa)
+    {
+        _abierto = false;
+        if (empresa.Ruc == EmpresaActual.Ruc) return;
+        EmpresaActual.Fijar(empresa, EmpresaActual.Ambiente);
+        await Persistir();
+    }
+
+    private async Task CambiarAmbiente(Ambiente ambiente)
+    {
+        if (EmpresaActual.Ambiente == ambiente) { _abierto = false; return; }
+        EmpresaActual.CambiarAmbiente(ambiente);
+        await Persistir();
+        _abierto = false;
+    }
+
+    private async Task Persistir()
+    {
+        if (EmpresaActual.Ruc is { } ruc)
+        {
+            await LocalStorage.SetAsync("psa.empresa", new EmpresaGuardada(ruc, EmpresaActual.Ambiente));
+        }
+    }
+
+    private static string AmbTexto(Ambiente a) => a == Ambiente.Pruebas ? "Pruebas" : "Producción";
+
+    private string AmbCls(Ambiente a) =>
+        "psa-switcher__amb-btn" + (EmpresaActual.Ambiente == a ? " sel" : "");
+
+    private void Refrescar() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => EmpresaActual.Cambio -= Refrescar;
+}
