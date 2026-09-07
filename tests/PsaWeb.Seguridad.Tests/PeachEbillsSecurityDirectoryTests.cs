@@ -68,6 +68,19 @@ public class PeachEbillsSecurityDirectoryTests
     }
 
     [SkippableFact]
+    public async Task ContarEmpresas_coincide_con_EmpresasDelUsuario()
+    {
+        Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");
+        var dir = Construir();
+
+        var esperado = (await dir.EmpresasDelUsuarioAsync(Usuario)).Count;
+        var conteos = await dir.ContarEmpresasAsync(new[] { Usuario, "no-existe-xyz" });
+
+        Assert.Equal(esperado, conteos.GetValueOrDefault(Usuario, 0));
+        Assert.False(conteos.ContainsKey("no-existe-xyz"));
+    }
+
+    [SkippableFact]
     public async Task Permisos_resuelve_los_codigos_por_empresa()
     {
         Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");

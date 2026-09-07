@@ -1,7 +1,10 @@
+@using Microsoft.Extensions.Options
+@using PsaWeb.Identidad
 @using PsaWeb.Seguridad
 @inject ISecurityDirectory Seguridad
 @inject EmpresaActualService EmpresaActual
 @inject AuthenticationStateProvider AuthState
+@inject IOptions<PlataformaOptions> Plataforma
 @implements IDisposable
 
 <nav class="psa-nav">
@@ -10,14 +13,24 @@
     {
         <NavLink class="psa-nav__link" href="@app.Ruta">@app.Nombre</NavLink>
     }
+    @if (_esAdmin)
+    {
+        <NavLink class="psa-nav__link" href="/admin/usuarios">Administración</NavLink>
+    }
 </nav>
 
 @code {
     private IReadOnlyList<AppWeb> _apps = Array.Empty<AppWeb>();
+    private bool _esAdmin;
 
     protected override void OnInitialized() => EmpresaActual.Cambio += AlCambiar;
 
-    protected override async Task OnInitializedAsync() => await CargarAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _esAdmin = Plataforma.Value.EsAdmin(state.User.Identity?.Name);
+        await CargarAsync();
+    }
 
     private async void AlCambiar()
     {

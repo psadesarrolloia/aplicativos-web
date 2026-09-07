@@ -31,6 +31,8 @@ public static class ServiceCollectionExtensions
                 $"Falta la cadena de conexión. Configure '{SectionName}:ConnectionString'.");
         }
 
+        services.Configure<PlataformaOptions>(configuration.GetSection(SectionName));
+        services.AddHttpContextAccessor();
         services.AddDbContext<PlataformaDbContext>(o => o.UseSqlServer(cs));
 
         services.AddIdentityCore<UsuarioApp>(o =>
@@ -55,6 +57,7 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IProveedorAutenticacion, IdentityProveedorAutenticacion>();
         services.AddScoped<GestorSegundoFactor>();
+        services.AddScoped<AuditoriaAuth>();
         services.AddScoped<IdentidadSeeder>();
 
         return services;

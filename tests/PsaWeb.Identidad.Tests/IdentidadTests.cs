@@ -9,7 +9,7 @@ namespace PsaWeb.Identidad.Tests;
 /// Verifica el store de Identity contra la base local <c>PsaWebPlataforma</c>:
 /// política de claves, hashing, lockout y proveedor de TOTP.
 /// </summary>
-public class IdentidadTests : IDisposable
+public class IdentidadTests : IAsyncLifetime
 {
     private const string LocalConnectionString =
         @"Server=.\SQLEXPRESS;Database=PsaWebPlataforma;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=15";
@@ -23,6 +23,7 @@ public class IdentidadTests : IDisposable
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddDataProtection();
+        services.AddHttpContextAccessor();
         services.AddDbContext<PlataformaDbContext>(o => o.UseSqlServer(LocalConnectionString));
         services.AddIdentityCore<UsuarioApp>(o =>
         {
@@ -42,11 +43,29 @@ public class IdentidadTests : IDisposable
         .AddDefaultTokenProviders();
 
         services.AddScoped<GestorSegundoFactor>();
+        services.AddScoped<AuditoriaAuth>();
 
         _sp = services.BuildServiceProvider();
     }
 
-    public void Dispose() => _sp.Dispose();
+    private readonly List<string> _creados = new();
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    // Borra los usuarios de prueba creados por este test para no ensuciar la BD.
+    public async Task DisposeAsync()
+    {
+        if (DbDisponible())
+        {
+            var users = Users();
+            foreach (var id in _creados)
+            {
+                var u = await users.FindByIdAsync(id);
+                if (u is not null) await users.DeleteAsync(u);
+            }
+        }
+        _sp.Dispose();
+    }
 
     private UserManager<UsuarioApp> Users() => _sp.GetRequiredService<UserManager<UsuarioApp>>();
 
@@ -66,6 +85,7 @@ public class IdentidadTests : IDisposable
         var nombre = "test_" + Guid.NewGuid().ToString("N")[..12];
         var u = new UsuarioApp { UserName = nombre, PeachUsername = nombre, Activo = true };
         var r = await users.CreateAsync(u, clave ?? ClaveValida);
+        if (r.Succeeded) _creados.Add(u.Id);
         Assert.True(r.Succeeded, string.Join("; ", r.Errors.Select(e => e.Description)));
         return u;
     }
@@ -173,6 +193,26 @@ public class IdentidadTests : IDisposable
 
         await gestor.DesactivarAsync(u);
         Assert.False((await gestor.EstadoAsync(u)).Habilitado);
+    }
+
+    [SkippableFact]
+    public async Task AuditoriaAuth_registra_y_lee_eventos_por_fecha_desc()
+    {
+        Skip.IfNot(DbDisponible(), "PsaWebPlataforma local no disponible.");
+        var auditoria = _sp.GetRequiredService<AuditoriaAuth>();
+
+        var marca = "t_" + Guid.NewGuid().ToString("N")[..10];
+        await auditoria.RegistrarAsync(TiposEventoAuth.LoginFallido, marca, "clave incorrecta");
+        await Task.Delay(20);
+        await auditoria.RegistrarAsync(TiposEventoAuth.LoginOk, marca);
+
+        var recientes = await auditoria.RecientesAsync(500);
+        var mios = recientes.Where(e => e.Usuario == marca).ToList();
+
+        Assert.Equal(2, mios.Count);
+        Assert.Equal(TiposEventoAuth.LoginOk, mios[0].Tipo);       // más nuevo primero
+        Assert.Equal(TiposEventoAuth.LoginFallido, mios[1].Tipo);
+        Assert.Equal("clave incorrecta", mios[1].Detalle);
     }
 
     /// <summary>TOTP RFC 6238 (SHA1, 30 s, 6 dígitos) desde una clave base32.</summary>

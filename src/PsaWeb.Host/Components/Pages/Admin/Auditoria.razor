@@ -1,0 +1,96 @@
+@page "/admin/auditoria"
+@using Microsoft.Extensions.Options
+@using PsaWeb.Identidad
+@inject IOptions<PlataformaOptions> Opciones
+@inject AuditoriaAuth Registro
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Auditoría — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Administración"
+               Subtitle="Auditoría de acceso: últimos eventos de inicio de sesión." />
+
+<div class="psa-subnav">
+    <NavLink class="psa-nav__link" href="/admin/usuarios">Usuarios</NavLink>
+    <NavLink class="psa-nav__link" href="/admin/auditoria">Auditoría</NavLink>
+</div>
+
+@if (!_esAdmin)
+{
+    <PsaCard Title="Sin acceso">
+        <p class="psa-notice psa-notice--danger">Tu usuario no tiene acceso a la administración.</p>
+    </PsaCard>
+}
+else if (_eventos is null)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else
+{
+    <PsaCard Title="@($"Últimos {_eventos.Count} eventos")">
+        <div style="overflow-x:auto">
+        <table class="psa-table">
+            <thead>
+                <tr><th>Fecha (UTC)</th><th>Evento</th><th>Usuario</th><th>IP</th><th>Detalle</th></tr>
+            </thead>
+            <tbody>
+                @if (_eventos.Count == 0)
+                {
+                    <tr><td colspan="5" class="psa-muted">Sin eventos todavía.</td></tr>
+                }
+                @foreach (var e in _eventos)
+                {
+                    <tr>
+                        <td>@e.Utc.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                        <td><span class="psa-evt psa-evt--@Clase(e.Tipo)">@Etiqueta(e.Tipo)</span></td>
+                        <td>@e.Usuario</td>
+                        <td>@e.Ip</td>
+                        <td class="psa-muted">@e.Detalle</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+    </PsaCard>
+}
+
+@code {
+    private bool _esAdmin;
+    private IReadOnlyList<EventoAuth>? _eventos;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _esAdmin = Opciones.Value.EsAdmin(state.User.Identity?.Name);
+        if (_esAdmin)
+        {
+            _eventos = await Registro.RecientesAsync(200);
+        }
+    }
+
+    private static string Clase(string tipo) => tipo switch
+    {
+        TiposEventoAuth.LoginOk or TiposEventoAuth.SegundoFactorOk => "ok",
+        TiposEventoAuth.LoginFallido or TiposEventoAuth.SegundoFactorFallido
+            or TiposEventoAuth.Bloqueo or TiposEventoAuth.LoginDeshabilitado => "bad",
+        _ => "neutral",
+    };
+
+    private static string Etiqueta(string tipo) => tipo switch
+    {
+        TiposEventoAuth.LoginOk => "ingreso ok",
+        TiposEventoAuth.LoginFallido => "ingreso fallido",
+        TiposEventoAuth.LoginDeshabilitado => "usuario deshabilitado",
+        TiposEventoAuth.SegundoFactorPendiente => "pide 2FA",
+        TiposEventoAuth.SegundoFactorOk => "2FA ok",
+        TiposEventoAuth.SegundoFactorFallido => "2FA fallido",
+        TiposEventoAuth.Bloqueo => "bloqueo por intentos",
+        TiposEventoAuth.Logout => "salida",
+        TiposEventoAuth.AdminAltaUsuario => "alta de usuario",
+        TiposEventoAuth.AdminResetClave => "reseteo de clave",
+        TiposEventoAuth.AdminHabilitado => "usuario habilitado",
+        TiposEventoAuth.AdminDeshabilitado => "usuario deshabilitado",
+        TiposEventoAuth.Admin2faQuitado => "2FA quitado",
+        _ => tipo,
+    };
+}

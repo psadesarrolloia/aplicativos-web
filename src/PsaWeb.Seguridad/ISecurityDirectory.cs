@@ -11,6 +11,13 @@ public interface ISecurityDirectory
     Task<IReadOnlyList<EmpresaDelUsuario>> EmpresasDelUsuarioAsync(
         string usuario, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Cantidad de empresas asignadas a cada usuario, en una sola consulta
+    /// (para listados de administración).
+    /// </summary>
+    Task<IReadOnlyDictionary<string, int>> ContarEmpresasAsync(
+        IEnumerable<string> usuarios, CancellationToken cancellationToken = default);
+
     /// <summary>Códigos de permiso activos del usuario en una empresa.</summary>
     Task<IReadOnlySet<string>> PermisosAsync(
         string usuario, string ruc, CancellationToken cancellationToken = default);

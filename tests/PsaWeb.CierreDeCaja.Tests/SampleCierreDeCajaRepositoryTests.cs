@@ -43,12 +43,12 @@ public class SampleCierreDeCajaRepositoryTests
     }
 
     [Fact]
-    public void ResolverSinShell_no_tiene_empresa_y_no_fuerza_cadena()
+    public async Task ResolverSinShell_no_tiene_empresa_y_no_fuerza_cadena()
     {
         var r = new SinShellResolverEmpresaSage();
 
         Assert.Null(r.RucSesion);
-        Assert.Null(r.CadenaOdbcAsync("1790000000001").Result);
+        Assert.Null(await r.CadenaOdbcAsync("1790000000001"));
         r.Cambio += () => { }; // el evento no-op no revienta
     }
 }

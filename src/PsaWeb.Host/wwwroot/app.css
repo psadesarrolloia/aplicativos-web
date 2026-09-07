@@ -235,3 +235,23 @@
 .psa-opcion.sel { border-color: var(--psa-magenta, #b40046); background: var(--psa-surface-2, #f7f8fa); }
 .psa-opcion__nombre { font-weight: 600; }
 .psa-opcion__ruc { color: var(--psa-ink-muted, #667); font-size: .82rem; font-variant-numeric: tabular-nums; }
+
+/* --- administración ---------------------------------------------------------- */
+
+.psa-subnav {
+    display: flex;
+    gap: .3rem;
+    margin: -.4rem 0 1rem;
+}
+.psa-subnav .psa-nav__link { font-size: .88rem; }
+
+.psa-evt {
+    display: inline-block;
+    padding: .05rem .5rem;
+    border-radius: 999px;
+    font-size: .78rem;
+    background: var(--psa-surface-2, #f1f3f6);
+    color: var(--psa-ink, #1a2431);
+}
+.psa-evt--ok { background: color-mix(in srgb, var(--psa-ok, #0f9d63) 18%, transparent); color: var(--psa-ok, #0f9d63); }
+.psa-evt--bad { background: color-mix(in srgb, var(--psa-danger, #d64545) 18%, transparent); color: var(--psa-danger, #d64545); }

@@ -1,0 +1,240 @@
+@page "/admin/usuarios"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Options
+@using PsaWeb.Identidad
+@using PsaWeb.Seguridad
+@inject IOptions<PlataformaOptions> Opciones
+@inject UserManager<UsuarioApp> Users
+@inject GestorSegundoFactor Gestor
+@inject IdentidadSeeder Seeder
+@inject AuditoriaAuth Auditoria
+@inject ISecurityDirectory Seguridad
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Usuarios — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Administración"
+               Subtitle="Logins de la plataforma web. Las empresas y roles se gestionan en PeachEBills." />
+
+<div class="psa-subnav">
+    <NavLink class="psa-nav__link" href="/admin/usuarios">Usuarios</NavLink>
+    <NavLink class="psa-nav__link" href="/admin/auditoria">Auditoría</NavLink>
+</div>
+
+@if (!_esAdmin)
+{
+    <PsaCard Title="Sin acceso">
+        <p class="psa-notice psa-notice--danger">Tu usuario no tiene acceso a la administración.</p>
+    </PsaCard>
+}
+else
+{
+    <PsaCard Title="Nuevo login">
+        <EditForm Model="_nuevo" OnValidSubmit="Crear">
+            <DataAnnotationsValidator />
+            <div class="psa-row" style="align-items:flex-end">
+                <label class="psa-field"><span class="psa-field__lbl">Usuario</span>
+                    <InputText class="psa-input" @bind-Value="_nuevo.Usuario" /></label>
+                <label class="psa-field"><span class="psa-field__lbl">Nombre</span>
+                    <InputText class="psa-input" @bind-Value="_nuevo.Nombre" /></label>
+                <label class="psa-field"><span class="psa-field__lbl">Email</span>
+                    <InputText class="psa-input" @bind-Value="_nuevo.Email" /></label>
+                <label class="psa-field"><span class="psa-field__lbl">Usuario PeachEBills</span>
+                    <InputText class="psa-input" @bind-Value="_nuevo.PeachUsername" placeholder="= usuario" /></label>
+                <label class="psa-field"><span class="psa-field__lbl">Clave temporal</span>
+                    <InputText type="password" class="psa-input" @bind-Value="_nuevo.Clave" /></label>
+                <PsaButton Variant="primary" Type="submit">Crear</PsaButton>
+            </div>
+            <ValidationSummary />
+        </EditForm>
+        @if (_msgCrear is not null)
+        {
+            <p class="psa-notice @(_crearOk ? "" : "psa-notice--danger")" style="margin-top:.6rem">@_msgCrear</p>
+        }
+    </PsaCard>
+
+    @if (_filas is null)
+    {
+        <p class="psa-muted">Cargando…</p>
+    }
+    else
+    {
+        <PsaCard Title="@($"{_filas.Count} usuarios")">
+            <div style="overflow-x:auto">
+            <table class="psa-table">
+                <thead>
+                    <tr>
+                        <th>Usuario</th><th>Nombre</th><th>PeachEBills</th><th class="num">Empresas</th>
+                        <th>2FA</th><th>Estado</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in _filas)
+                    {
+                        <tr>
+                            <td>@f.Usuario.UserName</td>
+                            <td>@f.Usuario.NombreCompleto</td>
+                            <td>@f.Usuario.PeachUsername</td>
+                            <td class="num">@f.Empresas</td>
+                            <td>@(f.DosFactores ? "sí" : "no")</td>
+                            <td>@(f.Usuario.Activo ? "activo" : "deshabilitado")</td>
+                            <td>
+                                <button type="button" class="psa-linkbtn" @onclick="() => AbrirReset(f.Usuario)">Resetear clave</button>
+                                <button type="button" class="psa-linkbtn" @onclick="() => AlternarActivo(f.Usuario)">
+                                    @(f.Usuario.Activo ? "Deshabilitar" : "Habilitar")
+                                </button>
+                                @if (f.DosFactores)
+                                {
+                                    <button type="button" class="psa-linkbtn" @onclick="() => QuitarDosFactores(f.Usuario)">Quitar 2FA</button>
+                                }
+                            </td>
+                        </tr>
+                        @if (_resetUsuario == f.Usuario.Id)
+                        {
+                            <tr>
+                                <td colspan="7">
+                                    <div class="psa-row" style="align-items:flex-end">
+                                        <label class="psa-field"><span class="psa-field__lbl">Nueva clave</span>
+                                            <input type="password" class="psa-input" @bind="_resetClave" /></label>
+                                        <PsaButton Variant="primary" OnClick="() => ConfirmarReset(f.Usuario)">Guardar</PsaButton>
+                                        <PsaButton Variant="ghost" OnClick="() => _resetUsuario = null">Cancelar</PsaButton>
+                                        @if (_msgReset is not null)
+                                        {
+                                            <span class="psa-muted">@_msgReset</span>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            </div>
+        </PsaCard>
+    }
+}
+
+@code {
+    private bool _esAdmin;
+    private string _adminUsuario = "";
+
+    private List<Fila>? _filas;
+
+    private readonly DatosNuevo _nuevo = new();
+    private string? _msgCrear;
+    private bool _crearOk;
+
+    private string? _resetUsuario;
+    private string _resetClave = "";
+    private string? _msgReset;
+
+    private sealed record Fila(UsuarioApp Usuario, bool DosFactores, int Empresas);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _adminUsuario = state.User.Identity?.Name ?? "";
+        _esAdmin = Opciones.Value.EsAdmin(_adminUsuario);
+        if (_esAdmin) await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        var usuarios = await Users.Users.OrderBy(u => u.UserName).ToListAsync();
+        var conteos = await Seguridad.ContarEmpresasAsync(usuarios.Select(u => u.PeachUsername));
+
+        var filas = new List<Fila>(usuarios.Count);
+        foreach (var u in usuarios)
+        {
+            var dos = await Users.GetTwoFactorEnabledAsync(u);
+            filas.Add(new Fila(u, dos, conteos.GetValueOrDefault(u.PeachUsername, 0)));
+        }
+        _filas = filas;
+    }
+
+    private async Task Crear()
+    {
+        _msgCrear = null;
+        try
+        {
+            var creado = await Seeder.CrearSiNoExisteAsync(
+                _nuevo.Usuario.Trim(), _nuevo.Clave,
+                string.IsNullOrWhiteSpace(_nuevo.Email) ? null : _nuevo.Email.Trim(),
+                string.IsNullOrWhiteSpace(_nuevo.Nombre) ? null : _nuevo.Nombre.Trim(),
+                string.IsNullOrWhiteSpace(_nuevo.PeachUsername) ? null : _nuevo.PeachUsername.Trim());
+
+            if (!creado)
+            {
+                _crearOk = false;
+                _msgCrear = "Ya existe un usuario con ese nombre.";
+                return;
+            }
+
+            await Auditoria.RegistrarAsync(TiposEventoAuth.AdminAltaUsuario, _adminUsuario, $"creó {_nuevo.Usuario}");
+            _crearOk = true;
+            _msgCrear = $"Usuario «{_nuevo.Usuario}» creado.";
+            _nuevo.Usuario = _nuevo.Nombre = _nuevo.Email = _nuevo.PeachUsername = _nuevo.Clave = "";
+            await CargarAsync();
+        }
+        catch (Exception ex)
+        {
+            _crearOk = false;
+            _msgCrear = ex.Message;
+        }
+    }
+
+    private void AbrirReset(UsuarioApp u)
+    {
+        _resetUsuario = u.Id;
+        _resetClave = "";
+        _msgReset = null;
+    }
+
+    private async Task ConfirmarReset(UsuarioApp u)
+    {
+        _msgReset = null;
+        if (await Users.HasPasswordAsync(u))
+        {
+            await Users.RemovePasswordAsync(u);
+        }
+        var r = await Users.AddPasswordAsync(u, _resetClave);
+        if (!r.Succeeded)
+        {
+            _msgReset = string.Join("; ", r.Errors.Select(e => e.Description));
+            return;
+        }
+        await Auditoria.RegistrarAsync(TiposEventoAuth.AdminResetClave, _adminUsuario, $"reseteó {u.UserName}");
+        _resetUsuario = null;
+        _msgReset = null;
+    }
+
+    private async Task AlternarActivo(UsuarioApp u)
+    {
+        u.Activo = !u.Activo;
+        await Users.UpdateAsync(u);
+        await Auditoria.RegistrarAsync(
+            u.Activo ? TiposEventoAuth.AdminHabilitado : TiposEventoAuth.AdminDeshabilitado,
+            _adminUsuario, u.UserName);
+        await CargarAsync();
+    }
+
+    private async Task QuitarDosFactores(UsuarioApp u)
+    {
+        await Gestor.DesactivarAsync(u);
+        await Auditoria.RegistrarAsync(TiposEventoAuth.Admin2faQuitado, _adminUsuario, u.UserName);
+        await CargarAsync();
+    }
+
+    public sealed class DatosNuevo
+    {
+        [Required(ErrorMessage = "El usuario es obligatorio.")]
+        public string Usuario { get; set; } = "";
+        public string Nombre { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string PeachUsername { get; set; } = "";
+        [Required(ErrorMessage = "La clave temporal es obligatoria.")]
+        public string Clave { get; set; } = "";
+    }
+}

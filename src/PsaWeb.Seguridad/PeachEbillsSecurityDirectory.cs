@@ -59,6 +59,25 @@ public sealed class PeachEbillsSecurityDirectory : ISecurityDirectory
             .ToList();
     }
 
+    public async Task<IReadOnlyDictionary<string, int>> ContarEmpresasAsync(
+        IEnumerable<string> usuarios, CancellationToken cancellationToken = default)
+    {
+        var lista = usuarios.Select(NormalizarUsuario).Where(u => u.Length > 0).Distinct().ToArray();
+        if (lista.Length == 0) return new Dictionary<string, int>();
+
+        await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var filas = await db.SecUserTransmitters.AsNoTracking()
+            .Where(ut => EF.Constant(lista).Contains(ut.User))
+            .Select(ut => new { ut.User, ut.Ruc })
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        return filas
+            .GroupBy(x => x.User)
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
     public async Task<IReadOnlySet<string>> PermisosAsync(
         string usuario, string ruc, CancellationToken cancellationToken = default)
     {
