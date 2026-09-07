@@ -267,7 +267,7 @@ else
         else
         {
             var vista = RecientesVista();
-            var colspan = _empresaSel is null ? 7 : 6;
+            var colspan = _empresaSel is null ? 8 : 7;
             var mostrarPendientes = _pendientesFilas.Count > 0 && (_rfDatil is "" or "pend");
 
             <p class="psa-muted" style="margin-bottom:.4rem">
@@ -304,6 +304,7 @@ else
                         <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Proveedor))">Proveedor @FlechaRec(ColR.Proveedor)</th>
                         <th class="sortable" @onclick="@(() => OrdenarRec(ColR.Ambiente))">Ambiente @FlechaRec(ColR.Ambiente)</th>
                         <th class="num">Datil</th>
+                        <th class="num">PDF</th>
                     </tr>
                     <tr class="psa-table__filtros">
                         <th></th>
@@ -329,6 +330,7 @@ else
                                 <option value="pend">✗ pendiente</option>
                             </select>
                         </th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -338,7 +340,7 @@ else
                     }
                     @foreach (var r in vista)
                     {
-                        <tr>
+                        <tr style="cursor:pointer" @onclick="() => AbrirDetalle(r)">
                             <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
                             @if (_empresaSel is null)
                             {
@@ -356,6 +358,17 @@ else
                                 else
                                 {
                                     <span class="psa-estado psa-estado--warn" title="Guardada sin id de Datil">&#8211;</span>
+                                }
+                            </td>
+                            <td class="num" @onclick:stopPropagation="true">
+                                @if (r.Emitida)
+                                {
+                                    <a class="psa-pdf" href="@UrlDatil(r.DatilId!, "pdf")" target="_blank" rel="noopener"
+                                       title="Abrir el PDF de la retención">PDF</a>
+                                }
+                                else
+                                {
+                                    <span class="psa-muted">—</span>
                                 }
                             </td>
                         </tr>
@@ -388,6 +401,7 @@ else
                                 <td class="num">
                                     <span class="psa-estado psa-estado--bad" title="Pendiente de emitir">&#10007;</span>
                                 </td>
+                                <td class="num psa-muted">—</td>
                             </tr>
                         }
                     </tbody>
@@ -398,6 +412,80 @@ else
         }
         </ChildContent>
     </PsaCard>
+
+    <PsaModal Visible="_detalle is not null || _detalleCargando"
+              Title="@(_detalle is null ? "Retención" : $"Retención {_detalle.Numero}")"
+              OnClose="CerrarDetalle">
+        <ChildContent>
+            @if (_detalleCargando)
+            {
+                <p class="psa-muted">Cargando…</p>
+            }
+            else if (_detalle is not null)
+            {
+                <dl class="psa-def">
+                    <dt>Empresa</dt><dd>@_detalle.Empresa</dd>
+                    <dt>Número</dt><dd>@_detalle.Numero</dd>
+                    <dt>Secuencial</dt><dd>@_detalle.Secuencial</dd>
+                    <dt>Fecha</dt><dd>@_detalle.Fecha.ToString("dd/MM/yyyy")</dd>
+                    <dt>Período fiscal</dt><dd>@_detalle.PeriodoFiscal</dd>
+                    <dt>Ambiente</dt><dd>@AmbienteTexto(_detalle.Ambiente)</dd>
+                    <dt>Clave de acceso</dt><dd>@(string.IsNullOrWhiteSpace(_detalle.ClaveAcceso) ? "—" : _detalle.ClaveAcceso)</dd>
+                    <dt>Id Datil</dt><dd>@(_detalle.DatilId ?? "—")</dd>
+
+                    <div class="psa-def__sub">Proveedor</div>
+                    <dt>Nombre</dt><dd>@(_detalle.ProveedorNombre ?? "—")</dd>
+                    <dt>Identificación</dt><dd>@_detalle.ProveedorId</dd>
+                    <dt>Email</dt><dd>@(string.IsNullOrWhiteSpace(_detalle.ProveedorEmail) ? "—" : _detalle.ProveedorEmail)</dd>
+                    <dt>Teléfono</dt><dd>@(string.IsNullOrWhiteSpace(_detalle.ProveedorTelefono) ? "—" : _detalle.ProveedorTelefono)</dd>
+                    <dt>Dirección</dt><dd>@(string.IsNullOrWhiteSpace(_detalle.ProveedorDireccion) ? "—" : _detalle.ProveedorDireccion)</dd>
+                </dl>
+
+                <div class="psa-def__sub">Líneas (@_detalle.Lineas.Count)</div>
+                <div style="overflow-x:auto">
+                <table class="psa-table">
+                    <thead>
+                        <tr>
+                            <th>Código</th><th>%</th><th class="num">Base</th><th class="num">Retenido</th>
+                            <th>Doc. sustento</th><th>Fecha doc.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_detalle.Lineas.Count == 0)
+                        {
+                            <tr><td colspan="6" class="psa-muted">Sin líneas.</td></tr>
+                        }
+                        @foreach (var l in _detalle.Lineas)
+                        {
+                            <tr>
+                                <td>@(l.Codigo == "1" ? "Renta" : l.Codigo == "2" ? "IVA" : l.Codigo)</td>
+                                <td>@l.Porcentaje.ToString("0.##", Ec)%</td>
+                                <td class="num">@l.BaseImponible.ToString("N2", Ec)</td>
+                                <td class="num">@l.ValorRetenido.ToString("N2", Ec)</td>
+                                <td>@l.DocSustentoNumero</td>
+                                <td>@l.DocSustentoFecha.ToString("dd/MM/yyyy")</td>
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr><td colspan="3">Total retenido</td><td class="num">@_detalle.TotalRetenido.ToString("N2", Ec)</td><td colspan="2"></td></tr>
+                    </tfoot>
+                </table>
+                </div>
+
+                <div class="psa-def__sub">Errores</div>
+                <p class="psa-muted">Sin errores registrados para esta retención.</p>
+            }
+        </ChildContent>
+        <Footer>
+            @if (_detalle is { Emitida: true })
+            {
+                <a class="psa-btn psa-btn--primary" href="@UrlDatil(_detalle.DatilId!, "pdf")" target="_blank" rel="noopener">Ver PDF</a>
+                <a class="psa-btn psa-btn--secondary" href="@UrlDatil(_detalle.DatilId!, "xml")" target="_blank" rel="noopener">Ver XML</a>
+            }
+            <button type="button" class="psa-btn psa-btn--ghost" @onclick="CerrarDetalle">Cerrar</button>
+        </Footer>
+    </PsaModal>
 }
 
 @implements IDisposable
@@ -449,6 +537,38 @@ else
     private bool _incluirPendientes = true;
     private IReadOnlyList<RetencionPendiente> _pendientesFilas = Array.Empty<RetencionPendiente>();
     private int _pendientesTotal;
+
+    // Popup de detalle.
+    private const string DatilVerBase = "https://app.datil.co/ver/";
+    private RetencionDetalle? _detalle;
+    private bool _detalleCargando;
+
+    private static string UrlDatil(string datilId, string formato) => $"{DatilVerBase}{datilId}/{formato}";
+
+    private async Task AbrirDetalle(RetencionReciente r)
+    {
+        if (_tablero is null) return;
+        _detalle = null;
+        _detalleCargando = true;
+        try
+        {
+            _detalle = await _tablero.DetalleAsync(r.Thid);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando el detalle de la retención {ThId}", r.Thid);
+        }
+        finally
+        {
+            _detalleCargando = false;
+        }
+    }
+
+    private void CerrarDetalle()
+    {
+        _detalle = null;
+        _detalleCargando = false;
+    }
 
     // Filtros / orden de la card de retenciones guardadas.
     private DateOnly? _rDesde;

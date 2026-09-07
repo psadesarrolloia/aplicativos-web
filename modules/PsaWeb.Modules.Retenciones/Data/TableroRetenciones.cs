@@ -16,6 +16,7 @@ public sealed record FilaTablero(
 
 /// <summary>Una retención ya guardada, para el historial reciente.</summary>
 public sealed record RetencionReciente(
+    int Thid,
     string Ruc,
     string Empresa,
     string Numero,
@@ -32,6 +33,42 @@ public sealed record RetencionReciente(
 
 /// <summary>Una compra pendiente de generar la retención (referencia de Sage 50).</summary>
 public sealed record RetencionPendiente(string Ruc, string Empresa, string Referencia, short Ambiente);
+
+/// <summary>Una línea de la retención (renta / IVA).</summary>
+public sealed record LineaRetencion(
+    string Codigo,
+    string CodigoPorcentaje,
+    double Porcentaje,
+    double BaseImponible,
+    double ValorRetenido,
+    string DocSustentoNumero,
+    string DocSustentoCod,
+    DateTime DocSustentoFecha);
+
+/// <summary>Detalle completo de una retención guardada (para el popup).</summary>
+public sealed record RetencionDetalle(
+    int Thid,
+    string Ruc,
+    string Empresa,
+    string Numero,
+    string Secuencial,
+    DateTime Fecha,
+    string PeriodoFiscal,
+    short Ambiente,
+    string? ClaveAcceso,
+    string? DatilId,
+    int? EstablishmentId,
+    string ProveedorId,
+    string? ProveedorNombre,
+    string? ProveedorTipo,
+    string? ProveedorEmail,
+    string? ProveedorTelefono,
+    string? ProveedorDireccion,
+    IReadOnlyList<LineaRetencion> Lineas)
+{
+    public bool Emitida => !string.IsNullOrWhiteSpace(DatilId);
+    public double TotalRetenido => Lineas.Sum(l => l.ValorRetenido);
+}
 
 /// <summary>
 /// Consultas de solo lectura para la página del módulo: panorama por empresa
@@ -134,6 +171,7 @@ public sealed class TableroRetenciones
             .Take(top)
             .Select(t => new
             {
+                t.Thid,
                 t.TransmitterRuc,
                 t.NumberPech,
                 t.DateIssued,
@@ -175,6 +213,7 @@ public sealed class TableroRetenciones
 
         return recientes
             .Select(t => new RetencionReciente(
+                t.Thid,
                 t.TransmitterRuc,
                 mapaNombre.GetValueOrDefault(t.TransmitterRuc, t.TransmitterRuc),
                 t.NumberPech,
@@ -185,6 +224,43 @@ public sealed class TableroRetenciones
                 t.DatilId,
                 t.Ambient))
             .ToList();
+    }
+
+    /// <summary>Detalle completo de una retención guardada para el popup.</summary>
+    public async Task<RetencionDetalle?> DetalleAsync(int thId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var t = await db.TaxWithHoldings.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Thid == thId, cancellationToken);
+        if (t is null) return null;
+
+        var empresa = await db.Transmitter.AsNoTracking()
+            .Where(x => x.Ruc == t.TransmitterRuc)
+            .Select(x => x.NameAlias ?? x.Name)
+            .FirstOrDefaultAsync(cancellationToken) ?? t.TransmitterRuc;
+
+        var persona = await db.Persons.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Ructransmitter == t.TransmitterRuc && p.PersonId == t.Contact, cancellationToken);
+
+        var lineas = await db.Thdetails.AsNoTracking()
+            .Where(d => d.TaxWithHolding == thId)
+            .OrderBy(d => d.ThdetailId)
+            .Select(d => new LineaRetencion(
+                d.Code ?? "", d.PercentCode ?? "", d.Percent, d.AmountInTaxes, d.RtaxValue,
+                d.PurchaseNumber ?? "", d.PurchaseCodDoc ?? "", d.PurchaseDate))
+            .ToListAsync(cancellationToken);
+
+        return new RetencionDetalle(
+            t.Thid, t.TransmitterRuc, empresa, t.NumberPech, t.Secuencial, t.DateIssued,
+            t.Fperiodo, t.Ambient, t.ClaveAcceso, t.DatilId, t.TransmitterEstablishment,
+            t.Contact,
+            persona?.Name,
+            persona?.Type,
+            persona?.Email,
+            persona?.Phone,
+            persona?.Address,
+            lineas);
     }
 
     /// <summary>

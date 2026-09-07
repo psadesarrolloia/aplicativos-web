@@ -73,6 +73,26 @@ public class TableroRetencionesTests
     }
 
     [SkippableFact]
+    public async Task Detalle_trae_proveedor_y_lineas_de_una_retencion_guardada()
+    {
+        Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");
+        var tablero = Construir();
+
+        var reciente = (await tablero.RecientesAsync(top: 20)).FirstOrDefault();
+        Skip.If(reciente is null, "No hay retenciones guardadas.");
+
+        var detalle = await tablero.DetalleAsync(reciente!.Thid);
+        Assert.NotNull(detalle);
+        Assert.Equal(reciente.Numero, detalle!.Numero);
+        Assert.Equal(reciente.Ruc, detalle.Ruc);
+        Assert.Equal(reciente.ProveedorId, detalle.ProveedorId);
+        Assert.All(detalle.Lineas, l => Assert.True(l.ValorRetenido >= 0));
+        Assert.Equal(detalle.Lineas.Sum(l => l.ValorRetenido), detalle.TotalRetenido, 3);
+
+        Assert.Null(await tablero.DetalleAsync(-1));
+    }
+
+    [SkippableFact]
     public async Task Recientes_acota_por_rango_de_fechas_inclusive()
     {
         Skip.IfNot(DbDisponible(), "PeachEBills local no disponible.");

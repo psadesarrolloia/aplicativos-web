@@ -367,6 +367,77 @@ a { color: var(--psa-magenta); }
 .psa-details li { margin: .15rem 0; }
 
 /* --------------------------------------------------------------------------- */
+/* modal                                                                       */
+/* --------------------------------------------------------------------------- */
+
+.psa-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(9, 17, 28, .5);
+  z-index: 80;
+}
+.psa-modal {
+  position: fixed;
+  z-index: 81;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(680px, calc(100vw - 2rem));
+  max-height: calc(100vh - 3rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--psa-surface);
+  color: var(--psa-ink);
+  border: 1px solid var(--psa-border);
+  border-radius: var(--psa-radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+}
+.psa-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1.1rem;
+  border-bottom: 1px solid var(--psa-border);
+}
+.psa-modal__title { font-size: 1.05rem; margin: 0; }
+.psa-modal__x {
+  border: 0;
+  background: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--psa-ink-muted);
+}
+.psa-modal__x:hover { color: var(--psa-ink); }
+.psa-modal__body { padding: 1.1rem; overflow-y: auto; }
+.psa-modal__foot {
+  padding: .8rem 1.1rem;
+  border-top: 1px solid var(--psa-border);
+  display: flex;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+
+.psa-def { display: grid; grid-template-columns: max-content 1fr; gap: .3rem .9rem; font-size: .9rem; }
+.psa-def dt { color: var(--psa-ink-muted); }
+.psa-def dd { margin: 0; word-break: break-word; }
+.psa-def__sub { grid-column: 1 / -1; margin: .8rem 0 .2rem; font-weight: 600; font-size: .82rem; text-transform: uppercase; letter-spacing: .06em; color: var(--psa-ink-muted); }
+
+.psa-pdf {
+  display: inline-block;
+  padding: .1rem .5rem;
+  border: 1px solid var(--psa-magenta);
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--psa-magenta);
+  text-decoration: none;
+}
+.psa-pdf:hover { background: var(--psa-magenta); color: #fff; }
+
+/* --------------------------------------------------------------------------- */
 /* table                                                                       */
 /* --------------------------------------------------------------------------- */
 

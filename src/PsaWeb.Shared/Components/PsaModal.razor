@@ -1,0 +1,30 @@
+@namespace PsaWeb.Shared.Components
+
+@if (Visible)
+{
+    <div class="psa-modal__backdrop" @onclick="Cerrar"></div>
+    <div class="psa-modal @Class" role="dialog" aria-modal="true">
+        <header class="psa-modal__head">
+            <h2 class="psa-modal__title">@Title</h2>
+            <button type="button" class="psa-modal__x" @onclick="Cerrar" aria-label="Cerrar">&times;</button>
+        </header>
+        <div class="psa-modal__body">
+            @ChildContent
+        </div>
+        @if (Footer is not null)
+        {
+            <footer class="psa-modal__foot">@Footer</footer>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Task Cerrar() => OnClose.InvokeAsync();
+}
