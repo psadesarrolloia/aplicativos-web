@@ -121,7 +121,8 @@ mismo).
   (config por RUC en `InvoiceConfigAditionalInfo`, fuentes `JrnlHdr` / `JrnlRow` /
   `Customers` / valor fijo, orden por `OrderNum`) para **facturas**. Para NC y
   liquidaciones se usa `GeneralAdtionalInfo(ruc, codDoc)` → ya cubierto por
-  `IInfoAdicionalLookup` + `EPoofGeneralAditionalInfo`.
+  `IInfoAdicionalLookup` + `EPoofGeneralAditionalInfo`. **Se hace en F3a** (sólo
+  lo consumen las facturas).
 - **Facturas** (`Venta/`):
   - `LectorFacturaVenta` — port de `LoadSaleInvoice` + `LoadSaleInvoices` (lista).
     Es el bloque más grande y delicado: cálculo de descuentos con/sin IVA,
@@ -199,8 +200,25 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
   `BaseUrl` (`invoices/`, `credit-notes/`, `purchase-settlements/`). 15 tests
   nuevos (serialización snake_case / omisión de nulos / info adicional lista vs
   diccionario / crédito vs pagos / consulta). Solución **128 tests** en verde.
-- **F2 — Escritura PeachEbills + lectores compartidos.** §3.2 + `LectorCliente` +
-  número/establecimiento + `LectorInfoAdicional`.
+- **F2 — Escritura PeachEbills + lectores compartidos. HECHO**
+  (rama `app2-fe-f2-escritura-lectores`).
+  - `PsaWeb.PeachEbills`: 7 entidades EF nuevas (`Facturas`, `Details`, `NcDetail`
+    [`NCdetail`], `Payments`, `PaymentTypes`, `FacturaPropiedadExterna` [PK
+    compuesta], `InvoiceConfigAditionalInfo`) + `DbSet`s en un partial.
+    `RepositorioComprobantesVenta` — port de `CRUDsql.BillIdCreate` / `NCIdCreate`:
+    `GuardarFacturaAsync` / `GuardarNotaCreditoAsync` (upsert `Persons` + tx con
+    `Facturas`+`Details`+`Payments`[codDoc 01]+`NCdetail`+`FacturaPropiedadExterna`
+    +`DatilRequests`). Registrado en `AddPeachEbills`.
+  - `PsaWeb.Comprobantes`: `Clientes/LectorCliente` (+`ClienteSri`) — port de
+    `LoadCustomerPeach` (2 queries ODBC, quirks de identificación/pasaporte/
+    multi-dirección, validación de emails). `Sri/ValidadorNumeroEstablecimiento`
+    — port de `CommonSriNumberValidate`/`SalesInvoiceNumberValidate` (formato
+    tolerante `AnalizarFactura` + lookup de `Establishments` vía
+    `IEstablecimientoLookup`).
+  - 16 tests nuevos (3 de mapeo EF contra la copia local + 13 de lógica pura).
+    Solución **144 tests** en verde.
+  - **`LectorInfoAdicional` se mueve a F3a** (sólo lo consumen las facturas; NC y
+    liquidaciones usan el `IInfoAdicionalLookup` existente).
 - **F3a — Facturas de venta.** §3.3 (bloque grande). Dev con lector de muestra.
 - **F3b — Notas de crédito.**
 - **F3c — Liquidaciones de compra.**

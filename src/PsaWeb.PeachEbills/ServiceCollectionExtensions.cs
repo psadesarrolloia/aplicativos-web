@@ -26,6 +26,7 @@ public static class ServiceCollectionExtensions
             options.UseSqlServer(connectionString));
 
         services.AddScoped<PeachConnStringResolver>();
+        services.AddScoped<RepositorioComprobantesVenta>();
 
         return services;
     }
