@@ -27,3 +27,21 @@ public sealed class DatilEmisionResult
         RawResponse = requestJson,
     };
 }
+
+/// <summary>
+/// Resultado de consultar un comprobante ya emitido (port de <c>QueryToDatil</c>).
+/// </summary>
+public sealed class DatilConsultaResult
+{
+    /// <summary>Campo <c>estado</c> de Datil tal cual (ej. <c>AUTORIZADO</c>), si vino.</summary>
+    public string? Estado { get; init; }
+
+    /// <summary>
+    /// Texto para mostrar al usuario (equivalente a <c>sriSatusDescr</c>): el estado
+    /// en minúsculas, o el primer mensaje de error, o una leyenda de "sin respuesta".
+    /// </summary>
+    public string Descripcion { get; init; } = string.Empty;
+
+    /// <summary>Cuerpo crudo de la respuesta.</summary>
+    public string RawResponse { get; init; } = string.Empty;
+}

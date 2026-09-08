@@ -22,16 +22,32 @@ internal sealed class DatilClient : IDatilClient
         _logger = logger;
     }
 
-    public async Task<DatilEmisionResult> EmitirRetencionAsync(
+    public Task<DatilEmisionResult> EmitirRetencionAsync(
         Retencion retencion, DatilCredentials credenciales, CancellationToken cancellationToken = default)
+        => EnviarAsync(retencion, "retención", retencion.Secuencial, credenciales, cancellationToken);
+
+    public Task<DatilEmisionResult> EmitirFacturaAsync(
+        Factura factura, DatilCredentials credenciales, CancellationToken cancellationToken = default)
+        => EnviarAsync(factura, "factura", factura.Secuencial, credenciales, cancellationToken);
+
+    public Task<DatilEmisionResult> EmitirNotaCreditoAsync(
+        NotaCredito notaCredito, DatilCredentials credenciales, CancellationToken cancellationToken = default)
+        => EnviarAsync(notaCredito, "nota de crédito", notaCredito.Secuencial, credenciales, cancellationToken);
+
+    public Task<DatilEmisionResult> EmitirLiquidacionAsync(
+        Liquidacion liquidacion, DatilCredentials credenciales, CancellationToken cancellationToken = default)
+        => EnviarAsync(liquidacion, "liquidación", liquidacion.Secuencial, credenciales, cancellationToken);
+
+    private async Task<DatilEmisionResult> EnviarAsync<T>(
+        T documento, string tipo, string secuencial, DatilCredentials credenciales, CancellationToken cancellationToken)
     {
-        var body = DatilJson.Serialize(retencion);
+        var body = DatilJson.Serialize(documento);
 
         if (_options.DryRun)
         {
             _logger.LogInformation(
-                "Datil DryRun: retención secuencial {Secuencial} NO enviada. Cuerpo: {Body}",
-                retencion.Secuencial, body);
+                "Datil DryRun: {Tipo} secuencial {Secuencial} NO enviada. Cuerpo: {Body}",
+                tipo, secuencial, body);
             return DatilEmisionResult.DryRun(body);
         }
 
@@ -64,6 +80,74 @@ internal sealed class DatilClient : IDatilClient
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    public async Task<DatilConsultaResult> ConsultarComprobanteAsync(
+        string id, DatilCredentials credenciales, CancellationToken cancellationToken = default)
+    {
+        string raw;
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, credenciales.StatusUrl(id));
+            ApplyHeaders(request, credenciales);
+            using var response = await _http.SendAsync(request, cancellationToken);
+            raw = await response.Content.ReadAsStringAsync(cancellationToken);
+        }
+        catch (HttpRequestException ex)
+        {
+            return new DatilConsultaResult { Descripcion = "Sin respuesta de Datil.", RawResponse = ex.Message };
+        }
+
+        return ParseConsulta(raw);
+    }
+
+    internal static DatilConsultaResult ParseConsulta(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return new DatilConsultaResult { Descripcion = "Sin respuesta de Datil.", RawResponse = raw };
+        }
+
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(raw);
+        }
+        catch (JsonException)
+        {
+            return new DatilConsultaResult { Descripcion = "Sin respuesta del SRI", RawResponse = raw };
+        }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+
+            if (root.TryGetProperty("estado", out var estadoEl)
+                && estadoEl.ValueKind == JsonValueKind.String
+                && !string.IsNullOrEmpty(estadoEl.GetString()))
+            {
+                var estado = estadoEl.GetString()!;
+                return new DatilConsultaResult
+                {
+                    Estado = estado,
+                    Descripcion = estado.ToLowerInvariant(),
+                    RawResponse = raw,
+                };
+            }
+
+            if (root.TryGetProperty("errors", out var errsEl)
+                && errsEl.ValueKind == JsonValueKind.Array
+                && errsEl.GetArrayLength() > 0)
+            {
+                var first = errsEl[0];
+                var msg = first.ValueKind == JsonValueKind.Object ? MensajeDeError(first)
+                    : first.ValueKind == JsonValueKind.String ? first.GetString()
+                    : first.GetRawText();
+                return new DatilConsultaResult { Descripcion = msg ?? "error desconocido", RawResponse = raw };
+            }
+
+            return new DatilConsultaResult { Descripcion = "error desconocido", RawResponse = raw };
         }
     }
 

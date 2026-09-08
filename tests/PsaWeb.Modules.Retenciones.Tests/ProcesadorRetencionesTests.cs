@@ -53,8 +53,16 @@ public class ProcesadorRetencionesTests
     {
         public Task<DatilEmisionResult> EmitirRetencionAsync(Retencion retencion, DatilCredentials credenciales, CancellationToken ct = default)
             => Task.FromResult(DatilEmisionResult.DryRun("{}"));
+        public Task<DatilEmisionResult> EmitirFacturaAsync(Factura factura, DatilCredentials credenciales, CancellationToken ct = default)
+            => Task.FromResult(DatilEmisionResult.DryRun("{}"));
+        public Task<DatilEmisionResult> EmitirNotaCreditoAsync(NotaCredito notaCredito, DatilCredentials credenciales, CancellationToken ct = default)
+            => Task.FromResult(DatilEmisionResult.DryRun("{}"));
+        public Task<DatilEmisionResult> EmitirLiquidacionAsync(Liquidacion liquidacion, DatilCredentials credenciales, CancellationToken ct = default)
+            => Task.FromResult(DatilEmisionResult.DryRun("{}"));
         public Task<string?> ConsultarEstadoAsync(string id, DatilCredentials credenciales, CancellationToken ct = default)
             => Task.FromResult<string?>("dry-run");
+        public Task<DatilConsultaResult> ConsultarComprobanteAsync(string id, DatilCredentials credenciales, CancellationToken ct = default)
+            => Task.FromResult(new DatilConsultaResult { Descripcion = "dry-run" });
     }
 
     private static bool DbDisponible()
