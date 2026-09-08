@@ -220,6 +220,22 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
   - **`LectorInfoAdicional` se mueve a F3a** (sólo lo consumen las facturas; NC y
     liquidaciones usan el `IInfoAdicionalLookup` existente).
 - **F3a — Facturas de venta.** §3.3 (bloque grande). Dev con lector de muestra.
+  Dividido:
+  - **F3a-1 HECHO** (rama `app2-fe-f3a-facturas`): `Venta/LectorFacturaVenta`
+    (port de `LoadSaleInvoice.ForceLoadFromPeach`) + DTOs
+    (`FacturaVentaCabecera`/`FacturaVentaLinea`/`FacturaVentaLeida`). 5 queries
+    ODBC (cabecera `JrnlHdr`+`Tax_Code`; descuento `JrnlRow`; monto IVA `JrnlRow`;
+    tasa IVA `Tax_Authority`; líneas `JrnlRow`+`LineItem`) + `LectorCliente`. La
+    lógica pura de descuentos/IVA/mapeo de códigos vive en `ArmarDesde` (port
+    fiel, incluye 2 bugs conocidos del `.exe` documentados). 14 tests de
+    `ArmarDesde` (con/sin IVA, descuento con/sin IVA, número corregible, cantidad
+    <1, multilínea, sin líneas, cliente nulo). **158 tests solución.**
+  - **F3a-2**: `LectorInfoAdicional` (port de `LoadAditionalInfoOnInvoice` +
+    `GeneralAdtionalInfo`).
+  - **F3a-3**: `ConstructorFactura` (port de `DatilSend(SaleInvoice)`) +
+    `FacturaBuilder` (resuelve establecimiento con `ValidadorNumeroEstablecimiento`,
+    email por ambiente, arma la `Datil.Factura` + entidades EF) + lector de
+    muestra + query de la lista de pendientes (`LoadSaleInvoices`).
 - **F3b — Notas de crédito.**
 - **F3c — Liquidaciones de compra.**
 - **F3d — Correo + "Solicitar anulación".** §3.4 (la acción se agrega a la página
