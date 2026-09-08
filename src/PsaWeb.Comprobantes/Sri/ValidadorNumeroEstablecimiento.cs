@@ -12,15 +12,18 @@ namespace PsaWeb.Comprobantes.Sri;
 public sealed class ValidadorNumeroEstablecimiento
 {
     private ValidadorNumeroEstablecimiento(
-        NumeroDocumentoSri numero, bool esValido, int? establecimientoId, string? error)
+        NumeroDocumentoSri numero, bool esValido, EstablecimientoInfo? establecimiento, string? error)
     {
         Numero = numero;
         EsValido = esValido;
-        EstablecimientoId = establecimientoId;
+        Establecimiento = establecimiento;
         Error = error;
     }
 
     public NumeroDocumentoSri Numero { get; }
+
+    /// <summary>Establecimiento resuelto en <c>Establishments</c>; null si no es válido.</summary>
+    public EstablecimientoInfo? Establecimiento { get; }
 
     /// <summary>Formato correcto Y establecimiento encontrado.</summary>
     public bool EsValido { get; }
@@ -34,7 +37,7 @@ public sealed class ValidadorNumeroEstablecimiento
     public string Secuencial => Numero.Secuencial;
 
     /// <summary><c>EstablishmentId</c> de PeachEBills; null si no es válido.</summary>
-    public int? EstablecimientoId { get; }
+    public int? EstablecimientoId => Establecimiento?.EstablishmentId;
 
     public string? Error { get; }
 
@@ -48,7 +51,7 @@ public sealed class ValidadorNumeroEstablecimiento
         if (!numero.EsValido)
         {
             return new ValidadorNumeroEstablecimiento(
-                numero, esValido: false, establecimientoId: null,
+                numero, esValido: false, establecimiento: null,
                 error: "Formato de número incorrecto. Revise el formato: ___-___-_________ (123-123-123456789).");
         }
 
@@ -58,11 +61,11 @@ public sealed class ValidadorNumeroEstablecimiento
         if (establecimiento is null)
         {
             return new ValidadorNumeroEstablecimiento(
-                numero, esValido: false, establecimientoId: null,
+                numero, esValido: false, establecimiento: null,
                 error: $"No se encontró establecimiento registrado: {numero.CodigoEstablecimiento}-{numero.PuntoEmision}.");
         }
 
         return new ValidadorNumeroEstablecimiento(
-            numero, esValido: true, establecimientoId: establecimiento.EstablishmentId, error: null);
+            numero, esValido: true, establecimiento: establecimiento, error: null);
     }
 }

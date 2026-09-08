@@ -230,12 +230,22 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
     fiel, incluye 2 bugs conocidos del `.exe` documentados). 14 tests de
     `ArmarDesde` (con/sin IVA, descuento con/sin IVA, número corregible, cantidad
     <1, multilínea, sin líneas, cliente nulo). **158 tests solución.**
-  - **F3a-2**: `LectorInfoAdicional` (port de `LoadAditionalInfoOnInvoice` +
-    `GeneralAdtionalInfo`).
-  - **F3a-3**: `ConstructorFactura` (port de `DatilSend(SaleInvoice)`) +
-    `FacturaBuilder` (resuelve establecimiento con `ValidadorNumeroEstablecimiento`,
-    email por ambiente, arma la `Datil.Factura` + entidades EF) + lector de
-    muestra + query de la lista de pendientes (`LoadSaleInvoices`).
+  - **F3a-2 HECHO**: `Venta/InfoAdicional/LectorInfoAdicional` (port de
+    `LoadAditionalInfoOnInvoice`) + `IConfigInfoAdicionalFactura` /
+    `ConfigInfoAdicional` (la impl EF va en F4). `ArmarAsync` recorre la config
+    ordenada, resuelve valores fijos / `JrnlHdr` / `JrnlRow` (con la lógica de
+    "Comisión" y numeración de filas) / `Customers`; valida `SourceValue` como
+    identificador SQL antes de interpolar. 4 tests de la parte de ensamblado.
+  - **F3a-3 (constructor) HECHO**: `Venta/ConstructorFactura` (port de
+    `DatilSend(ref SaleInvoice)`) → `ResultadoFactura { Factura (Datil),
+    FacturaParaGuardar (DTOs planos, sin EF), Errores }`. Mapea emisor/comprador/
+    establecimiento (punto de emisión del número), items con impuesto+tarifa
+    0–100 (`CheckTaxPercentValue`), totales con impuestos agrupados, secuencial
+    sin ceros, `FechaEmision` UTC-5 fijo, pago al contado vs crédito según
+    vencimiento, redirección de email en pruebas. `ValidadorNumeroEstablecimiento`
+    ahora expone el `EstablecimientoInfo` completo. 10 tests. **172 tests solución.**
+  - **F3a-4 (falta)**: `FacturaBuilder` (orquesta lookups + `ConstructorFactura`),
+    lector de muestra para dev, query de la lista de pendientes (`LoadSaleInvoices`).
 - **F3b — Notas de crédito.**
 - **F3c — Liquidaciones de compra.**
 - **F3d — Correo + "Solicitar anulación".** §3.4 (la acción se agrega a la página
