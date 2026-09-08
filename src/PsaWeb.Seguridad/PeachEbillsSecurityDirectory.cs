@@ -99,4 +99,41 @@ public sealed class PeachEbillsSecurityDirectory : ISecurityDirectory
 
         return codigos.ToHashSet(StringComparer.Ordinal);
     }
+
+    public async Task<string?> EmailUsuarioAsync(
+        string usuario, CancellationToken cancellationToken = default)
+    {
+        var user = NormalizarUsuario(usuario);
+        if (user.Length == 0) return null;
+
+        await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var email = await db.SecUsers.AsNoTracking()
+            .Where(u => u.Username == user)
+            .Select(u => u.Email)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+    }
+
+    public async Task<IReadOnlyList<string>> EmailsPorRolAsync(
+        string ruc, string rol = "Supervisor", CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(ruc)) return Array.Empty<string>();
+
+        await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var emails = await (
+            from r in db.SecRoles.AsNoTracking()
+            where r.RolName == rol
+            join ur in db.SecUserRoles.AsNoTracking() on r.RolId equals ur.Rol
+            where ur.Ruc == ruc
+            join u in db.SecUsers.AsNoTracking() on ur.User equals u.Username
+            where u.Email != null && u.Email != ""
+            select u.Email!)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+
+        return emails.Select(e => e.Trim()).ToList();
+    }
 }

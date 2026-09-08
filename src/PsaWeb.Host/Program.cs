@@ -8,6 +8,7 @@ using PsaWeb.Modules.CierreDeCaja;
 using PsaWeb.Modules.CierreDeCaja.Data;
 using PsaWeb.Modules.CierreDeCaja.Export;
 using PsaWeb.Datil;
+using PsaWeb.Notificaciones;
 using PsaWeb.PeachEbills;
 using PsaWeb.Modules.Retenciones;
 using PsaWeb.Sage50;
@@ -33,6 +34,7 @@ if (peachEbillsConfigurado)
 {
     builder.Services.AddPeachEbills(builder.Configuration);
     builder.Services.AddDatil(builder.Configuration);
+    builder.Services.AddNotificaciones(builder.Configuration); // SMTP (solicitud de anulación); inerte si no hay Correo:Servidor
     builder.Services.AddRetenciones(builder.Configuration);
     // Shell F-Shell-0: directorio de seguridad (empresas + permisos por usuario)
     // y estado de sesión de empresa/ambiente.

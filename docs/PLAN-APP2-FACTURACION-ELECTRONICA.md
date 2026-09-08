@@ -266,9 +266,31 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
   `Venta/NotaCreditoBuilder` (resuelve establecimiento + `IInfoAdicionalLookup(04)`).
   `Venta/HelpersVenta` (helpers compartidos factura/NC). 20 tests. **188 tests
   solución.**
-- **F3c — Liquidaciones de compra.**
-- **F3d — Correo + "Solicitar anulación".** §3.4 (la acción se agrega a la página
-  `/retenciones` existente, no al módulo FE).
+- **F3c — Liquidaciones de compra. HECHO** (rama `app2-fe-f3cd`).
+  `Venta/LectorLiquidacionCompra` (port de `LoadPurchaseInvoice.ForceLoadFromPeach`):
+  3 queries ODBC (cabecera `JrnlKey_Journal=4`; ítem `Category='IMPUESTO'` para
+  el IVA; detalles excluyendo `R-*RF`/`R-IVA`/`IMPUESTO`/`AUT-SRI`) + `LectorProveedor`.
+  El % de IVA se resuelve del texto `"15%"` (CustomField3/2) contra `dicTaxRate`
+  vía `ITasaIvaLookup` (entidad EF `DicTaxRate` nueva). `ArmarDesde` pura: número
+  tolerante, error si hay >1 ítem de IVA, líneas "NO IVA" mapeadas por
+  CustomField4 (IMPEX→7 / NOGRA→6) con la mutación del código "actual" del `.exe`,
+  sólo líneas con `Amount>0`. `Venta/ConstructorLiquidacion` (port de
+  `DatilSend(PurchaseLiqInvoice)`) → `ResultadoLiquidacion`/`LiquidacionParaGuardar`
+  (codDoc 03, TransType 2); punto de emisión del número, `FormaPago` fija "20".
+  `Venta/LiquidacionBuilder` (+`IInfoAdicionalLookup(03)`), `Venta/LectorLiquidacionesPendientes`.
+  11 tests. **128 tests Comprobantes.**
+- **F3d — Correo + "Solicitar anulación". HECHO** (rama `app2-fe-f3cd`).
+  Proyecto nuevo **`src/PsaWeb.Notificaciones`**: `IServicioCorreo` +
+  `SmtpServicioCorreo` (`System.Net.Mail`) + `CorreoOptions` (`Correo:*`, remitente
+  fijo `anulaciones@paredes.com.ec`) + `AddNotificaciones` (impl inerte si no hay
+  `Correo:Servidor`; `Disponible=false`). `ISecurityDirectory` +
+  `EmailUsuarioAsync` / `EmailsPorRolAsync` (port de `FEAllowed.userEmail` /
+  `emailsByRole`, sobre `user`/`roles`/`udrUserRolesTr`). `SolicitudAnulacionRetencion`
+  en el módulo Retenciones (port de `FrmPurcahsesTwhs.btnCancel_Click`): arma el
+  correo al supervisor + al usuario con el enlace a Datil; falla con gracia si no
+  hay supervisor o SMTP. Registrado en `AddRetenciones`; `AddNotificaciones` en el
+  Host. La acción se cablea a la página `/retenciones` en F4. 5 tests. **203 tests
+  solución.**
 - **F4 — Módulo + páginas + wiring.** §3.5.
 - **F5 — Deploy a `SERWEBPSA01`.** Redeploy del Host con el módulo nuevo **+ el
   fix de ícono pendiente `f4fd679`**; env vars (`Correo__*` si se usa);

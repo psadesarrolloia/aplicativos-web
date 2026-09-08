@@ -22,6 +22,17 @@ public interface ISecurityDirectory
     Task<IReadOnlySet<string>> PermisosAsync(
         string usuario, string ruc, CancellationToken cancellationToken = default);
 
+    /// <summary>Email registrado de un usuario (tabla <c>user</c>). Port de <c>FEAllowed.userEmail</c>.</summary>
+    Task<string?> EmailUsuarioAsync(
+        string usuario, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Emails de los usuarios que tienen un rol (por nombre) en una empresa.
+    /// Port de <c>FEAllowed.emailsByRole</c> (default rol "Supervisor").
+    /// </summary>
+    Task<IReadOnlyList<string>> EmailsPorRolAsync(
+        string ruc, string rol = "Supervisor", CancellationToken cancellationToken = default);
+
     /// <summary>Atajo: ¿el usuario tiene ese permiso en esa empresa?</summary>
     async Task<bool> TienePermisoAsync(
         string usuario, string ruc, string codigoPermiso, CancellationToken cancellationToken = default)

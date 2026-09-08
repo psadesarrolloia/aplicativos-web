@@ -20,4 +20,6 @@ public partial class PeachEbillsContext
     public virtual DbSet<FacturaPropiedadExterna> FacturaPropiedadExterna { get; set; } = null!;
 
     public virtual DbSet<InvoiceConfigAditionalInfo> InvoiceConfigAditionalInfo { get; set; } = null!;
+
+    public virtual DbSet<DicTaxRate> DicTaxRate { get; set; } = null!;
 }

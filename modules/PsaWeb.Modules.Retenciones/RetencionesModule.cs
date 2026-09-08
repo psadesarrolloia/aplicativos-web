@@ -31,6 +31,7 @@ public static class RetencionesModule
         services.AddScoped<RepositorioRetenciones>();
         services.AddScoped<ProcesadorRetenciones>();
         services.AddScoped<TableroRetenciones>();
+        services.AddScoped<SolicitudAnulacionRetencion>();
 
         // Candado compartido (botón «Ejecutar ahora» + worker) y el worker mismo.
         // El worker arranca siempre pero se autolimita si Worker:Habilitado = false.
