@@ -1,0 +1,10 @@
+@page "/fe/notas-credito"
+@namespace PsaWeb.Modules.FacturacionElectronica.Pages
+
+<PageTitle>FE · Notas de crédito — Aplicativos web PSA</PageTitle>
+
+<Comprobantes Tipo="TipoComprobanteFe.NotaCredito"
+              Titulo="Notas de crédito de venta"
+              Subtitulo="Genera y emite en Datil las notas de crédito de venta registradas en Sage 50."
+              PermisoVer="@PsaWeb.Seguridad.Permisos.VerNotasCredito"
+              PermisoGenerar="@PsaWeb.Seguridad.Permisos.HacerNotaCredito" />

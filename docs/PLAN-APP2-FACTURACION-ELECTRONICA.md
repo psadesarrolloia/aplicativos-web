@@ -291,7 +291,35 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
   hay supervisor o SMTP. Registrado en `AddRetenciones`; `AddNotificaciones` en el
   Host. La acción se cablea a la página `/retenciones` en F4. 5 tests. **203 tests
   solución.**
-- **F4 — Módulo + páginas + wiring.** §3.5.
+- **F4 — Módulo + páginas + wiring. HECHO** (rama `app2-fe-f4`).
+  Módulo nuevo **`modules/PsaWeb.Modules.FacturacionElectronica`**:
+  - `Data/LookupsEf` — impls EF de `IEstablecimientoLookup`/`IInfoAdicionalLookup`
+    (compartidos, `TryAdd`), `IConfigInfoAdicionalFactura` (`InvoiceConfigAditionalInfo`),
+    `ITasaIvaLookup` (`dicTaxRate`). `Data/EmisorLookup` (RUC → `EmpresaEmisora` +
+    `DatilEmpresaFe` con URLs por tipo de doc; liquidación = constante).
+  - `Data/MapeadorEntidades` — `FacturaParaGuardar`/`NotaCreditoParaGuardar`/
+    `LiquidacionParaGuardar` → entidades `Facturas`/`Details`/`Persons`/`NcDetail`
+    (mantiene `PsaWeb.Comprobantes` sin EF).
+  - `ProcesadorComprobantesVenta` — orquestador: por tipo, `Procesar…Async` (uno)
+    y `ProcesarLote…Async` (rango de fechas, 1 conexión), + `Listar…PendientesAsync`.
+    Lee → `*Builder.ArmarAsync` → `IDatilClient.Emitir…Async`; en DryRun no
+    persiste; en emisión real mapea + `RepositorioComprobantesVenta`. Degrada por
+    ítem (`ResultadoComprobante`/`ResumenLote`).
+  - `src/PsaWeb.Comprobantes/Venta/LectorNotasCreditoPendientes` (port de la
+    consulta de `LoadSaleNCs`).
+  - Páginas: `Pages/Comprobantes.razor` (componente compartido, acotado a
+    empresa+ambiente de sesión vía `EmpresaActualService`, permisos vía
+    `ISecurityDirectory`, banner DRY-RUN, tabla de pendientes con «Generar» por
+    fila + enlace PDF, «Procesar lote» solo facturas) + 3 wrappers
+    `/fe/facturas`, `/fe/notas-credito`, `/fe/liquidaciones`.
+  - `Permisos`: `VerLiquidaciones`/`HacerLiquidacion` (`qupurchliq`/`mkpurchliq`).
+    `AppCatalogo`: 3 entradas nuevas (🧾 / ↩️ / 📥). Nav dinámico → aparecen solas.
+  - Host: `AddFacturacionElectronica` en `Program.cs`, ensamblado en
+    `Routes.razor` + `MapRazorComponents(...).AddAdditionalAssemblies`.
+  - `/retenciones`: botón **«Solicitar anulación»** en el popup de detalle →
+    `SolicitudAnulacionRetencion`.
+  - Tests: 3 de `MapeadorEntidades`. Smoke: el Host arranca con el módulo
+    registrado, todas las rutas resuelven. **206 tests solución.**
 - **F5 — Deploy a `SERWEBPSA01`.** Redeploy del Host con el módulo nuevo **+ el
   fix de ícono pendiente `f4fd679`**; env vars (`Correo__*` si se usa);
   smoke test en **DRY-RUN**. Sin emisión real (decisión 2026-09-07: nada real

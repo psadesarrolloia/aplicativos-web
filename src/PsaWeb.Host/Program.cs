@@ -11,6 +11,7 @@ using PsaWeb.Datil;
 using PsaWeb.Notificaciones;
 using PsaWeb.PeachEbills;
 using PsaWeb.Modules.Retenciones;
+using PsaWeb.Modules.FacturacionElectronica;
 using PsaWeb.Sage50;
 using PsaWeb.Seguridad;
 using PsaWeb.Identidad;
@@ -36,6 +37,7 @@ if (peachEbillsConfigurado)
     builder.Services.AddDatil(builder.Configuration);
     builder.Services.AddNotificaciones(builder.Configuration); // SMTP (solicitud de anulación); inerte si no hay Correo:Servidor
     builder.Services.AddRetenciones(builder.Configuration);
+    builder.Services.AddFacturacionElectronica(builder.Configuration); // Ola 1 app #2: facturas / NC / liquidaciones
     // Shell F-Shell-0: directorio de seguridad (empresas + permisos por usuario)
     // y estado de sesión de empresa/ambiente.
     builder.Services.AddSeguridad();
@@ -201,7 +203,8 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(
         typeof(PsaWeb.Modules.CierreDeCaja.ModuleInfo).Assembly,
-        typeof(RetencionesModule).Assembly);
+        typeof(RetencionesModule).Assembly,
+        typeof(PsaWeb.Modules.FacturacionElectronica.FacturacionElectronicaModule).Assembly);
 
 // Descarga del reporte «Cierre de Caja» en Excel. Re-consulta con las mismas
 // fechas para que el archivo coincida siempre con lo que se ve en pantalla.

@@ -13,6 +13,11 @@ public static class Permisos
     public const string VerNotasCredito = "qusalenc";
     public const string HacerNotaCredito = "mksalenc";
 
+    // Liquidaciones de compra — códigos nuevos (el .exe no las gateaba).
+    // Requiere 2 filas nuevas en allowAction de PeachEBills asignadas a los roles.
+    public const string VerLiquidaciones = "qupurchliq";
+    public const string HacerLiquidacion = "mkpurchliq";
+
     // Retenciones
     public const string VerRetenciones = "qupurchtwh";
     public const string HacerRetencion = "mkpurchtwh";

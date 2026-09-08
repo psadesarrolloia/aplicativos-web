@@ -482,6 +482,13 @@ else
             {
                 <a class="psa-btn psa-btn--primary" href="@UrlDatil(_detalle.DatilId!, "pdf")" target="_blank" rel="noopener">Ver PDF</a>
                 <a class="psa-btn psa-btn--secondary" href="@UrlDatil(_detalle.DatilId!, "xml")" target="_blank" rel="noopener">Ver XML</a>
+                <button type="button" class="psa-btn psa-btn--secondary" @onclick="SolicitarAnulacion" disabled="@_anulando">
+                    @(_anulando ? "Enviando…" : "Solicitar anulación")
+                </button>
+            }
+            @if (_avisoAnulacion is not null)
+            {
+                <span class="psa-muted" style="margin-left:.5rem">@_avisoAnulacion</span>
             }
             <button type="button" class="psa-btn psa-btn--ghost" @onclick="CerrarDetalle">Cerrar</button>
         </Footer>
@@ -564,10 +571,42 @@ else
         }
     }
 
+    private bool _anulando;
+    private string? _avisoAnulacion;
+
+    private async Task SolicitarAnulacion()
+    {
+        if (_detalle is null) return;
+        var svc = Sp.GetService<SolicitudAnulacionRetencion>();
+        if (svc is null) { _avisoAnulacion = "La solicitud de anulación no está disponible."; return; }
+
+        var ruc = _empresaSel ?? _rucSesion;
+        if (ruc is null) { _avisoAnulacion = "No hay empresa seleccionada."; return; }
+
+        _anulando = true;
+        _avisoAnulacion = null;
+        try
+        {
+            var usuario = await UsuarioActual();
+            var r = await svc.EnviarAsync(ruc, usuario, _detalle.Numero, _detalle.DatilId);
+            _avisoAnulacion = r.Mensaje;
+        }
+        catch (Exception ex)
+        {
+            _avisoAnulacion = "Error al enviar la solicitud: " + ex.Message;
+            Logger.LogError(ex, "Solicitud de anulación de retención");
+        }
+        finally
+        {
+            _anulando = false;
+        }
+    }
+
     private void CerrarDetalle()
     {
         _detalle = null;
         _detalleCargando = false;
+        _avisoAnulacion = null;
     }
 
     // Filtros / orden de la card de retenciones guardadas.

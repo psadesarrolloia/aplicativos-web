@@ -1,0 +1,11 @@
+@page "/fe/facturas"
+@namespace PsaWeb.Modules.FacturacionElectronica.Pages
+
+<PageTitle>FE · Facturas — Aplicativos web PSA</PageTitle>
+
+<Comprobantes Tipo="TipoComprobanteFe.Factura"
+              Titulo="Facturas de venta"
+              Subtitulo="Genera y emite en Datil las facturas de venta registradas en Sage 50."
+              PermisoVer="@PsaWeb.Seguridad.Permisos.VerFacturas"
+              PermisoGenerar="@PsaWeb.Seguridad.Permisos.HacerFactura"
+              PermisoLote="@PsaWeb.Seguridad.Permisos.HacerFacturasLote" />

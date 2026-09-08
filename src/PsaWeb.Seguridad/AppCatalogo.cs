@@ -31,6 +31,21 @@ public static class AppCatalogo
             "Genera y emite en Datil las retenciones de compra pendientes.",
             "📄", "/retenciones",
             new[] { Permisos.VerRetenciones, Permisos.HacerRetencion, Permisos.HacerRetencionesLote }),
+
+        new("fe-facturas", "FE · Facturas",
+            "Genera y emite en Datil las facturas de venta de Sage 50.",
+            "🧾", "/fe/facturas",
+            new[] { Permisos.VerFacturas, Permisos.HacerFactura, Permisos.HacerFacturasLote }),
+
+        new("fe-notas-credito", "FE · Notas de crédito",
+            "Genera y emite en Datil las notas de crédito de venta.",
+            "↩️", "/fe/notas-credito",
+            new[] { Permisos.VerNotasCredito, Permisos.HacerNotaCredito }),
+
+        new("fe-liquidaciones", "FE · Liquidaciones",
+            "Genera y emite en Datil las liquidaciones de compra.",
+            "📥", "/fe/liquidaciones",
+            new[] { Permisos.VerLiquidaciones, Permisos.HacerLiquidacion }),
     };
 
     public static IEnumerable<AppWeb> Habilitadas(ContextoDeUsuario ctx) =>

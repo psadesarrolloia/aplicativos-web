@@ -1,0 +1,328 @@
+@namespace PsaWeb.Modules.FacturacionElectronica.Pages
+@implements IDisposable
+@using System.Globalization
+@using PsaWeb.Comprobantes.Venta
+@using PsaWeb.Seguridad
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject ILogger<Comprobantes> Logger
+
+<PsaPageHeader Title="@Titulo" Subtitle="@Subtitulo" />
+
+@if (_procesador is null)
+{
+    <PsaCard Title="Módulo no configurado">
+        <p class="psa-notice psa-notice--danger">
+            Falta <code>PeachEbills:ConnectionString</code> en el Host. Configúrala y reiniciá la aplicación.
+        </p>
+    </PsaCard>
+}
+else if (_ruc is null)
+{
+    <PsaCard Title="Elegí una empresa">
+        <p class="psa-notice">Seleccioná una empresa en la barra superior para trabajar sus comprobantes.</p>
+    </PsaCard>
+}
+else if (!_permisosCargados)
+{
+    <PsaCard><p class="psa-muted">Verificando permisos…</p></PsaCard>
+}
+else if (!_puedeVer)
+{
+    <PsaCard Title="Sin permiso">
+        <p class="psa-notice psa-notice--danger">No tenés permiso para ver este módulo en la empresa actual.</p>
+    </PsaCard>
+}
+else
+{
+    <PsaCard Title="Modo de emisión">
+        @if (_procesador.DryRun)
+        {
+            <p class="psa-notice">
+                <strong>DRY-RUN activo.</strong> Se arma y valida cada comprobante pero <strong>no</strong> se envía a
+                Datil ni se guarda. Para emitir de verdad: <code>Datil:DryRun=false</code> en el Host.
+            </p>
+        }
+        else
+        {
+            <p class="psa-notice psa-notice--danger">
+                <strong>EMISIÓN REAL.</strong> «Generar» enviará el comprobante a Datil (autoriza ante el SRI, es
+                irreversible) y lo guardará en PeachEBills.
+            </p>
+        }
+        <p class="psa-muted" style="margin-top:.5rem">
+            Empresa: <strong>@_empresaNombre</strong> · Ambiente:
+            <strong>@(_ambiente == 1 ? "Pruebas" : "Producción")</strong>
+        </p>
+    </PsaCard>
+
+    <PsaCard Title="Buscar comprobantes">
+        <Actions>
+            <PsaButton Variant="secondary" OnClick="Buscar" Disabled="_cargando || _generando">
+                @(_cargando ? "Buscando…" : "Buscar")
+            </PsaButton>
+            @if (PermisoLote is not null && _puedeLote)
+            {
+                <PsaButton Variant="primary" OnClick="ProcesarLote" Disabled="_cargando || _generando || _pendientes.Count == 0">
+                    @(_generando ? "Procesando…" : "Procesar lote")
+                </PsaButton>
+            }
+        </Actions>
+        <ChildContent>
+            <div style="display:flex; gap:1rem; align-items:end; flex-wrap:wrap">
+                <PsaDateRange From="_desde" FromChanged="v => _desde = v" To="_hasta" ToChanged="v => _hasta = v" />
+            </div>
+
+            @if (_error is not null)
+            {
+                <p class="psa-notice psa-notice--danger" style="margin-top:1rem">@_error</p>
+            }
+
+            @if (_resumenLote is { } lote)
+            {
+                <div class="psa-grid psa-grid--stats" style="margin-top:1rem">
+                    <PsaStat Label="Total" Value="@lote.Total.ToString()" />
+                    <PsaStat Label="Emitidos" Value="@lote.Emitidos.ToString()" State="ok" />
+                    <PsaStat Label="Dry-run" Value="@lote.EnDryRun.ToString()" />
+                    <PsaStat Label="Con errores" Value="@lote.ConErrores.ToString()"
+                             State="@(lote.ConErrores > 0 ? "danger" : "neutral")" />
+                </div>
+            }
+        </ChildContent>
+    </PsaCard>
+
+    @if (_pendientes.Count > 0)
+    {
+        <PsaCard Title="@($"Pendientes ({_pendientes.Count})")">
+            <div style="overflow-x:auto">
+                <table class="psa-table">
+                    <thead>
+                        <tr><th>Número</th><th>Fecha</th><th>Estado</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _pendientes)
+                        {
+                            var res = _resultados.GetValueOrDefault(p.PostOrder);
+                            <tr>
+                                <td>@p.Numero</td>
+                                <td>@p.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td>
+                                    @if (res is null)
+                                    {
+                                        <span class="psa-muted">—</span>
+                                    }
+                                    else if (res.Estado == EstadoComprobante.Emitido)
+                                    {
+                                        <span style="color:var(--psa-ok)">✓ emitido</span>
+                                    }
+                                    else if (res.Estado == EstadoComprobante.DryRun)
+                                    {
+                                        <span class="psa-muted">dry-run OK</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:var(--psa-danger)" title="@string.Join(" | ", res.Mensajes)">✗ error</span>
+                                    }
+                                </td>
+                                <td style="text-align:right">
+                                    <PsaButton Variant="ghost"
+                                               Disabled="@(_generando || !_puedeGenerar || res?.Estado == EstadoComprobante.Emitido)"
+                                               OnClick="() => Generar(p.PostOrder)">
+                                        @(res?.Estado == EstadoComprobante.Emitido ? "Emitido"
+                                            : res is not null ? "Reintentar" : "Generar")
+                                    </PsaButton>
+                                    @if (res is { Estado: EstadoComprobante.Emitido, DatilId: { } id })
+                                    {
+                                        <a class="psa-link" href="@($"https://app.datil.co/ver/{id}/pdf")" target="_blank" rel="noopener">PDF</a>
+                                    }
+                                </td>
+                            </tr>
+                            @if (res is { Estado: EstadoComprobante.Error })
+                            {
+                                <tr><td colspan="4" class="psa-muted" style="font-size:.85rem">
+                                    @string.Join(" · ", res.Mensajes)
+                                </td></tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </PsaCard>
+    }
+    else if (_busco && !_cargando)
+    {
+        <PsaCard><p class="psa-notice">No hay comprobantes pendientes en ese rango.</p></PsaCard>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public TipoComprobanteFe Tipo { get; set; }
+    [Parameter, EditorRequired] public string Titulo { get; set; } = string.Empty;
+    [Parameter] public string? Subtitulo { get; set; }
+    [Parameter, EditorRequired] public string PermisoVer { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string PermisoGenerar { get; set; } = string.Empty;
+    [Parameter] public string? PermisoLote { get; set; }
+
+    private ProcesadorComprobantesVenta? _procesador;
+    private EmpresaActualService? _empresaActual;
+
+    private string? _ruc;
+    private string? _empresaNombre;
+    private short _ambiente = 2;
+    private string _usuario = "web";
+
+    private bool _permisosCargados;
+    private bool _puedeVer;
+    private bool _puedeGenerar;
+    private bool _puedeLote;
+
+    private DateOnly _desde = DateOnly.FromDateTime(DateTime.Today.AddDays(-7));
+    private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
+
+    private bool _cargando;
+    private bool _generando;
+    private bool _busco;
+    private string? _error;
+
+    private sealed record Pendiente(string PostOrder, string Numero, DateTime Fecha);
+    private List<Pendiente> _pendientes = new();
+    private readonly Dictionary<string, ResultadoComprobante> _resultados = new();
+    private ResumenLote? _resumenLote;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _procesador = Sp.GetService<ProcesadorComprobantesVenta>();
+        _empresaActual = Sp.GetService<EmpresaActualService>();
+        if (_empresaActual is not null) _empresaActual.Cambio += AlCambiar;
+
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _usuario = state.User.Identity?.Name ?? "web";
+
+        await AplicarEmpresa();
+    }
+
+    private async void AlCambiar()
+    {
+        await AplicarEmpresa();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AplicarEmpresa()
+    {
+        _ruc = _empresaActual?.Ruc;
+        _empresaNombre = _empresaActual?.Nombre;
+        _ambiente = (short)(_empresaActual?.Ambiente ?? Ambiente.Produccion);
+        _pendientes = new();
+        _resultados.Clear();
+        _resumenLote = null;
+        _busco = false;
+        _error = null;
+        _permisosCargados = false;
+
+        if (_ruc is null || _procesador is null) return;
+
+        var dir = Sp.GetService<ISecurityDirectory>();
+        if (dir is null)
+        {
+            _puedeVer = _puedeGenerar = true; // sin directorio (standalone): sin gating
+        }
+        else
+        {
+            var permisos = await dir.PermisosAsync(_usuario, _ruc);
+            _puedeVer = permisos.Contains(PermisoVer) || permisos.Contains(PermisoGenerar);
+            _puedeGenerar = permisos.Contains(PermisoGenerar);
+            _puedeLote = PermisoLote is not null && permisos.Contains(PermisoLote);
+        }
+        _permisosCargados = true;
+    }
+
+    private async Task Buscar()
+    {
+        if (_procesador is null || _ruc is null) return;
+        _cargando = true;
+        _error = null;
+        _resumenLote = null;
+        try
+        {
+            var d = _desde.ToDateTime(TimeOnly.MinValue);
+            var h = _hasta.ToDateTime(TimeOnly.MinValue);
+            _pendientes = Tipo switch
+            {
+                TipoComprobanteFe.Factura => (await _procesador.ListarFacturasPendientesAsync(_ruc, d, h))
+                    .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)).ToList(),
+                TipoComprobanteFe.NotaCredito => (await _procesador.ListarNotasCreditoPendientesAsync(_ruc, d, h))
+                    .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)).ToList(),
+                _ => (await _procesador.ListarLiquidacionesPendientesAsync(_ruc, d, h))
+                    .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)).ToList(),
+            };
+            _busco = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"No se pudo listar: {ex.Message}";
+            Logger.LogError(ex, "Listar {Tipo} de {Ruc}", Tipo, _ruc);
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task Generar(string postOrder)
+    {
+        if (_procesador is null || _ruc is null || !_puedeGenerar) return;
+        _generando = true;
+        try
+        {
+            var res = Tipo switch
+            {
+                TipoComprobanteFe.Factura => await _procesador.ProcesarFacturaAsync(_ruc, postOrder, _ambiente, _usuario),
+                TipoComprobanteFe.NotaCredito => await _procesador.ProcesarNotaCreditoAsync(_ruc, postOrder, _ambiente, _usuario),
+                _ => await _procesador.ProcesarLiquidacionAsync(_ruc, postOrder, _ambiente, _usuario),
+            };
+            _resultados[postOrder] = res;
+        }
+        catch (Exception ex)
+        {
+            _resultados[postOrder] = ResultadoComprobante.Error(postOrder, string.Empty, ex.Message);
+            Logger.LogError(ex, "Generar {Tipo} {PostOrder}", Tipo, postOrder);
+        }
+        finally
+        {
+            _generando = false;
+        }
+    }
+
+    private async Task ProcesarLote()
+    {
+        if (_procesador is null || _ruc is null || Tipo != TipoComprobanteFe.Factura || !_puedeLote) return;
+        _generando = true;
+        _error = null;
+        try
+        {
+            var d = _desde.ToDateTime(TimeOnly.MinValue);
+            var h = _hasta.ToDateTime(TimeOnly.MinValue);
+            _resumenLote = await _procesador.ProcesarLoteFacturasAsync(_ruc, d, h, _ambiente, _usuario);
+            foreach (var r in _resumenLote.Resultados) _resultados[r.PostOrder] = r;
+            if (_pendientes.Count == 0)
+            {
+                _pendientes = _resumenLote.Resultados
+                    .Select(r => new Pendiente(r.PostOrder, r.NumeroCompleto, DateTime.Today)).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"El lote falló: {ex.Message}";
+            Logger.LogError(ex, "Lote {Tipo} de {Ruc}", Tipo, _ruc);
+        }
+        finally
+        {
+            _generando = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_empresaActual is not null) _empresaActual.Cambio -= AlCambiar;
+    }
+}
