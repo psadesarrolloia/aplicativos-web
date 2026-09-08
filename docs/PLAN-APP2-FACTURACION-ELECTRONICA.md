@@ -251,7 +251,21 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
     `ANULAD%`, rango de fechas parametrizado), y `Venta/Muestra/FacturasVentaMuestra`
     (3 facturas de muestra para dev: simple con IVA / a exterior / con descuento y
     crédito). 6 tests. **178 tests solución. F3a COMPLETA.**
-- **F3b — Notas de crédito.**
+- **F3b — Notas de crédito. HECHO** (rama `app2-fe-f3b-notas-credito`).
+  `Venta/LectorNotaCredito` (port de `LoadSaleNC.ForceLoadFromPeach`): 5 queries
+  ODBC (cabecera `JrnlTypeEx=2`/`JournalEx=9`; factura relacionada por
+  `INV_POSOOrderNumber` → `LectorFacturaVenta.LeerAsync` para `NCdetail`; monto
+  IVA; tasa IVA; líneas con `LinkToOtherTrxIndex>0`) + `LectorCliente`. `ArmarDesde`
+  pura: número **estricto** (`AnalizarEstricto`, no tolerante), causa de
+  `ReturnAuthorization` (default "Devolución"), IVA sin redondear el %, mapeo de
+  Tax con **error** en el caso default (más estricto que factura), sin descuentos.
+  `Venta/ConstructorNotaCredito` (port de `DatilSend(SaleNC)`) → `ResultadoNotaCredito`
+  { `NotaCredito` (Datil), `NotaCreditoParaGuardar` con `DocumentoModificadoParaGuardar`,
+  `Errores` }. Usa el punto de emisión **del establecimiento** (no del número),
+  `FechaEmisionDocumentoModificado` UTC-5, `InformacionAdicional` del tipo 04.
+  `Venta/NotaCreditoBuilder` (resuelve establecimiento + `IInfoAdicionalLookup(04)`).
+  `Venta/HelpersVenta` (helpers compartidos factura/NC). 20 tests. **188 tests
+  solución.**
 - **F3c — Liquidaciones de compra.**
 - **F3d — Correo + "Solicitar anulación".** §3.4 (la acción se agrega a la página
   `/retenciones` existente, no al módulo FE).
