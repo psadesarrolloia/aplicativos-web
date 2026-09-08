@@ -244,8 +244,13 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
     sin ceros, `FechaEmision` UTC-5 fijo, pago al contado vs crédito según
     vencimiento, redirección de email en pruebas. `ValidadorNumeroEstablecimiento`
     ahora expone el `EstablecimientoInfo` completo. 10 tests. **172 tests solución.**
-  - **F3a-4 (falta)**: `FacturaBuilder` (orquesta lookups + `ConstructorFactura`),
-    lector de muestra para dev, query de la lista de pendientes (`LoadSaleInvoices`).
+  - **F3a-4 HECHO**: `Venta/FacturaBuilder` (resuelve el establecimiento con
+    `ValidadorNumeroEstablecimiento` y llama a `ConstructorFactura`),
+    `Venta/LectorFacturasPendientes` (+`FacturaPendiente`) = port de la consulta
+    de `LoadSaleInvoices` (`JrnlKey_Journal=3`, `JournalEx=8`, `JrnlTypeEx=0`, no
+    `ANULAD%`, rango de fechas parametrizado), y `Venta/Muestra/FacturasVentaMuestra`
+    (3 facturas de muestra para dev: simple con IVA / a exterior / con descuento y
+    crédito). 6 tests. **178 tests solución. F3a COMPLETA.**
 - **F3b — Notas de crédito.**
 - **F3c — Liquidaciones de compra.**
 - **F3d — Correo + "Solicitar anulación".** §3.4 (la acción se agrega a la página
