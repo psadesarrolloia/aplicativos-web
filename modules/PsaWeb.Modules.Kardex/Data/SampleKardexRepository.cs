@@ -35,9 +35,7 @@ internal sealed class SampleKardexRepository : IKardexRepository
             return Task.FromResult(ResultadoKardex.Vacio);
         }
 
-        // Ítems que entran al reporte según el filtro (misma semántica que tendrá
-        // el repo ODBC: selección explícita, o por cuenta, o por rango de ItemID).
-        var elegidos = Items.Where(i => Coincide(i, filtro)).ToList();
+        var elegidos = SeleccionItems.Filtrar(Items, filtro);
         if (elegidos.Count == 0)
         {
             return Task.FromResult(ResultadoKardex.Vacio);
@@ -55,25 +53,6 @@ internal sealed class SampleKardexRepository : IKardexRepository
     public Task<ResultadoKardex> GenerarParaRucAsync(
         string ruc, FiltroKardex filtro, CancellationToken cancellationToken = default)
         => GenerarAsync(filtro, cancellationToken);
-
-    private static bool Coincide(ItemStock item, FiltroKardex filtro)
-    {
-        if (filtro.ItemIds.Count > 0)
-        {
-            return filtro.ItemIds.Contains(item.Id, StringComparer.OrdinalIgnoreCase);
-        }
-        if (!string.IsNullOrWhiteSpace(filtro.CuentaGl))
-        {
-            return string.Equals(item.CuentaGl, filtro.CuentaGl.Trim(), StringComparison.OrdinalIgnoreCase);
-        }
-        var desde = filtro.ItemDesde?.Trim();
-        var hasta = filtro.ItemHasta?.Trim();
-        var okDesde = string.IsNullOrEmpty(desde)
-            || string.Compare(item.Id, desde, StringComparison.OrdinalIgnoreCase) >= 0;
-        var okHasta = string.IsNullOrEmpty(hasta)
-            || string.Compare(item.Id, hasta, StringComparison.OrdinalIgnoreCase) <= 0;
-        return okDesde && okHasta;
-    }
 
     private static IEnumerable<FilaKardex> KardexDeMuestra(ItemStock item, DateOnly desde)
     {

@@ -10,20 +10,33 @@ public static class KardexModule
 {
     /// <summary>
     /// Registra el módulo Kardex de inventarios (solo lectura, acotado a la
-    /// empresa de sesión).
+    /// empresa de sesión). Usa el repositorio real (ODBC / Sage 50) cuando hay
+    /// cadena de conexión y <c>Sage50:UseSampleData</c> no es <c>true</c>; en
+    /// cualquier otro caso, el repositorio de muestra.
     /// </summary>
-    /// <remarks>
-    /// F1: solo repositorio de muestra. F2 agrega el repositorio ODBC real y el
-    /// interruptor real/muestra según <c>Sage50:ConnectionString</c>.
-    /// </remarks>
     public static IServiceCollection AddKardex(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddScoped<IKardexRepository, SampleKardexRepository>();
+        if (UsaDatosDeMuestra(configuration))
+        {
+            services.AddScoped<IKardexRepository, SampleKardexRepository>();
+        }
+        else
+        {
+            services.AddScoped<IKardexRepository, OdbcKardexRepository>();
+        }
 
         // Sin shell: la empresa es siempre la de configuración. El Host reemplaza
         // este registro por la implementación real cuando el shell está activo.
         services.TryAddScoped<IResolverEmpresaSage, SinShellResolverEmpresaSage>();
 
         return services;
+    }
+
+    /// <summary>true si el módulo va a usar datos de muestra (sin tocar Sage 50).</summary>
+    public static bool UsaDatosDeMuestra(IConfiguration configuration)
+    {
+        var section = configuration.GetSection(SageOptions.SectionName);
+        var forzarMuestra = string.Equals(section["UseSampleData"], "true", StringComparison.OrdinalIgnoreCase);
+        return forzarMuestra || string.IsNullOrWhiteSpace(section["ConnectionString"]);
     }
 }

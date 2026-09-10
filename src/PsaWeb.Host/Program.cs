@@ -122,7 +122,9 @@ var app = builder.Build();
 app.Logger.LogInformation(
     "Cierre de Caja: repositorio {Repo}.",
     CierreDeCajaModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50");
-app.Logger.LogInformation("Kardex: repositorio DE MUESTRA (F1: sin repo ODBC todavía).");
+app.Logger.LogInformation(
+    "Kardex: repositorio {Repo}.",
+    PsaWeb.Modules.Kardex.KardexModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50");
 app.Logger.LogInformation(
     "Retenciones: módulo {Estado}.",
     peachEbillsConfigurado ? "ACTIVO (PeachEBills configurado)" : "INACTIVO (sin PeachEbills:ConnectionString)");
