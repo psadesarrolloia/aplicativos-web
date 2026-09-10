@@ -471,7 +471,12 @@ else
                 catch (Exception ex)
                 {
                     _pendientes = Array.Empty<Pendiente>();
-                    _error = $"No se pudieron leer los pendientes de Sage 50: {ex.Message}";
+                    var baseNoDisponible = ex.Message.Contains("2301")
+                        || ex.Message.Contains("Cannot locate the named database", StringComparison.OrdinalIgnoreCase);
+                    _error = baseNoDisponible
+                        ? "No se pudieron leer los pendientes: la base de Sage 50 de esta empresa no está disponible en esta máquina."
+                        : $"No se pudieron leer los pendientes de Sage 50: {Acortar(ex.Message)}";
+                    Logger.LogWarning(ex, "Pendientes {Tipo} de {Ruc}", Tipo, _ruc);
                 }
             }
             else
@@ -613,6 +618,12 @@ else
     private void LimpiarFiltros() => _fNumero = _fPersona = _fAmbiente = _fDatil = "";
 
     private static string AmbienteTexto(short ambiente) => ambiente == 1 ? "Pruebas" : "Producción";
+
+    private static string Acortar(string mensaje)
+    {
+        mensaje = mensaje.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return mensaje.Length <= 200 ? mensaje : mensaje[..200] + "…";
+    }
 
     private static string UrlDatil(string datilId, string formato) => $"{DatilVerBase}{datilId}/{formato}";
 
