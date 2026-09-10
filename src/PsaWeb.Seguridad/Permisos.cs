@@ -27,6 +27,10 @@ public static class Permisos
     // ATS
     public const string VerAts = "quats";
 
+    // Inventarios / reportes del monolito — código nuevo (el .exe no lo gateaba).
+    // Requiere 1 fila nueva en allowAction de PeachEBills asignada a los roles.
+    public const string VerKardex = "quKardex";
+
     // Configuración
     public const string ConfigurarDatil = "setDatilP";
     public const string ConfigurarOdbc = "setODBC";

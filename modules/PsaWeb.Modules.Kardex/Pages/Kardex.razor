@@ -1,0 +1,237 @@
+@page "/kardex"
+@namespace PsaWeb.Modules.Kardex.Pages
+@using System.Globalization
+@using PsaWeb.Modules.Kardex.Data
+@inject IKardexRepository Repositorio
+@inject IResolverEmpresaSage EmpresaSage
+@inject ILogger<Kardex> Logger
+@implements IDisposable
+
+<PageTitle>Kardex de inventarios — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Kardex de inventarios"
+               Subtitle="@Subtitulo" />
+
+<PsaCard Title="Parámetros">
+    <PsaDateRange From="_desde" To="_hasta"
+                  FromChanged="v => _desde = v" ToChanged="v => _hasta = v" />
+
+    <div class="psa-row" style="margin-top: 1rem; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap">
+        <label class="psa-field">
+            <span class="psa-field__label">Cuenta de inventario</span>
+            <select class="psa-input" @bind="_cuenta">
+                <option value="">(todas)</option>
+                @foreach (var c in _cuentas)
+                {
+                    <option value="@c.Id">@c.Id — @c.Descripcion</option>
+                }
+            </select>
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Ítem desde</span>
+            <input class="psa-input" @bind="_itemDesde" placeholder="p. ej. CS-001" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Ítem hasta</span>
+            <input class="psa-input" @bind="_itemHasta" placeholder="p. ej. CS-999" />
+        </label>
+    </div>
+
+    <div class="psa-field" style="margin-top: 1rem; display: flex; align-items: stretch; max-width: 34rem">
+        <span class="psa-field__label">Ítems (opcional; si elegís, mandan sobre cuenta y rango)</span>
+        <input class="psa-input" placeholder="Filtrar la lista…" @bind="_filtroItem" @bind:event="oninput" />
+        <select class="psa-input" multiple size="8" style="margin-top: .4rem" @bind="_itemsSeleccionados">
+            @foreach (var i in ItemsFiltrados)
+            {
+                <option value="@i.Id">@i.Id — @i.Nombre</option>
+            }
+        </select>
+        @if (_itemsSeleccionados.Length > 0)
+        {
+            <p class="psa-muted" style="margin-top: .3rem">@_itemsSeleccionados.Length ítem(s) seleccionado(s).</p>
+        }
+    </div>
+
+    <div class="psa-row" style="margin-top: 1.1rem">
+        <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
+            @(_cargando ? "Consultando…" : "Consultar")
+        </PsaButton>
+    </div>
+</PsaCard>
+
+@if (_error is not null)
+{
+    <PsaCard Title="Kardex">
+        <p class="psa-notice psa-notice--danger">@_error</p>
+    </PsaCard>
+}
+else if (_resultado is not null)
+{
+    <PsaCard Title="Kardex">
+        <p class="psa-muted">
+            Rango: <strong>@_desde.ToString("dd/MM/yyyy")</strong> a <strong>@_hasta.ToString("dd/MM/yyyy")</strong>
+        </p>
+
+        @if (_resultado.SinMovimientos)
+        {
+            <p class="psa-notice" style="margin-top: 1rem">Sin movimientos para los ítems y el rango seleccionados.</p>
+        }
+        else
+        {
+            <div style="overflow-x: auto; margin-top: 1rem">
+                <table class="psa-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2">Cuenta</th>
+                            <th rowspan="2">Ítem</th>
+                            <th rowspan="2">Nombre</th>
+                            <th rowspan="2">Fecha</th>
+                            <th rowspan="2">Referencia</th>
+                            <th colspan="3" class="num">Entradas</th>
+                            <th colspan="3" class="num">Salidas</th>
+                            <th colspan="3" class="num">Saldos</th>
+                        </tr>
+                        <tr>
+                            <th class="num">Cant.</th><th class="num">C. Unit.</th><th class="num">C. Total</th>
+                            <th class="num">Cant.</th><th class="num">C. Unit.</th><th class="num">C. Total</th>
+                            <th class="num">Cant.</th><th class="num">C. Unit.</th><th class="num">C. Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in _resultado.Filas)
+                        {
+                            <tr>
+                                <td>@f.CuentaGl</td>
+                                <td>@f.ItemId</td>
+                                <td>@f.Nombre</td>
+                                <td>@f.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td>@f.Referencia</td>
+                                @Bloque(f.Entrada)
+                                @Bloque(f.Salida)
+                                @Bloque(f.Saldo)
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </PsaCard>
+}
+
+@code {
+    private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
+
+    private DateOnly _desde = DateOnly.FromDateTime(DateTime.Today.AddMonths(-1));
+    private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
+
+    private IReadOnlyList<CuentaInventario> _cuentas = Array.Empty<CuentaInventario>();
+    private IReadOnlyList<ItemStock> _items = Array.Empty<ItemStock>();
+
+    private string _cuenta = "";
+    private string _itemDesde = "";
+    private string _itemHasta = "";
+    private string _filtroItem = "";
+    private string[] _itemsSeleccionados = Array.Empty<string>();
+
+    private bool _cargando;
+    private string? _error;
+    private ResultadoKardex? _resultado;
+
+    private string Subtitulo => EmpresaSage.RucSesion is null
+        ? "Kardex de inventarios de Sage 50 para un rango de fechas. Solo lectura."
+        : $"Empresa {EmpresaSage.RucSesion} · kardex de inventarios de Sage 50 para un rango de fechas.";
+
+    private IEnumerable<ItemStock> ItemsFiltrados =>
+        string.IsNullOrWhiteSpace(_filtroItem)
+            ? _items
+            : _items.Where(i =>
+                i.Id.Contains(_filtroItem, StringComparison.OrdinalIgnoreCase)
+                || i.Nombre.Contains(_filtroItem, StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _cuentas = await Repositorio.CuentasAsync();
+        _items = await Repositorio.ItemsAsync();
+    }
+
+    private void Refrescar()
+    {
+        // Cambió la empresa de sesión: los ítems / cuentas / resultado ya no aplican.
+        _resultado = null;
+        _error = null;
+        _cuenta = _itemDesde = _itemHasta = _filtroItem = "";
+        _itemsSeleccionados = Array.Empty<string>();
+        InvokeAsync(async () =>
+        {
+            _cuentas = await Repositorio.CuentasAsync();
+            _items = await Repositorio.ItemsAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+
+    private FiltroKardex ArmarFiltro() => new(
+        _desde, _hasta,
+        _itemsSeleccionados.ToList(),
+        string.IsNullOrWhiteSpace(_cuenta) ? null : _cuenta,
+        string.IsNullOrWhiteSpace(_itemDesde) ? null : _itemDesde.Trim(),
+        string.IsNullOrWhiteSpace(_itemHasta) ? null : _itemHasta.Trim());
+
+    private async Task Consultar()
+    {
+        _error = null;
+        _resultado = null;
+
+        var filtro = ArmarFiltro();
+
+        if (!filtro.RangoValido)
+        {
+            _error = "El rango debe tener al menos un día: «Hasta» posterior a «Desde».";
+            return;
+        }
+        if (!filtro.TieneAcotador)
+        {
+            _error = "Elegí al menos un ítem, una cuenta de inventario o un rango de ítems.";
+            return;
+        }
+
+        _cargando = true;
+        try
+        {
+            _resultado = await Repositorio.GenerarAsync(filtro);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error generando el kardex ({Desde}–{Hasta})", _desde, _hasta);
+            _error = $"No se pudo generar el kardex: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private RenderFragment Bloque(MovimientoKardex m) => builder =>
+    {
+        var seq = 0;
+        builder.OpenElement(seq++, "td");
+        builder.AddAttribute(seq++, "class", "num");
+        builder.AddContent(seq++, Num(m.Cantidad));
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "td");
+        builder.AddAttribute(seq++, "class", "num");
+        builder.AddContent(seq++, Num(m.CostoUnitario));
+        builder.CloseElement();
+
+        builder.OpenElement(seq++, "td");
+        builder.AddAttribute(seq++, "class", "num");
+        builder.AddContent(seq++, Num(m.CostoTotal));
+        builder.CloseElement();
+    };
+
+    private static string Num(decimal? value) => value is null ? "" : value.Value.ToString("N2", Ec);
+}

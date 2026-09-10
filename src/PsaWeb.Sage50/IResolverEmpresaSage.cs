@@ -1,11 +1,11 @@
-namespace PsaWeb.Modules.CierreDeCaja.Data;
+namespace PsaWeb.Sage50;
 
 /// <summary>
-/// Resuelve contra qué empresa de Sage 50 trabaja el módulo. Con el shell activo,
-/// lo implementa el Host a partir de <c>EmpresaActualService</c> +
-/// <c>PeachConnStringResolver</c>. Sin shell, se usa la implementación por defecto
-/// (<see cref="SinShellResolverEmpresaSage"/>) y todo cae en la cadena de
-/// <c>Sage50:ConnectionString</c>.
+/// Resuelve contra qué empresa de Sage 50 trabaja un módulo de solo lectura
+/// (Cierre de Caja, Kardex, …). Con el shell activo lo implementa el Host a
+/// partir de <c>EmpresaActualService</c> + <c>PeachConnStringResolver</c>. Sin
+/// shell se usa <see cref="SinShellResolverEmpresaSage"/> y todo cae en la
+/// cadena de <c>Sage50:ConnectionString</c>.
 /// </summary>
 public interface IResolverEmpresaSage
 {

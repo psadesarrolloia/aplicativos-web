@@ -48,6 +48,14 @@ public static class AppCatalogo
             "Genera y emite en Datil las liquidaciones de compra.",
             "📥", "/fe/liquidaciones",
             Array.Empty<string>()),
+
+        // Provisional (GateProvisional): sin código propio hasta que el área
+        // cargue quKardex en allowAction. Mientras tanto visible para cualquier
+        // empresa. Revertir a new[] { Permisos.VerKardex } cuando esté el código.
+        new("kardex", "Kardex",
+            "Kardex de inventarios de Sage 50 (solo lectura).",
+            "📦", "/kardex",
+            Array.Empty<string>()),
     };
 
     public static IEnumerable<AppWeb> Habilitadas(ContextoDeUsuario ctx) =>

@@ -1,4 +1,5 @@
 using PsaWeb.Modules.CierreDeCaja.Data;
+using PsaWeb.Sage50;
 
 namespace PsaWeb.CierreDeCaja.Tests;
 

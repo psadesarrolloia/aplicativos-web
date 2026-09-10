@@ -7,6 +7,7 @@ using PsaWeb.Host.Components;
 using PsaWeb.Modules.CierreDeCaja;
 using PsaWeb.Modules.CierreDeCaja.Data;
 using PsaWeb.Modules.CierreDeCaja.Export;
+using PsaWeb.Modules.Kardex;
 using PsaWeb.Datil;
 using PsaWeb.Notificaciones;
 using PsaWeb.PeachEbills;
@@ -25,6 +26,7 @@ builder.Services.AddRazorComponents()
 // Sin cadena de conexión configurada, el módulo usa datos de muestra.
 builder.Services.AddSage50(builder.Configuration);
 builder.Services.AddCierreDeCaja(builder.Configuration);
+builder.Services.AddKardex(builder.Configuration); // Kardex de inventarios (solo lectura, empresa de sesión)
 
 // Módulo Retenciones (Ola 1). Solo se registra si hay cadena a PeachEBills; sin
 // ella la página /retenciones muestra un aviso de "no configurado" y el resto del
@@ -42,10 +44,11 @@ if (peachEbillsConfigurado)
     // y estado de sesión de empresa/ambiente.
     builder.Services.AddSeguridad();
 
-    // Shell F-Shell-3b: Cierre de Caja resuelve la empresa/conexión Sage por el
-    // RUC de sesión (reemplaza el resolver "sin shell" del módulo).
+    // Shell F-Shell-3b: los módulos de solo lectura (Cierre de Caja, Kardex)
+    // resuelven la empresa/conexión Sage por el RUC de sesión (reemplaza el
+    // resolver "sin shell" que registran los módulos).
     builder.Services.AddScoped<
-        PsaWeb.Modules.CierreDeCaja.Data.IResolverEmpresaSage,
+        PsaWeb.Sage50.IResolverEmpresaSage,
         PsaWeb.Host.Cierre.HostResolverEmpresaSage>();
 }
 
@@ -119,6 +122,7 @@ var app = builder.Build();
 app.Logger.LogInformation(
     "Cierre de Caja: repositorio {Repo}.",
     CierreDeCajaModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50");
+app.Logger.LogInformation("Kardex: repositorio DE MUESTRA (F1: sin repo ODBC todavía).");
 app.Logger.LogInformation(
     "Retenciones: módulo {Estado}.",
     peachEbillsConfigurado ? "ACTIVO (PeachEBills configurado)" : "INACTIVO (sin PeachEbills:ConnectionString)");
@@ -203,6 +207,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
     .AddAdditionalAssemblies(
         typeof(PsaWeb.Modules.CierreDeCaja.ModuleInfo).Assembly,
+        typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly,
         typeof(RetencionesModule).Assembly,
         typeof(PsaWeb.Modules.FacturacionElectronica.FacturacionElectronicaModule).Assembly);
 

@@ -22,6 +22,7 @@
     <ProjectReference Include="..\PsaWeb.PeachEbills\PsaWeb.PeachEbills.csproj" />
     <ProjectReference Include="..\PsaWeb.Datil\PsaWeb.Datil.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.CierreDeCaja\PsaWeb.Modules.CierreDeCaja.csproj" />
+    <ProjectReference Include="..\..\modules\PsaWeb.Modules.Kardex\PsaWeb.Modules.Kardex.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.Retenciones\PsaWeb.Modules.Retenciones.csproj" />
     <ProjectReference Include="..\PsaWeb.Seguridad\PsaWeb.Seguridad.csproj" />
     <ProjectReference Include="..\PsaWeb.Identidad\PsaWeb.Identidad.csproj" />
