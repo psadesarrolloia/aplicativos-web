@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using PsaWeb.PeachEbills.Data;
 
 namespace PsaWeb.PeachEbills;
@@ -21,6 +22,8 @@ public static class ServiceCollectionExtensions
             throw new InvalidOperationException(
                 $"Falta la cadena de conexión. Configure '{PeachEbillsOptions.SectionName}:ConnectionString'.");
         }
+
+        services.Configure<PeachEbillsOptions>(configuration.GetSection(PeachEbillsOptions.SectionName));
 
         services.AddDbContextFactory<PeachEbillsContext>(options =>
             options.UseSqlServer(connectionString));

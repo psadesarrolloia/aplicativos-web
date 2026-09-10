@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using PsaWeb.PeachEbills.Data;
 
 namespace PsaWeb.PeachEbills;
@@ -22,20 +23,28 @@ public sealed record SageConnectionInfo(string Driver, string? ServerName, strin
 public sealed class PeachConnStringResolver
 {
     private readonly IDbContextFactory<PeachEbillsContext> _contextFactory;
+    private readonly string? _serverNameOverride;
 
-    public PeachConnStringResolver(IDbContextFactory<PeachEbillsContext> contextFactory)
-        => _contextFactory = contextFactory;
+    public PeachConnStringResolver(
+        IDbContextFactory<PeachEbillsContext> contextFactory,
+        IOptions<PeachEbillsOptions>? options = null)
+    {
+        _contextFactory = contextFactory;
+        var o = options?.Value.SageServerNameOverride;
+        _serverNameOverride = string.IsNullOrWhiteSpace(o) ? null : o.Trim();
+    }
 
     public async Task<string> ResolverCadenaOdbcAsync(string ruc, CancellationToken cancellationToken = default)
     {
         var row = await LeerAsync(ruc, cancellationToken);
-        return Construir(row, DbSecret.Decrypt(row.Pwd));
+        return Construir(row, DbSecret.Decrypt(row.Pwd), _serverNameOverride);
     }
 
     public async Task<SageConnectionInfo> ObtenerInfoAsync(string ruc, CancellationToken cancellationToken = default)
     {
         var row = await LeerAsync(ruc, cancellationToken);
-        return new SageConnectionInfo(row.Driver, row.Servername, row.Dbq, row.Dsn, row.Uid);
+        var servername = _serverNameOverride ?? row.Servername;
+        return new SageConnectionInfo(row.Driver, servername, row.Dbq, row.Dsn, row.Uid);
     }
 
     private async Task<PeachConnString> LeerAsync(string ruc, CancellationToken cancellationToken)
@@ -49,8 +58,11 @@ public sealed class PeachConnStringResolver
             $"No hay cadena de conexión ODBC para el RUC {ruc} en la tabla PeachConnString.");
     }
 
-    private static string Construir(PeachConnString row, string pwd) =>
-        !string.IsNullOrEmpty(row.Servername) && !string.IsNullOrEmpty(row.Dbq)
-            ? $"Driver={row.Driver};servername={row.Servername};uid={row.Uid};dbq={row.Dbq};pwd={pwd};"
+    private static string Construir(PeachConnString row, string pwd, string? serverNameOverride)
+    {
+        var servername = serverNameOverride ?? row.Servername;
+        return !string.IsNullOrEmpty(servername) && !string.IsNullOrEmpty(row.Dbq)
+            ? $"Driver={row.Driver};servername={servername};uid={row.Uid};dbq={row.Dbq};pwd={pwd};"
             : $"Dsn={row.Dsn};Driver={row.Driver};uid={row.Uid};pwd={pwd};";
+    }
 }

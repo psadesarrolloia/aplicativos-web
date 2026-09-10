@@ -15,4 +15,12 @@ public sealed class PeachEbillsOptions
     /// Nunca se guarda en el código.
     /// </summary>
     public string ConnectionString { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Solo desarrollo: reemplaza el <c>servername</c> de <b>toda</b> cadena ODBC de Sage 50
+    /// resuelta desde <c>PeachConnString</c>. Las filas apuntan a <c>SERWEBPSA01</c>, que no
+    /// se alcanza desde PREDATOR; poner <c>localhost</c> para trabajar contra las compañías
+    /// Sage locales. Vacío = usar el <c>servername</c> de la fila tal cual.
+    /// </summary>
+    public string? SageServerNameOverride { get; set; }
 }
