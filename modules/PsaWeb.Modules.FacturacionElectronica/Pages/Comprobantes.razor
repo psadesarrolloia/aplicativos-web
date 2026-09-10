@@ -163,6 +163,13 @@ else
     [Parameter, EditorRequired] public string PermisoGenerar { get; set; } = string.Empty;
     [Parameter] public string? PermisoLote { get; set; }
 
+    /// <summary>
+    /// Provisional: los códigos de permiso (<c>qupurchliq</c>/<c>mkpurchliq</c>) todavía
+    /// no están cargados en <c>allowAction</c> de PeachEBills. Mientras tanto se
+    /// permite ver y generar sin gate. Quitar cuando el área cargue esas filas.
+    /// </summary>
+    [Parameter] public bool GateProvisional { get; set; }
+
     private ProcesadorComprobantesVenta? _procesador;
     private EmpresaActualService? _empresaActual;
 
@@ -222,9 +229,11 @@ else
         if (_ruc is null || _procesador is null) return;
 
         var dir = Sp.GetService<ISecurityDirectory>();
-        if (dir is null)
+        if (dir is null || GateProvisional)
         {
-            _puedeVer = _puedeGenerar = true; // sin directorio (standalone): sin gating
+            // Sin directorio (standalone) o gate provisional: sin gating.
+            _puedeVer = _puedeGenerar = true;
+            _puedeLote = false;
         }
         else
         {

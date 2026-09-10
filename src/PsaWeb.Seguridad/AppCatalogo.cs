@@ -42,10 +42,12 @@ public static class AppCatalogo
             "↩️", "/fe/notas-credito",
             new[] { Permisos.VerNotasCredito, Permisos.HacerNotaCredito }),
 
+        // Provisional: sin código propio hasta que el área cargue qupurchliq/mkpurchliq
+        // en allowAction. Mientras tanto visible para cualquier empresa con FE.
         new("fe-liquidaciones", "FE · Liquidaciones",
             "Genera y emite en Datil las liquidaciones de compra.",
             "📥", "/fe/liquidaciones",
-            new[] { Permisos.VerLiquidaciones, Permisos.HacerLiquidacion }),
+            Array.Empty<string>()),
     };
 
     public static IEnumerable<AppWeb> Habilitadas(ContextoDeUsuario ctx) =>
