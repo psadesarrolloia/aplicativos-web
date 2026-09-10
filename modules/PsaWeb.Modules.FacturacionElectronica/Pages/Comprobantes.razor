@@ -57,39 +57,46 @@ else
         </p>
     </PsaCard>
 
-    @if (_verTodas)
-    {
-        <PsaCard Title="Empresas">
-            <Actions>
-                <PsaButton Variant="secondary" OnClick="Recargar" Disabled="_cargando || _generando">
-                    @(_panoramaCargando ? "Actualizando…" : "Actualizar")
+    <PsaCard Title="@(_verTodas ? "Empresas" : "Mi empresa")">
+        <Actions>
+            @if (PuedeTodas)
+            {
+                <PsaButton Variant="ghost" OnClick="AlternarAlcance" Disabled="_cargando || _generando">
+                    @(_verTodas ? "Ver solo mi empresa" : "Ver todas las empresas")
                 </PsaButton>
-            </Actions>
-            <ChildContent>
-                @if (_panorama is null && _panoramaCargando)
+            }
+            <PsaButton Variant="secondary" OnClick="Recargar" Disabled="_cargando || _generando">
+                @(_panoramaCargando ? "Actualizando…" : "Actualizar")
+            </PsaButton>
+        </Actions>
+        <ChildContent>
+            @if (_panorama is null && _panoramaCargando)
+            {
+                <p class="psa-muted">Cargando…</p>
+            }
+            else if (_panorama is null || _panorama.Count == 0)
+            {
+                <p class="psa-notice">No tenés empresas asignadas.</p>
+            }
+            else
+            {
+                var pv = PanoramaVista();
+                if (_verTodas)
                 {
-                    <p class="psa-muted">Cargando…</p>
-                }
-                else if (_panorama is null || _panorama.Count == 0)
-                {
-                    <p class="psa-notice">No tenés empresas asignadas.</p>
-                }
-                else
-                {
-                    var pv = PanoramaVista();
                     <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
                         <PsaStat Label="Empresas" Value="@($"{pv.Count} / {_panorama.Count}")" />
                         <PsaStat Label="Pendientes de emitir" Value="@pv.Sum(f => f.Pendientes).ToString()"
                                  State="@(pv.Sum(f => f.Pendientes) > 0 ? "warn" : "ok")" />
                     </div>
+                }
 
-                    <p class="psa-muted" style="margin-bottom:.4rem">
-                        Clic en una empresa para ver y generar sus comprobantes.
-                        @if (_fEmpresa.Length > 0)
-                        {
-                            <button type="button" class="psa-linkbtn" @onclick="() => _fEmpresa = string.Empty">Limpiar filtro</button>
-                        }
-                    </p>
+                <p class="psa-muted" style="margin-bottom:.4rem">
+                    Clic en una empresa para ver y generar sus comprobantes.
+                    @if (_fEmpresa.Length > 0)
+                    {
+                        <button type="button" class="psa-linkbtn" @onclick="() => _fEmpresa = string.Empty">Limpiar filtro</button>
+                    }
+                </p>
 
                     <div style="overflow-x:auto">
                     <table class="psa-table psa-table--interactiva">
@@ -141,16 +148,9 @@ else
                 }
             </ChildContent>
         </PsaCard>
-    }
 
     <PsaCard Title="@TituloLista">
         <Actions>
-            @if (_puedeTodas)
-            {
-                <PsaButton Variant="ghost" OnClick="AlternarAlcance" Disabled="_cargando || _generando">
-                    @(_verTodas ? "Ver solo mi empresa" : "Ver todas las empresas")
-                </PsaButton>
-            }
             @if (_verTodas && _empresaSel is not null)
             {
                 <button type="button" class="psa-linkbtn" @onclick="QuitarSeleccion">Ver todas</button>
@@ -483,8 +483,7 @@ else
     private bool _puedeVer;
     private bool _puedeGenerar;
 
-    // Alcance multi-empresa (como Retenciones): requiere permiso de lote.
-    private bool _puedeTodas;
+    // Alcance multi-empresa (como Retenciones): disponible para quien puede generar.
     private bool _verTodas;
     private IReadOnlyList<EmpresaDelUsuario> _empresasUsuario = Array.Empty<EmpresaDelUsuario>();
     private IReadOnlyList<FilaPanorama>? _panorama;
@@ -535,6 +534,11 @@ else
     private string TituloLista => _verTodas && _empresaSelNombre is not null
         ? $"{Titulo} — {_empresaSelNombre}"
         : Titulo;
+
+    // "Ver todas las empresas" se ofrece a quien puede generar / procesar lote en
+    // su empresa (mismo gate que el botón «Procesar lote»). Es solo lectura de los
+    // pendientes de las empresas asignadas al usuario.
+    private bool PuedeTodas => GateProvisional || _puedeGenerar;
 
     protected override async Task OnInitializedAsync()
     {
@@ -590,20 +594,11 @@ else
         _empresasUsuario = dir is null
             ? Array.Empty<EmpresaDelUsuario>()
             : await dir.EmpresasDelUsuarioAsync(_usuario);
-        _puedeTodas = await EvaluarPuedeTodasAsync(dir);
-        if (!_puedeTodas) _verTodas = false;
+        if (!PuedeTodas) _verTodas = false;
 
         _permisosCargados = true;
 
         await Recargar();
-    }
-
-    private async Task<bool> EvaluarPuedeTodasAsync(ISecurityDirectory? dir)
-    {
-        if (GateProvisional) return true;
-        if (dir is null || _ruc is null) return _puedeGenerar;
-        if (PermisoLote is not null) return await dir.TienePermisoAsync(_usuario, _ruc, PermisoLote);
-        return _puedeGenerar;
     }
 
     private async Task AlternarAlcance()
@@ -658,10 +653,7 @@ else
             var d = _desde.ToDateTime(TimeOnly.MinValue);
             var h = _hasta.ToDateTime(TimeOnly.MinValue);
 
-            if (_verTodas)
-            {
-                await CargarPanorama(d, h);
-            }
+            await CargarPanorama(d, h);
 
             if (ModoMulti)
             {
@@ -716,7 +708,9 @@ else
         _panoramaCargando = true;
         try
         {
-            var empresas = _empresasUsuario.Select(e => (e.Ruc, e.Nombre)).ToList();
+            var empresas = _verTodas
+                ? _empresasUsuario.Select(e => (e.Ruc, e.Nombre)).ToList()
+                : new List<(string Ruc, string Nombre)> { (_ruc!, _empresaNombre ?? _ruc!) };
             _panorama = await _tablero.PanoramaAsync(empresas, CodDoc,
                 (ruc, ct) => ContarPendientesAsync(ruc, d, h, ct));
         }
