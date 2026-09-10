@@ -703,7 +703,12 @@ else
             if (dir is not null)
             {
                 var usuario = await UsuarioActual();
-                _puedeTodas = await dir.TienePermisoAsync(usuario, _rucSesion, Permisos.HacerRetencionesLote);
+                // Mismo criterio que Facturación Electrónica: "ver todas" se ofrece a
+                // quien puede generar retenciones (o tiene el permiso de lote). Es
+                // solo lectura del panorama; ejecutar sigue con sus propios controles.
+                var permisos = await dir.PermisosAsync(usuario, _rucSesion);
+                _puedeTodas = permisos.Contains(Permisos.HacerRetencion)
+                    || permisos.Contains(Permisos.HacerRetencionesLote);
             }
             if (!_puedeTodas) _verTodas = false;
         }
