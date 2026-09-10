@@ -458,15 +458,22 @@ else
             {
                 try
                 {
-                    _pendientes = Tipo switch
+                    var crudos = Tipo switch
                     {
                         TipoComprobanteFe.Factura => (await _procesador.ListarFacturasPendientesAsync(_ruc, d, h))
-                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)).ToList(),
+                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
                         TipoComprobanteFe.NotaCredito => (await _procesador.ListarNotasCreditoPendientesAsync(_ruc, d, h))
-                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)).ToList(),
+                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
                         _ => (await _procesador.ListarLiquidacionesPendientesAsync(_ruc, d, h))
-                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)).ToList(),
+                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
                     };
+
+                    // Descontar los que ya se emitieron (están en Facturas con DatilId),
+                    // para no mostrarlos duplicados en "guardados" y "pendientes".
+                    var yaEmitidos = await _tablero.PostOrdersEmitidosAsync(_ruc, CodDoc);
+                    _pendientes = crudos
+                        .Where(p => !string.IsNullOrEmpty(p.PostOrder) && !yaEmitidos.Contains(p.PostOrder))
+                        .ToList();
                 }
                 catch (Exception ex)
                 {

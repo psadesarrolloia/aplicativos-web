@@ -140,6 +140,24 @@ public sealed class TableroComprobantes(IDbContextFactory<PeachEbillsContext> co
             .ToList();
     }
 
+    /// <summary>
+    /// <c>PostOrderPeach</c> de todos los comprobantes de un tipo ya emitidos por
+    /// la empresa (sin filtro de fecha). Sirve para descontarlos de la lista de
+    /// pendientes de Sage 50 y no mostrarlos duplicados.
+    /// </summary>
+    public async Task<HashSet<string>> PostOrdersEmitidosAsync(
+        string ruc, string codDoc, CancellationToken cancellationToken = default)
+    {
+        await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var pos = await db.Facturas.AsNoTracking()
+            .Where(f => f.TransmitterRuc == ruc && f.CodDoc == codDoc && f.PostOrderPeach != null)
+            .Select(f => f.PostOrderPeach!)
+            .ToListAsync(cancellationToken);
+
+        return new HashSet<string>(pos, StringComparer.Ordinal);
+    }
+
     public async Task<ComprobanteDetalle?> DetalleAsync(int facturaId, CancellationToken cancellationToken = default)
     {
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);
