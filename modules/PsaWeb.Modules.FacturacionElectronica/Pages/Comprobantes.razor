@@ -52,19 +52,116 @@ else
             </p>
         }
         <p class="psa-muted" style="margin-top:.5rem">
-            Empresa: <strong>@_empresaNombre</strong> · Ambiente:
+            Empresa: <strong>@(_verTodas ? "todas las asignadas" : _empresaNombre)</strong> · Ambiente:
             <strong>@AmbienteTexto(_ambiente)</strong>
         </p>
     </PsaCard>
 
-    <PsaCard Title="@($"{Titulo}")">
+    @if (_verTodas)
+    {
+        <PsaCard Title="Empresas">
+            <Actions>
+                <PsaButton Variant="secondary" OnClick="Recargar" Disabled="_cargando || _generando">
+                    @(_panoramaCargando ? "Actualizando…" : "Actualizar")
+                </PsaButton>
+            </Actions>
+            <ChildContent>
+                @if (_panorama is null && _panoramaCargando)
+                {
+                    <p class="psa-muted">Cargando…</p>
+                }
+                else if (_panorama is null || _panorama.Count == 0)
+                {
+                    <p class="psa-notice">No tenés empresas asignadas.</p>
+                }
+                else
+                {
+                    var pv = PanoramaVista();
+                    <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
+                        <PsaStat Label="Empresas" Value="@($"{pv.Count} / {_panorama.Count}")" />
+                        <PsaStat Label="Pendientes de emitir" Value="@pv.Sum(f => f.Pendientes).ToString()"
+                                 State="@(pv.Sum(f => f.Pendientes) > 0 ? "warn" : "ok")" />
+                    </div>
+
+                    <p class="psa-muted" style="margin-bottom:.4rem">
+                        Clic en una empresa para ver y generar sus comprobantes.
+                        @if (_fEmpresa.Length > 0)
+                        {
+                            <button type="button" class="psa-linkbtn" @onclick="() => _fEmpresa = string.Empty">Limpiar filtro</button>
+                        }
+                    </p>
+
+                    <div style="overflow-x:auto">
+                    <table class="psa-table psa-table--interactiva">
+                        <thead>
+                            <tr>
+                                <th class="sortable" @onclick="() => OrdenarPan(ColP.Empresa)">Empresa @FlechaPan(ColP.Empresa)</th>
+                                <th>RUC</th>
+                                <th class="num sortable" @onclick="() => OrdenarPan(ColP.Pendientes)">Pendientes @FlechaPan(ColP.Pendientes)</th>
+                                <th class="num sortable" @onclick="() => OrdenarPan(ColP.Guardados)">Guardados @FlechaPan(ColP.Guardados)</th>
+                                <th class="sortable" @onclick="() => OrdenarPan(ColP.Ultima)">Última emisión @FlechaPan(ColP.Ultima)</th>
+                            </tr>
+                            <tr class="psa-table__filtros">
+                                <th><input class="@ClaseFiltro(_fEmpresa)" placeholder="filtrar…" @bind="_fEmpresa" @bind:event="oninput" /></th>
+                                <th></th><th></th><th></th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (pv.Count == 0)
+                            {
+                                <tr><td colspan="5" class="psa-muted">Ninguna empresa coincide con el filtro.</td></tr>
+                            }
+                            @foreach (var f in pv)
+                            {
+                                <tr class="@(f.Ruc == _empresaSel ? "sel" : null)" style="cursor:pointer"
+                                    @onclick="() => SeleccionarEmpresa(f)">
+                                    <td>@f.Empresa</td>
+                                    <td>@f.Ruc</td>
+                                    <td class="num">
+                                        @if (f.Error is not null)
+                                        {
+                                            <span title="@f.Error">—</span>
+                                        }
+                                        else
+                                        {
+                                            @f.Pendientes
+                                        }
+                                    </td>
+                                    <td class="num">@f.Guardados</td>
+                                    <td>@(f.UltimaEmision is { } u ? u.ToString("dd/MM/yyyy") : "—")</td>
+                                </tr>
+                                @if (f.Error is not null)
+                                {
+                                    <tr><td colspan="5" class="psa-muted" style="font-size:.85rem">@f.Error</td></tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                    </div>
+                }
+            </ChildContent>
+        </PsaCard>
+    }
+
+    <PsaCard Title="@TituloLista">
         <Actions>
+            @if (_puedeTodas)
+            {
+                <PsaButton Variant="ghost" OnClick="AlternarAlcance" Disabled="_cargando || _generando">
+                    @(_verTodas ? "Ver solo mi empresa" : "Ver todas las empresas")
+                </PsaButton>
+            }
+            @if (_verTodas && _empresaSel is not null)
+            {
+                <button type="button" class="psa-linkbtn" @onclick="QuitarSeleccion">Ver todas</button>
+            }
             <PsaButton Variant="secondary" OnClick="Recargar" Disabled="_cargando || _generando">
                 @(_cargando ? "Actualizando…" : "Actualizar")
             </PsaButton>
             @if (_puedeGenerar)
             {
-                <PsaButton Variant="primary" OnClick="ProcesarLote" Disabled="_cargando || _generando">
+                <PsaButton Variant="primary" OnClick="ProcesarLote"
+                           Disabled="_cargando || _generando || ModoMulti">
                     @(_generando ? "Procesando…" : "Procesar lote")
                 </PsaButton>
             }
@@ -72,11 +169,22 @@ else
         <ChildContent>
             <div style="display:flex; gap:1rem; align-items:end; flex-wrap:wrap; margin-bottom:.75rem">
                 <PsaDateRange From="_desde" FromChanged="v => _desde = v" To="_hasta" ToChanged="v => _hasta = v" />
-                <label class="psa-check" style="display:inline-flex; gap:.4rem; align-items:center">
-                    <input type="checkbox" @bind="_incluirPendientes" @bind:after="Recargar" />
-                    <span>Incluir pendientes de emitir@(_pendientes.Count > 0 ? $" ({_pendientes.Count})" : "")</span>
-                </label>
+                @if (!ModoMulti)
+                {
+                    <label class="psa-check" style="display:inline-flex; gap:.4rem; align-items:center">
+                        <input type="checkbox" @bind="_incluirPendientes" @bind:after="Recargar" />
+                        <span>Incluir pendientes de emitir@(_pendientes.Count > 0 ? $" ({_pendientes.Count})" : "")</span>
+                    </label>
+                }
             </div>
+
+            @if (ModoMulti)
+            {
+                <p class="psa-muted" style="margin-bottom:.75rem">
+                    Mostrando los comprobantes <strong>guardados</strong> de todas tus empresas. Los pendientes de
+                    emitir se cuentan por empresa en la tabla de arriba; entrá a una para generarlos.
+                </p>
+            }
 
             @if (_error is not null)
             {
@@ -109,7 +217,7 @@ else
                 <p class="psa-muted" style="margin-bottom:.4rem">
                     @vista.Count de @_emitidos.Count guardado@(_emitidos.Count == 1 ? "" : "s")
                     @if (_emitidos.Count >= Tope) { <text> (tope @Tope — acotá por fecha)</text> }
-                    @if (_incluirPendientes) { <text> · @_pendientes.Count pendiente@(_pendientes.Count == 1 ? "" : "s")</text> }
+                    @if (_incluirPendientes && !ModoMulti) { <text> · @_pendientes.Count pendiente@(_pendientes.Count == 1 ? "" : "s")</text> }
                     @if (TieneFiltros)
                     {
                         <button type="button" class="psa-linkbtn" @onclick="LimpiarFiltros">Limpiar filtros</button>
@@ -121,6 +229,10 @@ else
                     <thead>
                         <tr>
                             <th class="sortable" @onclick="() => Ordenar(Col.Fecha)">Fecha @Flecha(Col.Fecha)</th>
+                            @if (MostrarColEmpresa)
+                            {
+                                <th class="sortable" @onclick="() => Ordenar(Col.Empresa)">Empresa @Flecha(Col.Empresa)</th>
+                            }
                             <th class="sortable" @onclick="() => Ordenar(Col.Numero)">Número @Flecha(Col.Numero)</th>
                             <th>Secuencial</th>
                             <th class="sortable" @onclick="() => Ordenar(Col.Persona)">@PersonaCol @Flecha(Col.Persona)</th>
@@ -132,19 +244,23 @@ else
                         </tr>
                         <tr class="psa-table__filtros">
                             <th></th>
-                            <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_fNumero" @bind:event="oninput" /></th>
+                            @if (MostrarColEmpresa)
+                            {
+                                <th><input class="@ClaseFiltro(_fEmpresa)" placeholder="filtrar…" @bind="_fEmpresa" @bind:event="oninput" /></th>
+                            }
+                            <th><input class="@ClaseFiltro(_fNumero)" placeholder="filtrar…" @bind="_fNumero" @bind:event="oninput" /></th>
                             <th></th>
-                            <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_fPersona" @bind:event="oninput" /></th>
+                            <th><input class="@ClaseFiltro(_fPersona)" placeholder="filtrar…" @bind="_fPersona" @bind:event="oninput" /></th>
                             <th></th><th></th>
                             <th>
-                                <select class="psa-input psa-input--sm" @bind="_fAmbiente">
+                                <select class="@ClaseFiltro(_fAmbiente)" @bind="_fAmbiente">
                                     <option value="">todos</option>
                                     <option value="1">Pruebas</option>
                                     <option value="2">Producción</option>
                                 </select>
                             </th>
                             <th class="num">
-                                <select class="psa-input psa-input--sm" @bind="_fDatil">
+                                <select class="@ClaseFiltro(_fDatil)" @bind="_fDatil">
                                     <option value="">todos</option>
                                     <option value="ok">✓ emitido</option>
                                     <option value="sinid">– sin id</option>
@@ -156,12 +272,16 @@ else
                     <tbody>
                         @if (vista.Count == 0)
                         {
-                            <tr><td colspan="9" class="psa-muted">Ningún comprobante coincide con el filtro.</td></tr>
+                            <tr><td colspan="@Cols" class="psa-muted">Ningún comprobante coincide con el filtro.</td></tr>
                         }
                         @foreach (var r in vista)
                         {
                             <tr style="cursor:pointer" @onclick="() => AbrirDetalle(r.FacturaId)">
                                 <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+                                @if (MostrarColEmpresa)
+                                {
+                                    <td title="@r.Ruc">@r.Empresa</td>
+                                }
                                 <td>@r.Numero</td>
                                 <td>@r.Secuencial</td>
                                 <td title="@r.PersonaId">@(r.PersonaNombre ?? r.PersonaId ?? "—")</td>
@@ -192,10 +312,10 @@ else
                         }
                     </tbody>
 
-                    @if (_incluirPendientes && _pendientes.Count > 0)
+                    @if (_incluirPendientes && !ModoMulti && _pendientes.Count > 0)
                     {
                         <tbody>
-                            <tr class="psa-table__grupo"><td colspan="9">Pendientes de emitir — @_pendientes.Count</td></tr>
+                            <tr class="psa-table__grupo"><td colspan="@Cols">Pendientes de emitir — @_pendientes.Count</td></tr>
                             @foreach (var p in _pendientes)
                             {
                                 var res = _resultados.GetValueOrDefault(p.PostOrder);
@@ -235,7 +355,7 @@ else
                                 </tr>
                                 @if (res is { Estado: EstadoComprobante.Error })
                                 {
-                                    <tr><td colspan="9" class="psa-muted" style="font-size:.85rem">@string.Join(" · ", res.Mensajes)</td></tr>
+                                    <tr><td colspan="@Cols" class="psa-muted" style="font-size:.85rem">@string.Join(" · ", res.Mensajes)</td></tr>
                                 }
                             }
                         </tbody>
@@ -346,13 +466,15 @@ else
     private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
     private const string DatilVerBase = "https://app.datil.co/ver/";
     private const int Tope = 200;
-    private enum Col { Fecha, Numero, Persona, Iva, Total, Ambiente }
+    private enum Col { Fecha, Empresa, Numero, Persona, Iva, Total, Ambiente }
+    private enum ColP { Empresa, Pendientes, Guardados, Ultima }
 
     private ProcesadorComprobantesVenta? _procesador;
     private TableroComprobantes? _tablero;
     private EmpresaActualService? _empresaActual;
 
     private string? _ruc;
+    private string? _rucSesion;
     private string? _empresaNombre;
     private short _ambiente = 2;
     private string _usuario = "web";
@@ -361,12 +483,23 @@ else
     private bool _puedeVer;
     private bool _puedeGenerar;
 
+    // Alcance multi-empresa (como Retenciones): requiere permiso de lote.
+    private bool _puedeTodas;
+    private bool _verTodas;
+    private IReadOnlyList<EmpresaDelUsuario> _empresasUsuario = Array.Empty<EmpresaDelUsuario>();
+    private IReadOnlyList<FilaPanorama>? _panorama;
+    private bool _panoramaCargando;
+    private string? _empresaSel;
+    private string? _empresaSelNombre;
+    private ColP _panCol = ColP.Pendientes;
+    private bool _panAsc;
+
     private DateOnly _desde = DateOnly.FromDateTime(DateTime.Today.AddDays(-30));
     private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
 
     private bool _cargando;
     private bool _generando;
-    private bool _incluirPendientes;
+    private bool _incluirPendientes = true;
     private string? _error;
 
     private IReadOnlyList<ComprobanteReciente> _emitidos = Array.Empty<ComprobanteReciente>();
@@ -377,7 +510,7 @@ else
     private ComprobanteDetalle? _detalle;
     private bool _detalleCargando;
 
-    private string _fNumero = "", _fPersona = "", _fAmbiente = "", _fDatil = "";
+    private string _fEmpresa = "", _fNumero = "", _fPersona = "", _fAmbiente = "", _fDatil = "";
     private Col _ordCol = Col.Fecha;
     private bool _ordAsc;
 
@@ -391,6 +524,17 @@ else
     };
 
     private string PersonaCol => Tipo == TipoComprobanteFe.Liquidacion ? "Proveedor" : "Cliente";
+
+    // RUC contra el que se listan/generan comprobantes de una sola empresa.
+    // En modo "ver todas" sin empresa elegida es null (vista consolidada).
+    private string? RucTrabajo => _verTodas ? _empresaSel : _ruc;
+    private bool ModoMulti => _verTodas && _empresaSel is null;
+    private bool MostrarColEmpresa => ModoMulti;
+    private int Cols => MostrarColEmpresa ? 10 : 9;
+
+    private string TituloLista => _verTodas && _empresaSelNombre is not null
+        ? $"{Titulo} — {_empresaSelNombre}"
+        : Titulo;
 
     protected override async Task OnInitializedAsync()
     {
@@ -414,14 +558,19 @@ else
     private async Task AplicarEmpresa()
     {
         _ruc = _empresaActual?.Ruc;
+        _rucSesion = _ruc;
         _empresaNombre = _empresaActual?.Nombre;
         _ambiente = (short)(_empresaActual?.Ambiente ?? Ambiente.Produccion);
         _emitidos = Array.Empty<ComprobanteReciente>();
         _pendientes = Array.Empty<Pendiente>();
+        _panorama = null;
+        _empresaSel = null;
+        _empresaSelNombre = null;
         _resultados.Clear();
         _resumenLote = null;
         _error = null;
         _permisosCargados = false;
+        ResetFiltros();
 
         if (_ruc is null || _procesador is null) return;
 
@@ -437,9 +586,66 @@ else
             _puedeGenerar = permisos.Contains(PermisoGenerar)
                 || (PermisoLote is not null && permisos.Contains(PermisoLote));
         }
+
+        _empresasUsuario = dir is null
+            ? Array.Empty<EmpresaDelUsuario>()
+            : await dir.EmpresasDelUsuarioAsync(_usuario);
+        _puedeTodas = await EvaluarPuedeTodasAsync(dir);
+        if (!_puedeTodas) _verTodas = false;
+
         _permisosCargados = true;
 
         await Recargar();
+    }
+
+    private async Task<bool> EvaluarPuedeTodasAsync(ISecurityDirectory? dir)
+    {
+        if (GateProvisional) return true;
+        if (dir is null || _ruc is null) return _puedeGenerar;
+        if (PermisoLote is not null) return await dir.TienePermisoAsync(_usuario, _ruc, PermisoLote);
+        return _puedeGenerar;
+    }
+
+    private async Task AlternarAlcance()
+    {
+        _verTodas = !_verTodas;
+        _empresaSel = null;
+        _empresaSelNombre = null;
+        _resumenLote = null;
+        _resultados.Clear();
+        _error = null;
+        ResetFiltros();
+        await Recargar();
+    }
+
+    private async Task SeleccionarEmpresa(FilaPanorama f)
+    {
+        if (_empresaSel == f.Ruc)
+        {
+            await QuitarSeleccion();
+            return;
+        }
+        _empresaSel = f.Ruc;
+        _empresaSelNombre = f.Empresa;
+        _resumenLote = null;
+        await Recargar();
+    }
+
+    private async Task QuitarSeleccion()
+    {
+        _empresaSel = null;
+        _empresaSelNombre = null;
+        _resumenLote = null;
+        await Recargar();
+    }
+
+    private void ResetFiltros()
+    {
+        _fEmpresa = _fNumero = _fPersona = _fAmbiente = _fDatil = "";
+        _ordCol = Col.Fecha;
+        _ordAsc = false;
+        _desde = DateOnly.FromDateTime(DateTime.Today.AddDays(-30));
+        _hasta = DateOnly.FromDateTime(DateTime.Today);
     }
 
     private async Task Recargar()
@@ -452,43 +658,45 @@ else
             var d = _desde.ToDateTime(TimeOnly.MinValue);
             var h = _hasta.ToDateTime(TimeOnly.MinValue);
 
-            _emitidos = await _tablero.RecientesAsync(_ruc, CodDoc, d, h, Tope);
-
-            if (_incluirPendientes)
+            if (_verTodas)
             {
-                try
-                {
-                    var crudos = Tipo switch
-                    {
-                        TipoComprobanteFe.Factura => (await _procesador.ListarFacturasPendientesAsync(_ruc, d, h))
-                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
-                        TipoComprobanteFe.NotaCredito => (await _procesador.ListarNotasCreditoPendientesAsync(_ruc, d, h))
-                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
-                        _ => (await _procesador.ListarLiquidacionesPendientesAsync(_ruc, d, h))
-                            .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
-                    };
+                await CargarPanorama(d, h);
+            }
 
-                    // Descontar los que ya se emitieron (están en Facturas con DatilId),
-                    // para no mostrarlos duplicados en "guardados" y "pendientes".
-                    var yaEmitidos = await _tablero.PostOrdersEmitidosAsync(_ruc, CodDoc);
-                    _pendientes = crudos
-                        .Where(p => !string.IsNullOrEmpty(p.PostOrder) && !yaEmitidos.Contains(p.PostOrder))
-                        .ToList();
-                }
-                catch (Exception ex)
-                {
-                    _pendientes = Array.Empty<Pendiente>();
-                    var baseNoDisponible = ex.Message.Contains("2301")
-                        || ex.Message.Contains("Cannot locate the named database", StringComparison.OrdinalIgnoreCase);
-                    _error = baseNoDisponible
-                        ? "No se pudieron leer los pendientes: la base de Sage 50 de esta empresa no está disponible en esta máquina."
-                        : $"No se pudieron leer los pendientes de Sage 50: {Acortar(ex.Message)}";
-                    Logger.LogWarning(ex, "Pendientes {Tipo} de {Ruc}", Tipo, _ruc);
-                }
+            if (ModoMulti)
+            {
+                var rucs = _empresasUsuario.Select(e => e.Ruc).ToList();
+                _emitidos = rucs.Count == 0
+                    ? Array.Empty<ComprobanteReciente>()
+                    : await _tablero.RecientesAsync(rucs, CodDoc, d, h, Tope);
+                _pendientes = Array.Empty<Pendiente>();
             }
             else
             {
-                _pendientes = Array.Empty<Pendiente>();
+                var ruc = RucTrabajo!;
+                _emitidos = await _tablero.RecientesAsync(ruc, CodDoc, d, h, Tope);
+
+                if (_incluirPendientes)
+                {
+                    try
+                    {
+                        var crudos = await ListarCrudosAsync(ruc, d, h);
+                        var yaEmitidos = await _tablero.PostOrdersEmitidosAsync(ruc, CodDoc);
+                        _pendientes = crudos
+                            .Where(p => !string.IsNullOrEmpty(p.PostOrder) && !yaEmitidos.Contains(p.PostOrder))
+                            .ToList();
+                    }
+                    catch (Exception ex)
+                    {
+                        _pendientes = Array.Empty<Pendiente>();
+                        _error = PendientesNoDisponibles(ex);
+                        Logger.LogWarning(ex, "Pendientes {Tipo} de {Ruc}", Tipo, ruc);
+                    }
+                }
+                else
+                {
+                    _pendientes = Array.Empty<Pendiente>();
+                }
             }
         }
         catch (Exception ex)
@@ -502,13 +710,66 @@ else
         }
     }
 
+    private async Task CargarPanorama(DateTime d, DateTime h)
+    {
+        if (_tablero is null) return;
+        _panoramaCargando = true;
+        try
+        {
+            var empresas = _empresasUsuario.Select(e => (e.Ruc, e.Nombre)).ToList();
+            _panorama = await _tablero.PanoramaAsync(empresas, CodDoc,
+                (ruc, ct) => ContarPendientesAsync(ruc, d, h, ct));
+        }
+        catch (Exception ex)
+        {
+            _panorama = Array.Empty<FilaPanorama>();
+            _error = $"No se pudo cargar el panorama: {ex.Message}";
+            Logger.LogError(ex, "Panorama {Tipo}", Tipo);
+        }
+        finally
+        {
+            _panoramaCargando = false;
+        }
+    }
+
+    private async Task<int> ContarPendientesAsync(string ruc, DateTime d, DateTime h, CancellationToken ct)
+    {
+        var crudos = await ListarCrudosAsync(ruc, d, h);
+        var yaEmitidos = await _tablero!.PostOrdersEmitidosAsync(ruc, CodDoc, ct);
+        return crudos.Count(p => !string.IsNullOrEmpty(p.PostOrder) && !yaEmitidos.Contains(p.PostOrder));
+    }
+
+    private async Task<List<Pendiente>> ListarCrudosAsync(string ruc, DateTime d, DateTime h)
+    {
+        IEnumerable<Pendiente> crudos = Tipo switch
+        {
+            TipoComprobanteFe.Factura => (await _procesador!.ListarFacturasPendientesAsync(ruc, d, h))
+                .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
+            TipoComprobanteFe.NotaCredito => (await _procesador!.ListarNotasCreditoPendientesAsync(ruc, d, h))
+                .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
+            _ => (await _procesador!.ListarLiquidacionesPendientesAsync(ruc, d, h))
+                .Select(p => new Pendiente(p.PostOrder, p.NumeroReferencia, p.Fecha)),
+        };
+        return crudos.ToList();
+    }
+
+    private static string PendientesNoDisponibles(Exception ex)
+    {
+        var baseNoDisponible = ex.Message.Contains("2301")
+            || ex.Message.Contains("Cannot locate the named database", StringComparison.OrdinalIgnoreCase);
+        return baseNoDisponible
+            ? "No se pudieron leer los pendientes: la base de Sage 50 de esta empresa no está disponible en esta máquina."
+            : $"No se pudieron leer los pendientes de Sage 50: {Acortar(ex.Message)}";
+    }
+
     private async Task Generar(string postOrder)
     {
-        if (_procesador is null || _ruc is null || !_puedeGenerar) return;
+        var ruc = RucTrabajo;
+        if (_procesador is null || ruc is null || !_puedeGenerar) return;
         _generando = true;
         try
         {
-            _resultados[postOrder] = await ProcesarUno(postOrder);
+            _resultados[postOrder] = await ProcesarUno(ruc, postOrder);
             await Recargar();
         }
         catch (Exception ex)
@@ -522,16 +783,17 @@ else
         }
     }
 
-    private Task<ResultadoComprobante> ProcesarUno(string postOrder) => Tipo switch
+    private Task<ResultadoComprobante> ProcesarUno(string ruc, string postOrder) => Tipo switch
     {
-        TipoComprobanteFe.Factura => _procesador!.ProcesarFacturaAsync(_ruc!, postOrder, _ambiente, _usuario),
-        TipoComprobanteFe.NotaCredito => _procesador!.ProcesarNotaCreditoAsync(_ruc!, postOrder, _ambiente, _usuario),
-        _ => _procesador!.ProcesarLiquidacionAsync(_ruc!, postOrder, _ambiente, _usuario),
+        TipoComprobanteFe.Factura => _procesador!.ProcesarFacturaAsync(ruc, postOrder, _ambiente, _usuario),
+        TipoComprobanteFe.NotaCredito => _procesador!.ProcesarNotaCreditoAsync(ruc, postOrder, _ambiente, _usuario),
+        _ => _procesador!.ProcesarLiquidacionAsync(ruc, postOrder, _ambiente, _usuario),
     };
 
     private async Task ProcesarLote()
     {
-        if (_procesador is null || _ruc is null || !_puedeGenerar) return;
+        var ruc = RucTrabajo;
+        if (_procesador is null || ruc is null || !_puedeGenerar) return;
         _generando = true;
         _error = null;
         try
@@ -540,9 +802,9 @@ else
             var h = _hasta.ToDateTime(TimeOnly.MinValue);
             _resumenLote = Tipo switch
             {
-                TipoComprobanteFe.Factura => await _procesador.ProcesarLoteFacturasAsync(_ruc, d, h, _ambiente, _usuario),
-                TipoComprobanteFe.NotaCredito => await _procesador.ProcesarLoteNotasCreditoAsync(_ruc, d, h, _ambiente, _usuario),
-                _ => await _procesador.ProcesarLoteLiquidacionesAsync(_ruc, d, h, _ambiente, _usuario),
+                TipoComprobanteFe.Factura => await _procesador.ProcesarLoteFacturasAsync(ruc, d, h, _ambiente, _usuario),
+                TipoComprobanteFe.NotaCredito => await _procesador.ProcesarLoteNotasCreditoAsync(ruc, d, h, _ambiente, _usuario),
+                _ => await _procesador.ProcesarLoteLiquidacionesAsync(ruc, d, h, _ambiente, _usuario),
             };
             foreach (var r in _resumenLote.Resultados) _resultados[r.PostOrder] = r;
             await Recargar();
@@ -550,7 +812,7 @@ else
         catch (Exception ex)
         {
             _error = $"El lote falló: {ex.Message}";
-            Logger.LogError(ex, "Lote {Tipo} de {Ruc}", Tipo, _ruc);
+            Logger.LogError(ex, "Lote {Tipo} de {Ruc}", Tipo, ruc);
         }
         finally
         {
@@ -587,6 +849,9 @@ else
     {
         IEnumerable<ComprobanteReciente> q = _emitidos;
 
+        if (_fEmpresa.Length > 0)
+            q = q.Where(r => r.Empresa.Contains(_fEmpresa, StringComparison.OrdinalIgnoreCase)
+                          || r.Ruc.Contains(_fEmpresa, StringComparison.OrdinalIgnoreCase));
         if (_fNumero.Length > 0)
             q = q.Where(r => r.Numero.Contains(_fNumero, StringComparison.OrdinalIgnoreCase));
         if (_fPersona.Length > 0)
@@ -598,6 +863,7 @@ else
 
         q = _ordCol switch
         {
+            Col.Empresa => Orden(q, r => r.Empresa),
             Col.Numero => Orden(q, r => r.Numero),
             Col.Persona => Orden(q, r => r.PersonaNombre ?? r.PersonaId ?? ""),
             Col.Iva => Orden(q, r => r.Iva),
@@ -620,9 +886,42 @@ else
     private MarkupString Flecha(Col col) =>
         new(_ordCol == col ? (_ordAsc ? " ▲" : " ▼") : "");
 
-    private bool TieneFiltros => _fNumero.Length > 0 || _fPersona.Length > 0 || _fAmbiente.Length > 0 || _fDatil.Length > 0;
+    private IReadOnlyList<FilaPanorama> PanoramaVista()
+    {
+        if (_panorama is null) return Array.Empty<FilaPanorama>();
 
-    private void LimpiarFiltros() => _fNumero = _fPersona = _fAmbiente = _fDatil = "";
+        IEnumerable<FilaPanorama> q = _panorama;
+        if (_fEmpresa.Length > 0)
+            q = q.Where(f => f.Empresa.Contains(_fEmpresa, StringComparison.OrdinalIgnoreCase)
+                          || f.Ruc.Contains(_fEmpresa, StringComparison.OrdinalIgnoreCase));
+
+        q = _panCol switch
+        {
+            ColP.Empresa => _panAsc ? q.OrderBy(f => f.Empresa) : q.OrderByDescending(f => f.Empresa),
+            ColP.Guardados => _panAsc ? q.OrderBy(f => f.Guardados) : q.OrderByDescending(f => f.Guardados),
+            ColP.Ultima => _panAsc ? q.OrderBy(f => f.UltimaEmision ?? DateTime.MinValue) : q.OrderByDescending(f => f.UltimaEmision ?? DateTime.MinValue),
+            _ => _panAsc ? q.OrderBy(f => f.Pendientes) : q.OrderByDescending(f => f.Pendientes),
+        };
+        return q.ToList();
+    }
+
+    private void OrdenarPan(ColP col)
+    {
+        if (_panCol == col) _panAsc = !_panAsc;
+        else { _panCol = col; _panAsc = false; }
+    }
+
+    private MarkupString FlechaPan(ColP col) =>
+        new(_panCol == col ? (_panAsc ? " ▲" : " ▼") : "");
+
+    private bool TieneFiltros =>
+        _fEmpresa.Length > 0 || _fNumero.Length > 0 || _fPersona.Length > 0
+        || _fAmbiente.Length > 0 || _fDatil.Length > 0;
+
+    private void LimpiarFiltros() => _fEmpresa = _fNumero = _fPersona = _fAmbiente = _fDatil = "";
+
+    private static string ClaseFiltro(string valor) =>
+        "psa-input psa-input--sm" + (string.IsNullOrEmpty(valor) ? "" : " psa-input--activo");
 
     private static string AmbienteTexto(short ambiente) => ambiente == 1 ? "Pruebas" : "Producción";
 

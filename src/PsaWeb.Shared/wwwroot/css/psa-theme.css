@@ -313,6 +313,15 @@ a { color: var(--psa-magenta); }
 
 .psa-input--sm { width: 100%; padding: .25rem .4rem; font-size: .82rem; }
 
+/* Filtro con valor: se pinta con el magenta corporativo para que salte a la vista. */
+.psa-input--activo,
+.psa-input--activo:focus-visible {
+  color: var(--psa-magenta);
+  border-color: var(--psa-magenta);
+  font-weight: 600;
+}
+.psa-input--activo option { color: var(--psa-ink); font-weight: 400; }
+
 .psa-field { display: inline-flex; flex-direction: column; gap: .2rem; }
 .psa-field__lbl {
   font-size: .72rem;

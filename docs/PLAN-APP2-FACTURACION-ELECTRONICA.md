@@ -334,6 +334,21 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
   fix de ícono pendiente `f4fd679`**; env vars (`Correo__*` si se usa);
   smoke test en **DRY-RUN**. Sin emisión real (decisión 2026-09-07: nada real
   hasta migrar los 26 aplicativos).
+  - **Fix duplicación de pendientes (2026-09-10):** `TableroComprobantes.PostOrdersEmitidosAsync`
+    + `Comprobantes.razor` descuenta de los pendientes de Sage los que ya están
+    en `Facturas`. Deploy por swap de DLL.
+  - **F5b — 4 mejoras de UX (2026-09-10):**
+    1. Filtro con valor → tipografía + borde en magenta corporativo
+       (`.psa-input--activo`, clase compartida; aplicada también en `/retenciones`).
+    2. «Incluir pendientes de emitir» arranca **tildado** por defecto.
+    3. Los filtros (rápidos + rango de fechas + orden) se **resetean** al cambiar
+       de empresa/ambiente o de aplicativo.
+    4. **«Ver todas las empresas»** (gateado por el permiso de lote; en
+       liquidaciones, `GateProvisional`): panorama por empresa con pendientes/
+       guardados/última emisión (`TableroComprobantes.PanoramaAsync`), clic en
+       una empresa para entrar a generar. Igual patrón que `/retenciones`.
+    Requiere **redeploy completo** (cambia `psa-theme.css` → static web assets
+    con fingerprint/gzip/ETag; no basta el swap de DLL).
 
 Estimación: ~8–12 días de dev, concentrados en F2 y F3a (port fiel de ~720 LOC
 de lógica de esquema Sage con descuentos e IVA).

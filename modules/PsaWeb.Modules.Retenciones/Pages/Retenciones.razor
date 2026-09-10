@@ -111,20 +111,20 @@ else
                         <th class="sortable" @onclick="@(() => Ordenar(Col.UltimaEmision))">Última emisión @Flecha(Col.UltimaEmision)</th>
                     </tr>
                     <tr class="psa-table__filtros">
-                        <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_fRuc" @bind:event="oninput" /></th>
-                        <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_fEmpresa" @bind:event="oninput" /></th>
+                        <th><input class="@ClaseFiltro(_fRuc)" placeholder="filtrar…" @bind="_fRuc" @bind:event="oninput" /></th>
+                        <th><input class="@ClaseFiltro(_fEmpresa)" placeholder="filtrar…" @bind="_fEmpresa" @bind:event="oninput" /></th>
                         <th>
-                            <select class="psa-input psa-input--sm" @bind="_fAmbiente">
+                            <select class="@ClaseFiltro(_fAmbiente)" @bind="_fAmbiente">
                                 <option value="">todos</option>
                                 <option value="1">Pruebas</option>
                                 <option value="2">Producción</option>
                             </select>
                         </th>
                         <th class="num">
-                            <input class="psa-input psa-input--sm" type="number" min="0" placeholder="mín." @bind="_fPendientesMin" @bind:event="oninput" />
+                            <input class="@ClaseFiltro(_fPendientesMin)" type="number" min="0" placeholder="mín." @bind="_fPendientesMin" @bind:event="oninput" />
                         </th>
                         <th>
-                            <select class="psa-input psa-input--sm" @bind="_fEmision">
+                            <select class="@ClaseFiltro(_fEmision)" @bind="_fEmision">
                                 <option value="">todas</option>
                                 <option value="con">con emisiones</option>
                                 <option value="sin">sin emisiones</option>
@@ -310,20 +310,20 @@ else
                         <th></th>
                         @if (_empresaSel is null)
                         {
-                            <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_rfEmpresa" @bind:event="oninput" /></th>
+                            <th><input class="@ClaseFiltro(_rfEmpresa)" placeholder="filtrar…" @bind="_rfEmpresa" @bind:event="oninput" /></th>
                         }
-                        <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_rfNumero" @bind:event="oninput" /></th>
+                        <th><input class="@ClaseFiltro(_rfNumero)" placeholder="filtrar…" @bind="_rfNumero" @bind:event="oninput" /></th>
                         <th></th>
-                        <th><input class="psa-input psa-input--sm" placeholder="filtrar…" @bind="_rfProveedor" @bind:event="oninput" /></th>
+                        <th><input class="@ClaseFiltro(_rfProveedor)" placeholder="filtrar…" @bind="_rfProveedor" @bind:event="oninput" /></th>
                         <th>
-                            <select class="psa-input psa-input--sm" @bind="_rfAmbiente">
+                            <select class="@ClaseFiltro(_rfAmbiente)" @bind="_rfAmbiente">
                                 <option value="">todos</option>
                                 <option value="1">Pruebas</option>
                                 <option value="2">Producción</option>
                             </select>
                         </th>
                         <th class="num">
-                            <select class="psa-input psa-input--sm" @bind="_rfDatil">
+                            <select class="@ClaseFiltro(_rfDatil)" @bind="_rfDatil">
                                 <option value="">todos</option>
                                 <option value="ok">✓ emitida</option>
                                 <option value="sinid">– sin id</option>
@@ -1018,4 +1018,11 @@ else
     }
 
     private static string AmbienteTexto(short ambiente) => ambiente == 1 ? "Pruebas" : "Producción";
+
+    // Filtro con valor: se pinta con el magenta corporativo (clase compartida psa-input--activo).
+    private static string ClaseFiltro(string? valor) =>
+        "psa-input psa-input--sm" + (string.IsNullOrEmpty(valor) ? "" : " psa-input--activo");
+
+    private static string ClaseFiltro(int? valor) =>
+        "psa-input psa-input--sm" + (valor is null ? "" : " psa-input--activo");
 }
