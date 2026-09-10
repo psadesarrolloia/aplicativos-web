@@ -320,6 +320,16 @@ Mismo molde que app #1 (`F1→F5`, con `F3` dividido).
     `SolicitudAnulacionRetencion`.
   - Tests: 3 de `MapeadorEntidades`. Smoke: el Host arranca con el módulo
     registrado, todas las rutas resuelven. **206 tests solución.**
+  - **F4b — paridad de UX con Retenciones (2026-09-10):** `Data/TableroComprobantes`
+    (consultas de solo lectura sobre `Facturas`+`Details`+`Persons`+`NCdetail`):
+    `RecientesAsync(ruc, codDoc, desde, hasta, top)` + `DetalleAsync(facturaId)`.
+    `Comprobantes.razor` reescrita: lista de **guardados** (no solo pendientes),
+    columna **PDF** (`app.datil.co/ver/{id}/pdf`), **popup** de detalle (`PsaModal`:
+    cabecera + persona + líneas + totales + Ver PDF / Ver XML; NC muestra el doc.
+    modificado), **filtros** (número/persona/ambiente/datil) + **orden** por
+    columna + contador «X de Y» + «Limpiar filtros», checkbox **«Incluir
+    pendientes de emitir»**, **«Procesar lote»** para los 3 tipos con resumen.
+    2 tests de `TableroComprobantes`. **208 tests solución.**
 - **F5 — Deploy a `SERWEBPSA01`.** Redeploy del Host con el módulo nuevo **+ el
   fix de ícono pendiente `f4fd679`**; env vars (`Correo__*` si se usa);
   smoke test en **DRY-RUN**. Sin emisión real (decisión 2026-09-07: nada real

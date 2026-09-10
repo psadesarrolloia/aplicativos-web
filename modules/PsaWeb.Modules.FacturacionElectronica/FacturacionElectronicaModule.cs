@@ -35,6 +35,7 @@ public static class FacturacionElectronicaModule
 
         services.AddScoped<EmisorLookup>();
         services.AddScoped<ProcesadorComprobantesVenta>();
+        services.AddScoped<TableroComprobantes>();
 
         return services;
     }
