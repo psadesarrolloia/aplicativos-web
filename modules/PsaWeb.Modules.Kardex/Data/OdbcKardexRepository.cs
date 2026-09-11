@@ -44,7 +44,7 @@ internal sealed class OdbcKardexRepository : IKardexRepository
           AND InventoryCosts.TransDate < ?
           AND InventoryCosts.MajorType = 3
           AND LineItem.ItemID IN ({0})
-        ORDER BY LineItem.ItemID, InventoryCosts.TransDate
+        ORDER BY LineItem.ItemID, InventoryCosts.TransDate, InventoryCosts.PostOrderNumber
         """;
 
     // Q2 — movimientos del rango (compras y ventas).
@@ -58,7 +58,7 @@ internal sealed class OdbcKardexRepository : IKardexRepository
           AND (InventoryCosts.TransDate BETWEEN ? AND ?)
           AND InventoryCosts.MajorType <> 3
           AND LineItem.ItemID IN ({0})
-        ORDER BY LineItem.ItemID, InventoryCosts.TransDate, InventoryCosts.MajorType
+        ORDER BY LineItem.ItemID, InventoryCosts.TransDate, InventoryCosts.MajorType, InventoryCosts.PostOrderNumber
         """;
 
     // Q3 — saldo por movimiento, colapsada: todos los MajorType 3 cuyos PostOrder
@@ -73,7 +73,7 @@ internal sealed class OdbcKardexRepository : IKardexRepository
           AND InventoryCosts.MajorType = 3
           AND LineItem.ItemID IN ({0})
           AND InventoryCosts.PostOrderNumber IN ({1})
-        ORDER BY LineItem.ItemID, InventoryCosts.TransDate, InventoryCosts.MajorType
+        ORDER BY LineItem.ItemID, InventoryCosts.TransDate, InventoryCosts.MajorType, InventoryCosts.PostOrderNumber
         """;
 
     private const int LoteIn = 200;

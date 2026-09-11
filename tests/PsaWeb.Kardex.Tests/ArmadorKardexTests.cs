@@ -141,6 +141,20 @@ public class ArmadorKardexTests
     }
 
     [Fact]
+    public void Desempata_por_postorder_cuando_fecha_y_tipo_coinciden()
+    {
+        // Mismas fecha y MajorType: el orden lo fija PostOrder (determinista,
+        // a diferencia del .exe que ahí depende del orden físico de Pervasive).
+        var m3 = new CostoCrudo("CS-012", new DateTime(2026, 9, 1), "po3", 3, -300m, -10m, 30m, 2);
+        var m1 = new CostoCrudo("CS-012", new DateTime(2026, 9, 1), "po1", 1, -100m, -3m, 30m, 2);
+        var m2 = new CostoCrudo("CS-012", new DateTime(2026, 9, 1), "po2", 2, -200m, -6m, 30m, 2);
+
+        var filas = ArmadorKardex.Armar(new[] { Cs12 }, None, new[] { m3, m1, m2 }, None, Desde);
+
+        Assert.Equal(new[] { "po1", "po2", "po3" }, filas.Select(f => f.Referencia));
+    }
+
+    [Fact]
     public void Item_sin_datos_no_produce_filas()
     {
         var filas = ArmadorKardex.Armar(new[] { Cs12 }, None, None, None, Desde);

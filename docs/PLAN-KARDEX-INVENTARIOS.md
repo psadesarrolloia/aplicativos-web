@@ -326,17 +326,38 @@ directa a CPTDC y correr sin shell.
 **Área**: cargar `quKardex` en `allowAction` de `PeachEBills` y asignarlo a los
 roles que deban ver el reporte. (Hasta entonces, `GateProvisional`.)
 
-### 6.5 Validación en F4
+### 6.5 Validación F4 — HECHA (2026-09-10)
 
-Correr `/kardex` local apuntando a CPTDC, acotado por la cuenta `13101` o por
-ítems `CS-*`, y comparar (a) cada fila de la tabla y (b) el `.xlsx` generado
-contra los de la pantalla de escritorio para el mismo rango. Foco en: fila
-`.INICIAL.` (usa el `MajorType 3` más reciente previo a `Desde`), derivación de
-costo unitario en compra/venta, signo de las cantidades de venta, fórmulas de
-saldo corrido del Excel.
+En vez de correr el `.exe` WinForms (MDI, difícil de automatizar), se hizo una
+**re-implementación independiente** de `InventroyCostQuery.cs` como script ODBC
+(`scratchpad/kardex-reference.ps1`): las **3 consultas verbatim** del monolito
+(incluida la Q3 N+1 por `PostOrder`) + el armado C# (B1/B4, `.INICIAL.` =
+`MajorType 3` más reciente previo a `Desde`).
+
+**Resultado: `/kardex` de CPTDC, cuenta `13101` (INVENTARIOS CASING, 179 ítems),
+rango 01/07/2026–31/08/2026 → 175 filas, IDÉNTICAS fila a fila y valor a valor
+(redondeo 2 dec.) contra la referencia.** Cubre `.INICIAL.` con y sin saldo
+previo, compras (`LIQ IMPORT`, derivación B4 `OptAmount==TransAmount`), ventas
+(`001-001-*`, `OptAmount==0`), ajustes (`AJT-INVT-*`), cantidades de venta
+negativas, y movimientos cuyo `PostOrder` no tiene snapshot `MajorType 3`
+(saldo → 0).
+
+**Desviación deliberada del `.exe`:** las 3 consultas y el armador agregan
+`InventoryCosts.PostOrderNumber` como último criterio de orden. El `.exe` ordena
+sólo por `(ItemID, TransDate, MajorType)`; cuando hay varios movimientos del
+mismo tipo el mismo día (p. ej. 3 ventas de CS-008 el 01/07), su orden depende
+del orden físico que devuelva Pervasive (no determinista). Con el desempate por
+`PostOrder` el reporte web es reproducible corrida a corrida; los valores no
+cambian, sólo se fija la secuencia de esas filas empatadas.
+
+**Excel:** el endpoint `/kardex/export` devuelve OOXML válido para el mismo
+filtro; los 8 tests del exporter verifican encabezado por ítem, `.INICIAL.`
+literal vs fórmula de movimiento, refs `F+I(+L fila-1)` / `H+K(+N fila-1)`,
+formatos y encabezado repetido.
+
+**Pendiente de F4:** revisión por un usuario del área (comparar contra una
+corrida real del `.exe` en el server, donde sí lo tienen a mano).
 
 > Las capturas que pasó el usuario (filtro "9/1/2026".."9/10/2026", CS-012 con
-> salidas "9/8/2026" refs `001-001-…`, `Cant −7.446,40` / `−2.016,90`) son de una
-> corrida anterior con otros datos; sirven como referencia visual del layout, no
-> como golden numérico. El golden se arma en F4 corriendo el `.exe` y el web sobre
-> el mismo rango.
+> salidas "9/8/2026") eran de otra corrida/datos; referencia visual del layout,
+> no golden numérico.

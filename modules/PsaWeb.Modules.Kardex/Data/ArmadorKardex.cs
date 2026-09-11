@@ -54,11 +54,15 @@ internal static class ArmadorKardex
             .GroupBy(x => x.ItemId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.TransDate).First(), StringComparer.OrdinalIgnoreCase);
 
+        // El .exe ordena por (fecha, tipo). `PostOrder` como último desempate hace
+        // el reporte determinista cuando hay varios movimientos del mismo tipo el
+        // mismo día (el .exe ahí depende del orden físico que devuelva Pervasive).
         var movPorItem = movimientos
             .Where(x => x.MajorType != 3)
             .GroupBy(x => x.ItemId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<CostoCrudo>)g
-                .OrderBy(x => x.TransDate).ThenBy(x => x.MajorType).ToList(), StringComparer.OrdinalIgnoreCase);
+                .OrderBy(x => x.TransDate).ThenBy(x => x.MajorType).ThenBy(x => x.PostOrder).ToList(),
+                StringComparer.OrdinalIgnoreCase);
 
         // Snapshot de saldo por (ItemID, PostOrder). Si hay más de uno, el .exe
         // toma el primero por (ItemID, TransDate, MajorType).
