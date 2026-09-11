@@ -12,9 +12,9 @@ public class SampleKardexRepositoryTests
     private static FiltroKardex Filtro(
         IReadOnlyList<string>? items = null, string? cuenta = null,
         string? itemDesde = null, string? itemHasta = null,
-        DateOnly? desde = null, DateOnly? hasta = null)
+        DateOnly? desde = null, DateOnly? hasta = null, bool incluirVacios = true)
         => new(desde ?? Desde, hasta ?? Hasta,
-               items ?? Array.Empty<string>(), cuenta, itemDesde, itemHasta);
+               items ?? Array.Empty<string>(), cuenta, itemDesde, itemHasta, incluirVacios);
 
     [Fact]
     public async Task Lista_items_y_cuentas()
@@ -74,6 +74,19 @@ public class SampleKardexRepositoryTests
 
         var ids = r.Filas.Select(f => f.ItemId).Distinct().ToList();
         Assert.Equal(new[] { "CS-001", "CS-012" }, ids.OrderBy(x => x));
+    }
+
+    [Fact]
+    public async Task El_item_vacio_se_incluye_u_oculta_segun_el_flag()
+    {
+        // CS-099: sólo un `.INICIAL.` en cero, sin movimientos.
+        var conVacios = await Repo.GenerarAsync(Filtro(cuenta: "13101", incluirVacios: true));
+        Assert.Contains("CS-099", conVacios.Filas.Select(f => f.ItemId));
+
+        var sinVacios = await Repo.GenerarAsync(Filtro(cuenta: "13101", incluirVacios: false));
+        Assert.DoesNotContain("CS-099", sinVacios.Filas.Select(f => f.ItemId));
+        // Los que sí tienen movimientos siguen.
+        Assert.Contains("CS-012", sinVacios.Filas.Select(f => f.ItemId));
     }
 
     [Fact]

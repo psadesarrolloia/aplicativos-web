@@ -46,7 +46,8 @@ public sealed record FiltroKardex(
     IReadOnlyList<string> ItemIds,
     string? CuentaGl,
     string? ItemDesde,
-    string? ItemHasta)
+    string? ItemHasta,
+    bool IncluirVacios = true)
 {
     /// <summary>true si hay al menos un acotador definido.</summary>
     public bool TieneAcotador =>

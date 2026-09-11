@@ -265,6 +265,7 @@ app.MapGet("/kardex/export", async (
         string? itemDesde,
         string? itemHasta,
         string[]? items,
+        bool? incluirVacios,
         System.Security.Claims.ClaimsPrincipal usuario,
         PsaWeb.Modules.Kardex.Data.IKardexRepository repositorio,
         PsaWeb.Modules.Kardex.Export.KardexExcelExporter exportador,
@@ -272,7 +273,8 @@ app.MapGet("/kardex/export", async (
         CancellationToken cancellationToken) =>
     {
         var filtro = new PsaWeb.Modules.Kardex.Data.FiltroKardex(
-            desde, hasta, items ?? Array.Empty<string>(), cuenta, itemDesde, itemHasta);
+            desde, hasta, items ?? Array.Empty<string>(), cuenta, itemDesde, itemHasta,
+            IncluirVacios: incluirVacios ?? true);
 
         if (!filtro.RangoValido)
         {

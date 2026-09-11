@@ -160,4 +160,36 @@ public class ArmadorKardexTests
         var filas = ArmadorKardex.Armar(new[] { Cs12 }, None, None, None, Desde);
         Assert.Empty(filas);
     }
+
+    [Fact]
+    public void Item_con_inicial_en_cero_y_sin_movimientos_se_oculta_si_no_se_incluyen_vacios()
+    {
+        var ini = new[] { Ini(0m, 0m, 0m) };
+
+        var sinVacios = ArmadorKardex.Armar(new[] { Cs12 }, ini, None, None, Desde, incluirVacios: false);
+        Assert.Empty(sinVacios);
+
+        var conVacios = ArmadorKardex.Armar(new[] { Cs12 }, ini, None, None, Desde, incluirVacios: true);
+        Assert.Single(conVacios);
+    }
+
+    [Fact]
+    public void Item_con_inicial_en_cero_pero_con_movimiento_no_se_oculta()
+    {
+        var filas = ArmadorKardex.Armar(
+            new[] { Cs12 }, new[] { Ini(0m, 0m, 0m) },
+            new[] { Mov(1, 50m, 1_500m, 30m, po: 5) }, None, Desde, incluirVacios: false);
+
+        Assert.Equal(2, filas.Count);
+    }
+
+    [Fact]
+    public void Item_con_inicial_no_nulo_no_se_oculta_aunque_sin_movimientos()
+    {
+        // Cantidad 0 pero costo total != 0: no es "vacío", se muestra.
+        var filas = ArmadorKardex.Armar(
+            new[] { Cs12 }, new[] { Ini(0m, 0.07m, 70m) }, None, None, Desde, incluirVacios: false);
+
+        Assert.Single(filas);
+    }
 }

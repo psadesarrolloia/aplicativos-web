@@ -160,7 +160,8 @@ internal sealed class OdbcKardexRepository : IKardexRepository
             }
         }
 
-        var filas = ArmadorKardex.Armar(elegidos, iniciales, movimientos, saldos, filtro.Desde);
+        var filas = ArmadorKardex.Armar(
+            elegidos, iniciales, movimientos, saldos, filtro.Desde, filtro.IncluirVacios);
         return new ResultadoKardex(filas);
     }
 

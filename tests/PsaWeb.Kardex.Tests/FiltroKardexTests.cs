@@ -47,4 +47,10 @@ public class FiltroKardexTests
         Assert.False(Filtro(desde: D1, hasta: D1).RangoValido);      // mismo día: como el .exe, no vale
         Assert.False(Filtro(desde: D10, hasta: D1).RangoValido);
     }
+
+    [Fact]
+    public void IncluirVacios_por_defecto_es_true()
+    {
+        Assert.True(Filtro().IncluirVacios);
+    }
 }

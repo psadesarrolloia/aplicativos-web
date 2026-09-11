@@ -48,7 +48,8 @@ internal static class ArmadorKardex
         IEnumerable<CostoCrudo> saldosIniciales,
         IEnumerable<CostoCrudo> movimientos,
         IEnumerable<CostoCrudo> saldosPorMovimiento,
-        DateOnly desde)
+        DateOnly desde,
+        bool incluirVacios = true)
     {
         var iniPorItem = saldosIniciales
             .GroupBy(x => x.ItemId, StringComparer.OrdinalIgnoreCase)
@@ -74,12 +75,14 @@ internal static class ArmadorKardex
 
         foreach (var item in itemsElegidos)
         {
+            var delItem = new List<FilaKardex>();
+
             if (iniPorItem.TryGetValue(item.Id, out var ini))
             {
                 var qu = ini.Quantity ?? 0m;
                 var total = ini.TransAmount ?? 0m;
                 var u = qu == 0m ? 0m : total / qu; // B1
-                filas.Add(new FilaKardex(
+                delItem.Add(new FilaKardex(
                     item.CuentaGl, item.Id, item.Nombre, item.Categoria,
                     desde, ".INICIAL.",
                     MovimientoKardex.Vacio, MovimientoKardex.Vacio,
@@ -89,6 +92,10 @@ internal static class ArmadorKardex
 
             if (!movPorItem.TryGetValue(item.Id, out var movs))
             {
+                if (incluirVacios || !EsSoloInicialEnCero(delItem))
+                {
+                    filas.AddRange(delItem);
+                }
                 continue;
             }
 
@@ -126,7 +133,7 @@ internal static class ArmadorKardex
                 }
 
                 var esCompra = mov.MajorType == Compra;
-                filas.Add(new FilaKardex(
+                delItem.Add(new FilaKardex(
                     item.CuentaGl, item.Id, item.Nombre, item.Categoria,
                     DateOnly.FromDateTime(mov.TransDate),
                     mov.Reference ?? string.Empty,
@@ -135,8 +142,24 @@ internal static class ArmadorKardex
                     saldo,
                     EsInicial: false));
             }
+
+            // Con movimientos siempre entra; el filtro sólo descarta ítems cuya
+            // única fila es un `.INICIAL.` con saldo en cero.
+            filas.AddRange(delItem);
         }
 
         return filas;
     }
+
+    /// <summary>
+    /// true si el ítem no aporta información: su única fila es un <c>.INICIAL.</c>
+    /// con saldo (cantidad, costo unit. y costo total) en cero. Es el «ruido» que
+    /// el check «incluir ítems con saldo inicial 0 y sin movimientos» filtra.
+    /// </summary>
+    internal static bool EsSoloInicialEnCero(IReadOnlyList<FilaKardex> filasDeItem)
+        => filasDeItem.Count == 1
+           && filasDeItem[0].EsInicial
+           && (filasDeItem[0].Saldo.Cantidad ?? 0m) == 0m
+           && (filasDeItem[0].Saldo.CostoUnitario ?? 0m) == 0m
+           && (filasDeItem[0].Saldo.CostoTotal ?? 0m) == 0m;
 }

@@ -30,13 +30,24 @@
         </label>
         <label class="psa-field">
             <span class="psa-field__label">Ítem desde</span>
-            <input class="psa-input" @bind="_itemDesde" placeholder="p. ej. CS-001" />
+            <input class="psa-input" list="kardex-items-dl" @bind="_itemDesde"
+                   @bind:event="oninput" placeholder="p. ej. CS-001" autocomplete="off" />
         </label>
         <label class="psa-field">
             <span class="psa-field__label">Ítem hasta</span>
-            <input class="psa-input" @bind="_itemHasta" placeholder="p. ej. CS-999" />
+            <input class="psa-input" list="kardex-items-dl" @bind="_itemHasta"
+                   @bind:event="oninput" placeholder="p. ej. CS-999" autocomplete="off" />
         </label>
     </div>
+
+    @* Autocompletado nativo para «Ítem desde/hasta»: el navegador despliega los
+       ítems cuyo ID o nombre coincide con lo tipeado. *@
+    <datalist id="kardex-items-dl">
+        @foreach (var i in _items)
+        {
+            <option value="@i.Id">@i.Nombre</option>
+        }
+    </datalist>
 
     <div class="psa-field" style="margin-top: 1rem; display: flex; align-items: stretch; max-width: 34rem">
         <span class="psa-field__label">Ítems (opcional; si elegís, mandan sobre cuenta y rango)</span>
@@ -52,6 +63,11 @@
             <p class="psa-muted" style="margin-top: .3rem">@_itemsSeleccionados.Length ítem(s) seleccionado(s).</p>
         }
     </div>
+
+    <label style="display: flex; align-items: center; gap: .5rem; margin-top: 1rem">
+        <input type="checkbox" @bind="_incluirVacios" />
+        <span class="psa-muted">Incluir ítems con saldo inicial 0 y sin movimientos</span>
+    </label>
 
     <div class="psa-row" style="margin-top: 1.1rem">
         <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
@@ -136,6 +152,9 @@ else if (_resultado is not null)
     private string _itemHasta = "";
     private string _filtroItem = "";
     private string[] _itemsSeleccionados = Array.Empty<string>();
+    // Por defecto se ocultan los ítems que sólo tienen un `.INICIAL.` en cero
+    // (sin stock ni movimientos): son ruido para un kardex.
+    private bool _incluirVacios;
 
     private bool _cargando;
     private string? _error;
@@ -167,6 +186,7 @@ else if (_resultado is not null)
         _error = null;
         _cuenta = _itemDesde = _itemHasta = _filtroItem = "";
         _itemsSeleccionados = Array.Empty<string>();
+        _incluirVacios = false;
         InvokeAsync(async () =>
         {
             _cuentas = await Repositorio.CuentasAsync();
@@ -193,6 +213,7 @@ else if (_resultado is not null)
         if (f.ItemDesde is { } id) qs.Add($"itemDesde={Uri.EscapeDataString(id)}");
         if (f.ItemHasta is { } ih) qs.Add($"itemHasta={Uri.EscapeDataString(ih)}");
         foreach (var it in f.ItemIds) qs.Add($"items={Uri.EscapeDataString(it)}");
+        qs.Add($"incluirVacios={(f.IncluirVacios ? "true" : "false")}");
         Nav.NavigateTo($"kardex/export?{string.Join("&", qs)}", forceLoad: true);
     }
 
@@ -201,7 +222,8 @@ else if (_resultado is not null)
         _itemsSeleccionados.ToList(),
         string.IsNullOrWhiteSpace(_cuenta) ? null : _cuenta,
         string.IsNullOrWhiteSpace(_itemDesde) ? null : _itemDesde.Trim(),
-        string.IsNullOrWhiteSpace(_itemHasta) ? null : _itemHasta.Trim());
+        string.IsNullOrWhiteSpace(_itemHasta) ? null : _itemHasta.Trim(),
+        IncluirVacios: _incluirVacios);
 
     private async Task Consultar()
     {
