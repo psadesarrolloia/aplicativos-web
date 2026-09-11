@@ -130,6 +130,9 @@
 
 .psa-switcher { position: relative; margin-right: 1rem; }
 
+/* El botón sólo se renderiza cuando hay empresa elegida (ver EmpresaSwitcher.razor:
+   el <div> entero está atrás de `@if (EmpresaActual.HaySeleccion)`), así que va
+   siempre en el magenta corporativo — no hace falta una clase condicional. */
 .psa-switcher__btn {
     display: inline-flex;
     align-items: center;
@@ -137,14 +140,14 @@
     padding: .3rem .6rem;
     font: inherit;
     font-size: .82rem;
-    color: inherit;
-    background: rgba(255, 255, 255, .1);
-    border: 1px solid rgba(255, 255, 255, .18);
+    color: var(--psa-on-brand, #fff);
+    background: var(--psa-magenta, #b40046);
+    border: 1px solid var(--psa-magenta-600, #950039);
     border-radius: 999px;
     cursor: pointer;
     max-width: 320px;
 }
-.psa-switcher__btn:hover { background: rgba(255, 255, 255, .16); }
+.psa-switcher__btn:hover { background: var(--psa-magenta-600, #950039); }
 .psa-switcher__empresa { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .psa-switcher__amb {
     padding: .05rem .45rem;

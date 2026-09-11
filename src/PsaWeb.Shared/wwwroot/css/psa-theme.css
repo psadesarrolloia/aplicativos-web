@@ -154,7 +154,7 @@ a { color: var(--psa-magenta); }
 
 .psa-nav__link:hover { color: #fff; background: rgba(255, 255, 255, .1); }
 
-.psa-nav__link.active { color: #fff; background: rgba(255, 255, 255, .16); }
+.psa-nav__link.active { color: #fff; background: var(--psa-magenta); }
 
 .psa-user { font-size: .85rem; color: rgba(255, 255, 255, .8); white-space: nowrap; }
 
