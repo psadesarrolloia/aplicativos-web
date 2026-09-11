@@ -5,6 +5,7 @@
 @inject IKardexRepository Repositorio
 @inject IResolverEmpresaSage EmpresaSage
 @inject ILogger<Kardex> Logger
+@inject NavigationManager Nav
 @implements IDisposable
 
 <PageTitle>Kardex de inventarios — Aplicativos web PSA</PageTitle>
@@ -55,6 +56,9 @@
     <div class="psa-row" style="margin-top: 1.1rem">
         <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
             @(_cargando ? "Consultando…" : "Consultar")
+        </PsaButton>
+        <PsaButton Variant="secondary" OnClick="Exportar" Disabled="@(!PuedeExportar)">
+            Exportar a Excel
         </PsaButton>
     </div>
 </PsaCard>
@@ -172,6 +176,25 @@ else if (_resultado is not null)
     }
 
     public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+
+    private bool PuedeExportar =>
+        !_cargando && _error is null && _resultado is { SinMovimientos: false };
+
+    private void Exportar()
+    {
+        var f = ArmarFiltro();
+        var qs = new List<string>
+        {
+            $"desde={f.Desde:yyyy-MM-dd}",
+            $"hasta={f.Hasta:yyyy-MM-dd}",
+        };
+        if (EmpresaSage.RucSesion is { } ruc) qs.Add($"ruc={Uri.EscapeDataString(ruc)}");
+        if (f.CuentaGl is { } c) qs.Add($"cuenta={Uri.EscapeDataString(c)}");
+        if (f.ItemDesde is { } id) qs.Add($"itemDesde={Uri.EscapeDataString(id)}");
+        if (f.ItemHasta is { } ih) qs.Add($"itemHasta={Uri.EscapeDataString(ih)}");
+        foreach (var it in f.ItemIds) qs.Add($"items={Uri.EscapeDataString(it)}");
+        Nav.NavigateTo($"kardex/export?{string.Join("&", qs)}", forceLoad: true);
+    }
 
     private FiltroKardex ArmarFiltro() => new(
         _desde, _hasta,

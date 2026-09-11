@@ -255,4 +255,58 @@ app.MapGet("/cierre-de-caja/export", async (
     })
     .RequireAuthorization();
 
+// Descarga del Kardex en Excel. Re-consulta con el mismo filtro para que el
+// archivo coincida con lo que se ve en pantalla.
+app.MapGet("/kardex/export", async (
+        DateOnly desde,
+        DateOnly hasta,
+        string? ruc,
+        string? cuenta,
+        string? itemDesde,
+        string? itemHasta,
+        string[]? items,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Kardex.Data.IKardexRepository repositorio,
+        PsaWeb.Modules.Kardex.Export.KardexExcelExporter exportador,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        var filtro = new PsaWeb.Modules.Kardex.Data.FiltroKardex(
+            desde, hasta, items ?? Array.Empty<string>(), cuenta, itemDesde, itemHasta);
+
+        if (!filtro.RangoValido)
+        {
+            return Results.BadRequest("El rango debe tener al menos un día («Hasta» posterior a «Desde»).");
+        }
+        if (!filtro.TieneAcotador)
+        {
+            return Results.BadRequest("Elegí al menos un ítem, una cuenta o un rango de ítems.");
+        }
+
+        PsaWeb.Modules.Kardex.Data.ResultadoKardex resultado;
+        if (!string.IsNullOrWhiteSpace(ruc))
+        {
+            var nombre = usuario.Identity?.Name ?? string.Empty;
+            var tieneAcceso = seguridad is not null
+                && (await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken))
+                    .Any(e => e.Ruc == ruc);
+            if (!tieneAcceso)
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            resultado = await repositorio.GenerarParaRucAsync(ruc, filtro, cancellationToken);
+        }
+        else
+        {
+            resultado = await repositorio.GenerarAsync(filtro, cancellationToken);
+        }
+
+        var bytes = exportador.Generar(resultado, desde, hasta);
+        return Results.File(
+            bytes,
+            PsaWeb.Modules.Kardex.Export.KardexExcelExporter.ContentType,
+            exportador.NombreArchivo(desde, hasta));
+    })
+    .RequireAuthorization();
+
 app.Run();

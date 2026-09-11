@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using PsaWeb.Modules.Kardex.Data;
+using PsaWeb.Modules.Kardex.Export;
 using PsaWeb.Sage50;
 
 namespace PsaWeb.Modules.Kardex;
@@ -28,6 +29,8 @@ public static class KardexModule
         // Sin shell: la empresa es siempre la de configuración. El Host reemplaza
         // este registro por la implementación real cuando el shell está activo.
         services.TryAddScoped<IResolverEmpresaSage, SinShellResolverEmpresaSage>();
+
+        services.AddSingleton<KardexExcelExporter>();
 
         return services;
     }
