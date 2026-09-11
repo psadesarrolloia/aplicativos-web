@@ -261,7 +261,7 @@ app.MapGet("/kardex/export", async (
         DateOnly desde,
         DateOnly hasta,
         string? ruc,
-        string? cuenta,
+        string[]? cuenta,
         string? itemDesde,
         string? itemHasta,
         string[]? items,
@@ -273,7 +273,7 @@ app.MapGet("/kardex/export", async (
         CancellationToken cancellationToken) =>
     {
         var filtro = new PsaWeb.Modules.Kardex.Data.FiltroKardex(
-            desde, hasta, items ?? Array.Empty<string>(), cuenta, itemDesde, itemHasta,
+            desde, hasta, items ?? Array.Empty<string>(), cuenta ?? Array.Empty<string>(), itemDesde, itemHasta,
             IncluirVacios: incluirVacios ?? true);
 
         if (!filtro.RangoValido)

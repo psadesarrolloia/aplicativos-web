@@ -322,6 +322,14 @@ a { color: var(--psa-magenta); }
   color: var(--psa-on-brand);
 }
 
+/* Cualquier otra selección (checkbox, radio): mismo magenta corporativo en vez
+   del azul/gris por defecto del navegador. accent-color tiene buen soporte en
+   navegadores modernos (Chrome/Edge/Firefox actuales). */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--psa-magenta);
+}
+
 /* Sugerencias de autocompletado (ver PsaAutocomplete). */
 .psa-suggest-wrap { position: relative; }
 .psa-suggest {

@@ -11,7 +11,9 @@ public class FiltroKardexTests
         DateOnly? desde = null, DateOnly? hasta = null,
         IReadOnlyList<string>? items = null,
         string? cuenta = null, string? itemDesde = null, string? itemHasta = null)
-        => new(desde ?? D1, hasta ?? D10, items ?? Array.Empty<string>(), cuenta, itemDesde, itemHasta);
+        => new(desde ?? D1, hasta ?? D10, items ?? Array.Empty<string>(),
+               string.IsNullOrWhiteSpace(cuenta) ? Array.Empty<string>() : new[] { cuenta },
+               itemDesde, itemHasta);
 
     [Fact]
     public void Sin_ningun_acotador_no_tiene_acotador()

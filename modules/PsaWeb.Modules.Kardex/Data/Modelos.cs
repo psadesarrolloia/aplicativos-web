@@ -44,7 +44,7 @@ public sealed record FiltroKardex(
     DateOnly Desde,
     DateOnly Hasta,
     IReadOnlyList<string> ItemIds,
-    string? CuentaGl,
+    IReadOnlyList<string> CuentasGl,
     string? ItemDesde,
     string? ItemHasta,
     bool IncluirVacios = true)
@@ -52,7 +52,7 @@ public sealed record FiltroKardex(
     /// <summary>true si hay al menos un acotador definido.</summary>
     public bool TieneAcotador =>
         ItemIds.Count > 0
-        || !string.IsNullOrWhiteSpace(CuentaGl)
+        || CuentasGl.Count > 0
         || !string.IsNullOrWhiteSpace(ItemDesde)
         || !string.IsNullOrWhiteSpace(ItemHasta);
 

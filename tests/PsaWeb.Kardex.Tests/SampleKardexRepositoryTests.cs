@@ -14,7 +14,9 @@ public class SampleKardexRepositoryTests
         string? itemDesde = null, string? itemHasta = null,
         DateOnly? desde = null, DateOnly? hasta = null, bool incluirVacios = true)
         => new(desde ?? Desde, hasta ?? Hasta,
-               items ?? Array.Empty<string>(), cuenta, itemDesde, itemHasta, incluirVacios);
+               items ?? Array.Empty<string>(),
+               cuenta is null ? Array.Empty<string>() : new[] { cuenta },
+               itemDesde, itemHasta, incluirVacios);
 
     [Fact]
     public async Task Lista_items_y_cuentas()

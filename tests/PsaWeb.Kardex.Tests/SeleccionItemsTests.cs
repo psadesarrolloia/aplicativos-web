@@ -13,10 +13,12 @@ public class SeleccionItemsTests
     };
 
     private static FiltroKardex F(
-        IReadOnlyList<string>? ids = null, string? cuenta = null,
+        IReadOnlyList<string>? ids = null, string? cuenta = null, IReadOnlyList<string>? cuentas = null,
         string? desde = null, string? hasta = null)
         => new(new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30),
-               ids ?? Array.Empty<string>(), cuenta, desde, hasta);
+               ids ?? Array.Empty<string>(),
+               cuentas ?? (cuenta is null ? Array.Empty<string>() : new[] { cuenta }),
+               desde, hasta);
 
     [Fact]
     public void Ids_explicitos_mandan_sobre_todo()
@@ -30,6 +32,13 @@ public class SeleccionItemsTests
     {
         var r = SeleccionItems.Filtrar(Items, F(cuenta: "13103"));
         Assert.Equal(new[] { "CW-001" }, r.Select(i => i.Id));
+    }
+
+    [Fact]
+    public void Por_varias_cuentas_trae_los_items_de_todas()
+    {
+        var r = SeleccionItems.Filtrar(Items, F(cuentas: new[] { "13101", "13103" }));
+        Assert.Equal(new[] { "CS-001", "CS-012", "CS-020", "CW-001" }, r.Select(i => i.Id));
     }
 
     [Fact]

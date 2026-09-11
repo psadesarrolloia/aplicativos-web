@@ -16,10 +16,10 @@ internal static class SeleccionItems
             return items.Where(i => set.Contains(i.Id)).ToList();
         }
 
-        if (!string.IsNullOrWhiteSpace(filtro.CuentaGl))
+        if (filtro.CuentasGl.Count > 0)
         {
-            var cuenta = filtro.CuentaGl.Trim();
-            return items.Where(i => string.Equals(i.CuentaGl, cuenta, StringComparison.OrdinalIgnoreCase)).ToList();
+            var cuentas = new HashSet<string>(filtro.CuentasGl, StringComparer.OrdinalIgnoreCase);
+            return items.Where(i => cuentas.Contains(i.CuentaGl)).ToList();
         }
 
         var desde = filtro.ItemDesde?.Trim();

@@ -19,9 +19,8 @@
 
     <div class="psa-row" style="margin-top: 1rem; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap">
         <label class="psa-field">
-            <span class="psa-field__label">Cuenta de inventario</span>
-            <select class="psa-input" @bind="_cuenta">
-                <option value="">(todas)</option>
+            <span class="psa-field__label">Cuenta de inventario (opcional; podés elegir varias)</span>
+            <select class="psa-input" multiple size="6" @bind="_cuentasSeleccionadas">
                 @foreach (var c in _cuentas)
                 {
                     <option value="@c.Id">@c.Id — @c.Descripcion</option>
@@ -160,7 +159,7 @@ else if (_resultado is not null)
     private IReadOnlyList<ItemStock> _items = Array.Empty<ItemStock>();
     private IReadOnlyList<SugerenciaAutocompletado> _sugerenciasItems = Array.Empty<SugerenciaAutocompletado>();
 
-    private string _cuenta = "";
+    private string[] _cuentasSeleccionadas = Array.Empty<string>();
     private string _itemDesde = "";
     private string _itemHasta = "";
     private string _filtroItem = "";
@@ -201,7 +200,8 @@ else if (_resultado is not null)
         // Cambió la empresa de sesión: los ítems / cuentas / resultado ya no aplican.
         _resultado = null;
         _error = null;
-        _cuenta = _itemDesde = _itemHasta = _filtroItem = "";
+        _itemDesde = _itemHasta = _filtroItem = "";
+        _cuentasSeleccionadas = Array.Empty<string>();
         _itemsSeleccionados = Array.Empty<string>();
         _incluirVacios = false;
         InvokeAsync(async () =>
@@ -227,7 +227,7 @@ else if (_resultado is not null)
             $"hasta={f.Hasta:yyyy-MM-dd}",
         };
         if (EmpresaSage.RucSesion is { } ruc) qs.Add($"ruc={Uri.EscapeDataString(ruc)}");
-        if (f.CuentaGl is { } c) qs.Add($"cuenta={Uri.EscapeDataString(c)}");
+        foreach (var c in f.CuentasGl) qs.Add($"cuenta={Uri.EscapeDataString(c)}");
         if (f.ItemDesde is { } id) qs.Add($"itemDesde={Uri.EscapeDataString(id)}");
         if (f.ItemHasta is { } ih) qs.Add($"itemHasta={Uri.EscapeDataString(ih)}");
         foreach (var it in f.ItemIds) qs.Add($"items={Uri.EscapeDataString(it)}");
@@ -238,7 +238,7 @@ else if (_resultado is not null)
     private FiltroKardex ArmarFiltro() => new(
         _desde, _hasta,
         _itemsSeleccionados.ToList(),
-        string.IsNullOrWhiteSpace(_cuenta) ? null : _cuenta,
+        _cuentasSeleccionadas.ToList(),
         string.IsNullOrWhiteSpace(_itemDesde) ? null : _itemDesde.Trim(),
         string.IsNullOrWhiteSpace(_itemHasta) ? null : _itemHasta.Trim(),
         IncluirVacios: _incluirVacios);
