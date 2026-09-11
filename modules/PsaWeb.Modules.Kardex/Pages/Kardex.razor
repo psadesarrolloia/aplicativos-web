@@ -89,6 +89,27 @@ else if (_resultado is not null)
         }
         else
         {
+            <p class="psa-muted" style="margin-top: 1rem"><strong>Resumen</strong> — saldo final (valor) por cuenta.</p>
+            <div style="max-width: 26rem">
+                <table class="psa-table">
+                    <thead>
+                        <tr><th>Cuenta</th><th class="num">Saldo final</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in _resultado.ResumenPorCuenta())
+                        {
+                            <tr><td>@r.CuentaGl</td><td class="num">@Num(r.SaldoFinal)</td></tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td><strong>Total general</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalGeneral())</strong></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+
             <div style="overflow-x: auto; margin-top: 1rem">
                 <table class="psa-table">
                     <thead>

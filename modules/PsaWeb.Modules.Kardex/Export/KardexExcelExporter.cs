@@ -154,6 +154,8 @@ public sealed class KardexExcelExporter
         if (itemActual is not null)
         {
             FormatearBloque(ws, startHead, endHead, startData, row - 1);
+            row += 2;
+            row = EscribirResumen(ws, resultado, row);
         }
         else
         {
@@ -240,5 +242,46 @@ public sealed class KardexExcelExporter
 
         ws.Range(startData, ColEntradas, endData, ColEntradas + 2).Style.Fill.BackgroundColor = NavyTint;
         ws.Range(startData, ColSaldos, endData, ColSaldos + 2).Style.Fill.BackgroundColor = NavyTint;
+    }
+
+    /// <summary>
+    /// Bloque «RESUMEN»: saldo final (valor) por cuenta + total general. Usa
+    /// <see cref="ResultadoKardex.ResumenPorCuenta"/>, que toma la última fila de
+    /// cada ítem (ya en orden cronológico) como su saldo final.
+    /// </summary>
+    /// <returns>La fila siguiente al bloque escrito.</returns>
+    private static int EscribirResumen(IXLWorksheet ws, ResultadoKardex resultado, int row)
+    {
+        var titulo = ws.Range(row, 1, row, 2);
+        titulo.Merge();
+        ws.Cell(row, 1).Value = "RESUMEN";
+        titulo.Style.Font.Bold = true;
+        titulo.Style.Font.FontColor = XLColor.White;
+        titulo.Style.Fill.BackgroundColor = Navy;
+        row++;
+
+        ws.Cell(row, 1).Value = "Cuenta";
+        ws.Cell(row, 2).Value = "Saldo final";
+        ws.Range(row, 1, row, 2).Style.Font.Bold = true;
+        row++;
+
+        var inicioDatos = row;
+        foreach (var r in resultado.ResumenPorCuenta())
+        {
+            ws.Cell(row, 1).Value = r.CuentaGl;
+            ws.Cell(row, 2).Value = r.SaldoFinal;
+            row++;
+        }
+        ws.Range(inicioDatos, 2, row - 1, 2).Style.NumberFormat.Format = FormatoNumero;
+
+        ws.Cell(row, 1).Value = "TOTAL GENERAL";
+        ws.Cell(row, 2).Value = resultado.TotalGeneral();
+        ws.Range(row, 1, row, 2).Style.Font.Bold = true;
+        ws.Cell(row, 2).Style.NumberFormat.Format = FormatoNumero;
+        ws.Range(row, 1, row, 2).Style.Border.TopBorder = XLBorderStyleValues.Medium;
+        ws.Range(row, 1, row, 2).Style.Border.TopBorderColor = Navy;
+        row++;
+
+        return row;
     }
 }

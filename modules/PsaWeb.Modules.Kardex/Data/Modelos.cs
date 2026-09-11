@@ -60,10 +60,31 @@ public sealed record FiltroKardex(
     public bool RangoValido => Hasta > Desde;
 }
 
+/// <summary>Saldo final (valor) de una cuenta, para el resumen del reporte.</summary>
+public sealed record ResumenCuenta(string CuentaGl, decimal SaldoFinal);
+
 /// <summary>Resultado del kardex para un filtro.</summary>
 public sealed record ResultadoKardex(IReadOnlyList<FilaKardex> Filas)
 {
     public static readonly ResultadoKardex Vacio = new(Array.Empty<FilaKardex>());
 
     public bool SinMovimientos => Filas.Count == 0;
+
+    /// <summary>
+    /// Saldo final por cuenta: para cada ítem, su última fila (ya vienen en
+    /// orden cronológico dentro del ítem) aporta el costo total de esa cuenta.
+    /// Los ítems sin cuenta resuelta se agrupan bajo «(sin cuenta)».
+    /// </summary>
+    public IReadOnlyList<ResumenCuenta> ResumenPorCuenta() =>
+        Filas
+            .GroupBy(f => f.ItemId, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (Cuenta: string.IsNullOrWhiteSpace(g.First().CuentaGl) ? "(sin cuenta)" : g.First().CuentaGl,
+                          SaldoFinal: g.Last().Saldo.CostoTotal ?? 0m))
+            .GroupBy(x => x.Cuenta, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ResumenCuenta(g.Key, g.Sum(x => x.SaldoFinal)))
+            .OrderBy(r => r.CuentaGl, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>Total general: suma del saldo final de todas las cuentas del reporte.</summary>
+    public decimal TotalGeneral() => ResumenPorCuenta().Sum(r => r.SaldoFinal);
 }

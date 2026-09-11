@@ -132,6 +132,34 @@ public class KardexExcelExporterTests
     }
 
     [Fact]
+    public void Escribe_el_resumen_con_saldo_final_por_cuenta_y_total_general()
+    {
+        // El resumen sale del modelo (ResultadoKardex.ResumenPorCuenta), que lee
+        // fila.Saldo de la ÚLTIMA fila del ítem — a diferencia de la columna
+        // Saldos del propio Excel, que para filas de movimiento es una fórmula
+        // (no lee fila.Saldo). Por eso acá sí importa poblar Saldo en la venta.
+        var resultado = new ResultadoKardex(new[]
+        {
+            new FilaKardex("13101", "CS-012", "Nombre CS-012", "CASING", Desde, ".INICIAL.",
+                MovimientoKardex.Vacio, MovimientoKardex.Vacio, Mov(1000m, 30m, 30_000m), EsInicial: true),
+            new FilaKardex("13101", "CS-012", "Nombre CS-012", "CASING", Desde.AddDays(5), "001-001-9",
+                MovimientoKardex.Vacio, Mov(-320m, 30m, -9_600m), Mov(680m, 30m, 20_400m), EsInicial: false),
+        });
+
+        var ws = Abrir(Exporter.Generar(resultado, Desde, Hasta));
+
+        // encabezado 5-6, datos 7-8 => bloque termina en 8; +2 de separación => resumen en 11.
+        Assert.Equal("RESUMEN", ws.Cell(11, 1).GetString());
+        Assert.Equal("Cuenta", ws.Cell(12, 1).GetString());
+        Assert.Equal("Saldo final", ws.Cell(12, 2).GetString());
+        Assert.Equal("13101", ws.Cell(13, 1).GetString());
+        Assert.Equal(20_400m, ws.Cell(13, 2).GetValue<decimal>());
+        Assert.Equal("#,##0.00", ws.Cell(13, 2).Style.NumberFormat.Format);
+        Assert.Equal("TOTAL GENERAL", ws.Cell(14, 1).GetString());
+        Assert.Equal(20_400m, ws.Cell(14, 2).GetValue<decimal>());
+    }
+
+    [Fact]
     public void NombreArchivo_usa_el_rango()
     {
         Assert.Equal("Kardex_20260801_20260831.xlsx", Exporter.NombreArchivo(Desde, Hasta));
