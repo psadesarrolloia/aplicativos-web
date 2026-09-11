@@ -30,24 +30,15 @@
         </label>
         <label class="psa-field">
             <span class="psa-field__label">Ítem desde</span>
-            <input class="psa-input" list="kardex-items-dl" @bind="_itemDesde"
-                   @bind:event="oninput" placeholder="p. ej. CS-001" autocomplete="off" />
+            <PsaAutocomplete Value="@_itemDesde" ValueChanged="v => _itemDesde = v"
+                             Opciones="_sugerenciasItems" Placeholder="p. ej. CS-001" />
         </label>
         <label class="psa-field">
             <span class="psa-field__label">Ítem hasta</span>
-            <input class="psa-input" list="kardex-items-dl" @bind="_itemHasta"
-                   @bind:event="oninput" placeholder="p. ej. CS-999" autocomplete="off" />
+            <PsaAutocomplete Value="@_itemHasta" ValueChanged="v => _itemHasta = v"
+                             Opciones="_sugerenciasItems" Placeholder="p. ej. CS-999" />
         </label>
     </div>
-
-    @* Autocompletado nativo para «Ítem desde/hasta»: el navegador despliega los
-       ítems cuyo ID o nombre coincide con lo tipeado. *@
-    <datalist id="kardex-items-dl">
-        @foreach (var i in _items)
-        {
-            <option value="@i.Id">@i.Nombre</option>
-        }
-    </datalist>
 
     <div class="psa-field" style="margin-top: 1rem; display: flex; align-items: stretch; max-width: 34rem">
         <span class="psa-field__label">Ítems (opcional; si elegís, mandan sobre cuenta y rango)</span>
@@ -146,6 +137,7 @@ else if (_resultado is not null)
 
     private IReadOnlyList<CuentaInventario> _cuentas = Array.Empty<CuentaInventario>();
     private IReadOnlyList<ItemStock> _items = Array.Empty<ItemStock>();
+    private IReadOnlyList<SugerenciaAutocompletado> _sugerenciasItems = Array.Empty<SugerenciaAutocompletado>();
 
     private string _cuenta = "";
     private string _itemDesde = "";
@@ -177,7 +169,11 @@ else if (_resultado is not null)
     {
         _cuentas = await Repositorio.CuentasAsync();
         _items = await Repositorio.ItemsAsync();
+        _sugerenciasItems = ArmarSugerencias(_items);
     }
+
+    private static IReadOnlyList<SugerenciaAutocompletado> ArmarSugerencias(IReadOnlyList<ItemStock> items) =>
+        items.Select(i => new SugerenciaAutocompletado(i.Id, i.Nombre)).ToList();
 
     private void Refrescar()
     {
@@ -191,6 +187,7 @@ else if (_resultado is not null)
         {
             _cuentas = await Repositorio.CuentasAsync();
             _items = await Repositorio.ItemsAsync();
+            _sugerenciasItems = ArmarSugerencias(_items);
             StateHasChanged();
         });
     }

@@ -1,0 +1,66 @@
+@namespace PsaWeb.Shared.Components
+
+@*
+    Input con autocompletado simple: no despliega nada hasta que se escribe al
+    menos un carácter, y sólo matchea por prefijo contra `Opciones[].Codigo`
+    (nunca contra la etiqueta). Sin JS interop: el click en una sugerencia usa
+    @onmousedown:preventDefault para que el input no pierda el foco antes de
+    procesar el click (si no, @onblur cierra la lista primero).
+*@
+
+<div class="psa-suggest-wrap">
+    <input class="@CssClass" value="@Value" placeholder="@Placeholder" autocomplete="off"
+           @oninput="AlEscribir" @onfocus="AlEnfocar" @onblur="AlDesenfocar" />
+    @if (_mostrar && _sugerencias.Count > 0)
+    {
+        <ul class="psa-suggest">
+            @foreach (var s in _sugerencias)
+            {
+                <li class="psa-suggest__item" @onmousedown="() => Elegir(s.Codigo)" @onmousedown:preventDefault>
+                    <b>@s.Codigo</b>@(string.IsNullOrEmpty(s.Etiqueta) ? "" : $" — {s.Etiqueta}")
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public IReadOnlyList<SugerenciaAutocompletado> Opciones { get; set; } = Array.Empty<SugerenciaAutocompletado>();
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string CssClass { get; set; } = "psa-input";
+    [Parameter] public int MaxSugerencias { get; set; } = 15;
+
+    private bool _mostrar;
+    private List<SugerenciaAutocompletado> _sugerencias = new();
+
+    private async Task AlEscribir(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString() ?? "";
+        await ValueChanged.InvokeAsync(Value);
+        Recalcular();
+    }
+
+    private void Recalcular()
+    {
+        _sugerencias = string.IsNullOrEmpty(Value)
+            ? new List<SugerenciaAutocompletado>()
+            : Opciones
+                .Where(o => o.Codigo.StartsWith(Value, StringComparison.OrdinalIgnoreCase))
+                .Take(MaxSugerencias)
+                .ToList();
+        _mostrar = true;
+    }
+
+    private void AlEnfocar() => Recalcular();
+
+    private void AlDesenfocar() => _mostrar = false;
+
+    private async Task Elegir(string codigo)
+    {
+        Value = codigo;
+        _mostrar = false;
+        await ValueChanged.InvokeAsync(codigo);
+    }
+}

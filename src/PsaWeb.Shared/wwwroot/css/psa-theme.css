@@ -313,6 +313,38 @@ a { color: var(--psa-magenta); }
 
 .psa-input--sm { width: 100%; padding: .25rem .4rem; font-size: .82rem; }
 
+/* Multiselect: pintar las opciones elegidas con el magenta corporativo en vez
+   del gris del sistema. Chrome ignora background-color en option:checked
+   salvo que sea un degradé (mismo color repetido) — por eso el linear-gradient
+   en lugar de background-color directo; Firefox lo toma igual. */
+.psa-input[multiple] option:checked {
+  background: linear-gradient(0deg, var(--psa-magenta) 0%, var(--psa-magenta) 100%);
+  color: var(--psa-on-brand);
+}
+
+/* Sugerencias de autocompletado (ver PsaAutocomplete). */
+.psa-suggest-wrap { position: relative; }
+.psa-suggest {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 2px);
+  left: 0;
+  min-width: 100%;
+  max-height: 14rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: .25rem 0;
+  list-style: none;
+  background: var(--psa-surface);
+  border: 1px solid var(--psa-border);
+  border-radius: var(--psa-radius-sm);
+  box-shadow: var(--psa-shadow);
+}
+.psa-suggest__item { padding: .35rem .7rem; cursor: pointer; font-size: .85rem; white-space: nowrap; }
+.psa-suggest__item:hover, .psa-suggest__item--activa { background: var(--psa-surface-2); }
+.psa-suggest__item b { color: var(--psa-navy); }
+.psa-suggest__vacio { padding: .35rem .7rem; font-size: .85rem; color: var(--psa-ink-muted); }
+
 /* Filtro con valor: se pinta con el magenta corporativo para que salte a la vista. */
 .psa-input--activo,
 .psa-input--activo:focus-visible {

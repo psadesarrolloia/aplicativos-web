@@ -30,8 +30,13 @@ internal sealed class OdbcKardexRepository : IKardexRepository
         """;
 
     private const string SqlChart = """
-        SELECT GLAcntNumber, AccountID, AccountDescription FROM Chart
+        SELECT GLAcntNumber, AccountID, AccountDescription, AccountType FROM Chart
         """;
+
+    // AccountType de Sage 50 para cuentas de inventario (verificado en CPTDC:
+    // las 13xxx "INVENTARIOS..." son todas AccountType 2; es un enum fijo del
+    // plan de cuentas de Sage, no un valor libre por empresa).
+    private const long TipoCuentaInventario = 2;
 
     // Q1 — saldo inicial: por ítem, la última fila MajorType 3 previa a «Desde».
     private const string SqlInicialesFmt = """
@@ -168,8 +173,8 @@ internal sealed class OdbcKardexRepository : IKardexRepository
     private async Task<(IReadOnlyList<ItemStock> Items, IReadOnlyList<CuentaInventario> Cuentas)>
         LeerCatalogoAsync(OdbcConnection cn, CancellationToken ct)
     {
-        // GLAcntNumber -> (AccountID, AccountDescription)
-        var chart = new Dictionary<long, (string Id, string Desc)>();
+        // GLAcntNumber -> (AccountID, AccountDescription, AccountType)
+        var chart = new Dictionary<long, (string Id, string Desc, long Tipo)>();
         await using (var cmd = new OdbcCommand(SqlChart, cn))
         await using (var r = await cmd.ExecuteReaderAsync(ct))
         {
@@ -178,7 +183,8 @@ internal sealed class OdbcKardexRepository : IKardexRepository
                 if (r.IsDBNull(0)) continue;
                 var id = r.IsDBNull(1) ? "" : (r.GetValue(1)?.ToString() ?? "").Trim();
                 var desc = r.IsDBNull(2) ? "" : (r.GetValue(2)?.ToString() ?? "").Trim();
-                chart[Convert.ToInt64(r.GetValue(0))] = (id, desc);
+                var tipo = r.IsDBNull(3) ? -1L : Convert.ToInt64(r.GetValue(3));
+                chart[Convert.ToInt64(r.GetValue(0))] = (id, desc, tipo);
             }
         }
 
@@ -200,14 +206,23 @@ internal sealed class OdbcKardexRepository : IKardexRepository
             }
         }
 
-        var descPorId = chart.Values.Where(c => c.Id.Length > 0)
-            .GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First().Desc);
+        // Sólo cuentas de tipo Inventario (AccountType 2): CPTDC tiene ítems mal
+        // clasificados (ItemClass=1 pero en realidad servicios, ej. S-001..S-008,
+        // S-045..S-058) cuya Cuenta de Inventario en Sage apunta, por error de
+        // configuración, a una cuenta que no es de inventario (ej. 18000, una
+        // cuenta por cobrar) — sin este filtro esas cuentas «contaminaban» el
+        // selector. Es un problema de datos de Sage, no algo que se oculte: esos
+        // ítems se siguen pudiendo elegir por ID o por rango, sólo no aparece su
+        // cuenta como opción de filtro.
+        var infoPorId = chart.Values.Where(c => c.Id.Length > 0)
+            .GroupBy(c => c.Id).ToDictionary(g => g.Key, g => g.First());
 
         var cuentas = items.Where(i => !string.IsNullOrEmpty(i.CuentaGl))
             .Select(i => i.CuentaGl)
             .Distinct()
+            .Where(c => infoPorId.TryGetValue(c, out var info) && info.Tipo == TipoCuentaInventario)
             .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
-            .Select(c => new CuentaInventario(c, descPorId.GetValueOrDefault(c, "")))
+            .Select(c => new CuentaInventario(c, infoPorId[c].Desc))
             .ToList();
 
         return (items, cuentas);
