@@ -37,6 +37,9 @@
             <PsaButton Variant="secondary" OnClick="Exportar">
                 Generar ATS (XML)
             </PsaButton>
+            <PsaButton Variant="secondary" OnClick="DescargarTalonResumen">
+                Descargar Talón Resumen (PDF)
+            </PsaButton>
         }
     </div>
     @if (Bloqueantes.Count > 0)
@@ -262,6 +265,13 @@ else if (_ats is not null)
         var qs = new List<string> { $"anio={_anio}", $"mes={_mes}" };
         if (EmpresaSage.RucSesion is { } ruc) qs.Add($"ruc={Uri.EscapeDataString(ruc)}");
         Nav.NavigateTo($"ats/export?{string.Join("&", qs)}", forceLoad: true);
+    }
+
+    private void DescargarTalonResumen()
+    {
+        var qs = new List<string> { $"anio={_anio}", $"mes={_mes}" };
+        if (EmpresaSage.RucSesion is { } ruc) qs.Add($"ruc={Uri.EscapeDataString(ruc)}");
+        Nav.NavigateTo($"ats/talon-resumen?{string.Join("&", qs)}", forceLoad: true);
     }
 
     private void VerRetenciones(detalleComprasType compra)

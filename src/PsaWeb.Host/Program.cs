@@ -361,4 +361,46 @@ app.MapGet("/ats/export", async (
     })
     .RequireAuthorization();
 
+// Descarga del Talón Resumen en PDF (F5.6). Re-arma el `ivaType` con el mismo
+// período; "Fecha de Generación" es la del momento de la descarga, igual que
+// el DIMM real.
+app.MapGet("/ats/talon-resumen", async (
+        int anio,
+        int mes,
+        string? ruc,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Ats.Data.IAtsRepository repositorio,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        var filtro = new PsaWeb.Modules.Ats.Data.FiltroAts(anio, mes);
+        if (!filtro.Valido)
+        {
+            return Results.BadRequest("El año no puede ser mayor al actual, y el mes debe estar entre 01 y 12.");
+        }
+
+        PsaWeb.Ats.Esquema.ivaType ats;
+        if (!string.IsNullOrWhiteSpace(ruc))
+        {
+            var nombre = usuario.Identity?.Name ?? string.Empty;
+            var tieneAcceso = seguridad is not null
+                && (await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken))
+                    .Any(e => e.Ruc == ruc);
+            if (!tieneAcceso)
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            ats = await repositorio.GenerarParaRucAsync(ruc, filtro, cancellationToken);
+        }
+        else
+        {
+            ats = await repositorio.GenerarAsync(filtro, cancellationToken);
+        }
+
+        var info = PsaWeb.Ats.TalonResumen.ArmadorTalonResumenAts.Armar(ats, DateTime.Now);
+        var pdf = PsaWeb.Ats.TalonResumen.TalonResumenPdfBuilder.Generar(info);
+        return Results.File(pdf, "application/pdf", $"TRSMN-ATS-{mes:00}-{anio:0000}-{ats.IdInformante}.pdf");
+    })
+    .RequireAuthorization();
+
 app.Run();

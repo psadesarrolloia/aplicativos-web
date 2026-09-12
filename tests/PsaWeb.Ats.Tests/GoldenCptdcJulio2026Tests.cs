@@ -1,5 +1,6 @@
 using System.Xml.Serialization;
 using PsaWeb.Ats.Esquema;
+using PsaWeb.Ats.TalonResumen;
 using PsaWeb.Ats.Validacion;
 
 namespace PsaWeb.Ats.Tests;
@@ -129,5 +130,49 @@ public class GoldenCptdcJulio2026Tests
         var bloqueantes = hallazgos.Where(h => h.Severidad == SeveridadHallazgo.Bloqueante).ToList();
 
         Assert.Empty(bloqueantes);
+    }
+
+    [SkippableFact]
+    public void TalonResumenAts_coincide_exacto_con_el_PDF_real_ya_generado()
+    {
+        Skip.IfNot(File.Exists(RutaGolden), "Golden real de CPTDC no está en esta máquina.");
+
+        // Todos los números de esta prueba salen literales de
+        // TRSMN-ATS-07-2026-CPTDC.pdf (el Talón Resumen real emitido por el
+        // DIMM para este mismo XML) — no del código bajo prueba.
+        var ats = CargarGolden();
+
+        var talon = ArmadorTalonResumenAts.Armar(ats, new DateTime(2026, 8, 10, 10, 37, 20));
+
+        Assert.Equal(273295.02m, talon.TotalCompras.BiTarifa0);
+        Assert.Equal(238267.71m, talon.TotalCompras.BiTarifaDiferente0);
+        Assert.Equal(70.64m, talon.TotalCompras.BiNoObjetoIva);
+        Assert.Equal(35740.29m, talon.TotalCompras.ValorIva);
+
+        Assert.Equal(14391.15m, talon.TotalVentas.BiTarifa0);
+        Assert.Equal(7366426.00m, talon.TotalVentas.BiTarifaDiferente0);
+        Assert.Equal(0.00m, talon.TotalVentas.BiNoObjetoIva);
+        Assert.Equal(1104963.91m, talon.TotalVentas.ValorIva);
+
+        Assert.Equal(2, talon.ComprobantesAnulados);
+
+        Assert.Equal(511743.45m, talon.TotalRetencionesRenta.BaseImponible);
+        Assert.Equal(11645.34m, talon.TotalRetencionesRenta.ValorRetenido);
+
+        Assert.Equal(10841.54m, talon.TotalRetencionesIva);
+        Assert.Equal(352.90m, talon.RetencionesIva.Single(f => f.Concepto == "Retencion IVA 10%").ValorRetenido);
+        Assert.Equal(0.00m, talon.RetencionesIva.Single(f => f.Concepto == "Retencion IVA NC").ValorRetenido);
+
+        Assert.Equal(896499.62m, talon.RetencionesRecibidasIva);
+        Assert.Equal(116319.10m, talon.RetencionesRecibidasRenta);
+
+        // Conceptos de retención de renta: los 11 códigos reales del período,
+        // con el texto exacto que muestra el Talón (verificado a mano).
+        Assert.Equal(
+            "SERVICIOS PROFESIONALES PRESTADOS POR SOCIEDADES RESIDENTES",
+            talon.RetencionesRenta.Single(f => f.Codigo == "303A").Concepto);
+        Assert.Equal(
+            "PAGO A NO RESIDENTES - SERVICIOS TÉCNICOS, ADMINISTRATIVOS O DE CONSULTORÍA Y REGALÍAS",
+            talon.RetencionesRenta.Single(f => f.Codigo == "501A").Concepto);
     }
 }
