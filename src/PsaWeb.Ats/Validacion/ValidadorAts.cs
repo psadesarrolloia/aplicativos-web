@@ -44,9 +44,9 @@ public static class ValidadorAts
 
         hallazgos.Add(new HallazgoAts(
             SeveridadHallazgo.Advertencia, "MANUAL-PARTE-RELACIONADA",
-            "\"Parte relacionada\" en ventas sale del campo \"Account Number\" del cliente en Sage 50 " +
-            "(\"SI\" = relacionado). Confirmá que esté marcado para todos los clientes relacionados del período " +
-            "antes de declarar."));
+            "\"Parte relacionada\" en ventas sale del \"Sales Rep\" del cliente en Sage 50 " +
+            "(\"SI RELACIONADO\" = relacionado). Confirmá que esté asignado a todos los clientes relacionados " +
+            "del período antes de declarar."));
         hallazgos.Add(new HallazgoAts(
             SeveridadHallazgo.Advertencia, "MANUAL-RETENCION-SIN-COMPROBANTE",
             "Si un cliente recibió una retención en el período pero no tiene ningún comprobante de venta en " +

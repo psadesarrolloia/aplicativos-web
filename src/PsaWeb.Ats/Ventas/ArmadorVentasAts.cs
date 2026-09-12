@@ -17,29 +17,33 @@ public static class ArmadorVentasAts
     /// </summary>
     public static detalleVentasType ArmarDetalle(FilaVentaCruda fila)
     {
+        // Parte relacionada: ver ClienteAts.EsParteRelacionada — convención de
+        // "Sales Rep" del cliente (no usa AccountNumber, ese campo es el
+        // tipoCliente de clientes del exterior y son cosas independientes).
+        var esRelacionada = fila.Cliente.EsParteRelacionada;
+
         var detalle = new detalleVentasType
         {
             tpIdCliente = fila.Cliente.TipoIdentificacion!,
             idCliente = fila.Cliente.Identificacion,
-            // Parte relacionada: Sage 50 no tiene un campo dedicado, así que
-            // se marca a mano en la ficha del cliente — convención acordada
-            // con el usuario 2026-09-12: escribir "SI" en el campo "Account
-            // Number" (Customers.AccountNumber) de los clientes relacionados.
-            // Ese mismo campo se reusa más abajo como tipoCliente para
-            // clientes del exterior; si un cliente es a la vez exterior y
-            // relacionado, el texto "SI" queda también como tipoCliente —
-            // se replica tal cual la convención, sin tratar de adivinar.
-            parteRelVtas = EsParteRelacionada(fila.Cliente.TipoCliente) ? parteRelType.SI : parteRelType.NO,
+            parteRelVtas = esRelacionada ? parteRelType.SI : parteRelType.NO,
             parteRelVtasSpecified = true,
             numeroComprobantes = fila.NumeroComprobantes,
             tipoEmision = tipoEmisionType.F,
             tipoComprobante = fila.TipoComprobante,
             baseNoGraIva = fila.Buckets.BaseNoGraIva,
-            // Bug B1 (preservado — ver BucketsVentaAts): en el `.exe`,
-            // LoadMontoIVA pisa baseImponible a 0 justo después de que
-            // LoadBaseImponible la calculó; el valor real nunca llega al XML.
-            baseImponible = 0m,
-            baseImpGrav = fila.Buckets.BaseImpGrav,
+            // Bug B1 (ver BucketsVentaAts): en el `.exe`, LoadMontoIVA pisa
+            // baseImponible a 0 justo después de que LoadBaseImponible la
+            // calculó — se preserva para clientes normales. Para partes
+            // relacionadas, decisión 2026-09-14 confirmada con el usuario
+            // (regla general, no ajuste puntual): se reclasifica TODO el
+            // gravado (0% + con tarifa) bajo baseImponible y baseImpGrav
+            // queda en 0 — verificado exacto contra el XML real declarado de
+            // CPTDC julio/2026 para el cliente 20550511941 (RUC peruano,
+            // sucursal del mismo grupo): 4907.05 (BaseImponibleCruda) +
+            // 9484.10 (BaseImpGrav) = 14391.15 en baseImponible, baseImpGrav=0.
+            baseImponible = esRelacionada ? fila.Buckets.BaseImponibleCruda + fila.Buckets.BaseImpGrav : 0m,
+            baseImpGrav = esRelacionada ? 0m : fila.Buckets.BaseImpGrav,
             montoIva = fila.Buckets.MontoIva,
             montoIce = 0m,
             montoIceSpecified = true,
@@ -64,14 +68,6 @@ public static class ArmadorVentasAts
 
         return detalle;
     }
-
-    /// <summary>
-    /// true si el "Account Number" del cliente marca "parte relacionada"
-    /// (convención 2026-09-12: la palabra exacta "SI", sin distinguir
-    /// mayúsculas/espacios).
-    /// </summary>
-    private static bool EsParteRelacionada(string tipoCliente) =>
-        string.Equals(tipoCliente.Trim(), "SI", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Arma cada fila cruda y fusiona las que comparten

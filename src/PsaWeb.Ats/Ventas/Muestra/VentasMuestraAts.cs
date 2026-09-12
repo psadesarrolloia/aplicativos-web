@@ -14,7 +14,7 @@ public static class VentasMuestraAts
         new FilaVentaCruda(
             TipoComprobante: "18",
             NumeroComprobantes: "3",
-            Cliente: new ClienteAts(TiposIdentificacionClienteAts.Ruc, "1790011110001", string.Empty, string.Empty),
+            Cliente: new ClienteAts(TiposIdentificacionClienteAts.Ruc, "1790011110001", string.Empty, string.Empty, false),
             Buckets: new BucketsVentaAts(
                 BaseNoGraIva: 0m,
                 BaseImponibleCruda: 500m, // se descarta (Bug B1): el esquema lleva 0.
@@ -27,7 +27,7 @@ public static class VentasMuestraAts
         new FilaVentaCruda(
             TipoComprobante: "18",
             NumeroComprobantes: "1",
-            Cliente: new ClienteAts(TiposIdentificacionClienteAts.Exterior, "PA1234567", "02", "CLIENTE DEL EXTERIOR S.A."),
+            Cliente: new ClienteAts(TiposIdentificacionClienteAts.Exterior, "PA1234567", "02", "CLIENTE DEL EXTERIOR S.A.", false),
             Buckets: new BucketsVentaAts(
                 BaseNoGraIva: 0m,
                 BaseImponibleCruda: 0m,
@@ -40,7 +40,7 @@ public static class VentasMuestraAts
         new FilaVentaCruda(
             TipoComprobante: "04",
             NumeroComprobantes: "1",
-            Cliente: new ClienteAts(TiposIdentificacionClienteAts.Ruc, "1790011110001", string.Empty, string.Empty),
+            Cliente: new ClienteAts(TiposIdentificacionClienteAts.Ruc, "1790011110001", string.Empty, string.Empty, false),
             Buckets: new BucketsVentaAts(
                 BaseNoGraIva: 0m,
                 BaseImponibleCruda: 0m,
