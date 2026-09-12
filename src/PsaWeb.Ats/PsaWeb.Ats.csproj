@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\PsaWeb.Comprobantes\PsaWeb.Comprobantes.csproj" />
+  </ItemGroup>
+
 </Project>
