@@ -76,16 +76,47 @@ public class ArmadorVentasAtsTests
     }
 
     [Fact]
-    public void ArmarDetalle_fija_parteRelVtas_en_NO_siempre()
+    public void ArmarDetalle_fija_parteRelVtas_en_NO_por_defecto()
     {
-        // El `.exe` no tiene forma de detectar partes relacionadas desde Sage
-        // — queda fijo en NO; corregirlo (cuando aplique) es tarea manual del
-        // contador antes de declarar (ver docs/PLAN-APP3-ATS.md §3.5a).
-        var fila = new FilaVentaCruda("18", "1", ClienteExterior(), Buckets());
+        var fila = new FilaVentaCruda("18", "1", ClienteNacional(), Buckets());
 
         var detalle = ArmadorVentasAts.ArmarDetalle(fila);
 
         Assert.Equal(parteRelType.NO, detalle.parteRelVtas);
+    }
+
+    [Theory]
+    [InlineData("SI")]
+    [InlineData("si")]
+    [InlineData(" SI ")]
+    public void ArmarDetalle_marca_parteRelVtas_SI_si_el_AccountNumber_del_cliente_dice_SI(string accountNumber)
+    {
+        // Convención acordada con el usuario 2026-09-12: Sage 50 no tiene un
+        // campo dedicado para "parte relacionada", así que se marca a mano en
+        // el campo "Account Number" de la ficha del cliente con la palabra
+        // "SI" (docs/PLAN-APP3-ATS.md §3.5a).
+        var cliente = new ClienteAts(TiposIdentificacionClienteAts.Ruc, "1790011110001", accountNumber, string.Empty);
+        var fila = new FilaVentaCruda("18", "1", cliente, Buckets());
+
+        var detalle = ArmadorVentasAts.ArmarDetalle(fila);
+
+        Assert.Equal(parteRelType.SI, detalle.parteRelVtas);
+    }
+
+    [Fact]
+    public void ArmarDetalle_cliente_exterior_y_relacionado_expone_SI_como_tipoCliente_y_parteRel()
+    {
+        // Mismo campo de Sage (AccountNumber) reusado para 2 cosas — si un
+        // cliente del exterior además está marcado como relacionado, el XML
+        // real queda con tipoCliente="SI": se replica tal cual la convención,
+        // sin inventar una excepción.
+        var cliente = new ClienteAts(TiposIdentificacionClienteAts.Exterior, "20550511941", "SI", "CLIENTE EXTERIOR RELACIONADO");
+        var fila = new FilaVentaCruda("18", "1", cliente, Buckets());
+
+        var detalle = ArmadorVentasAts.ArmarDetalle(fila);
+
+        Assert.Equal(parteRelType.SI, detalle.parteRelVtas);
+        Assert.Equal("SI", detalle.tipoCliente);
     }
 
     [Fact]

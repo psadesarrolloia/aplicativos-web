@@ -21,7 +21,15 @@ public static class ArmadorVentasAts
         {
             tpIdCliente = fila.Cliente.TipoIdentificacion!,
             idCliente = fila.Cliente.Identificacion,
-            parteRelVtas = parteRelType.NO,
+            // Parte relacionada: Sage 50 no tiene un campo dedicado, así que
+            // se marca a mano en la ficha del cliente — convención acordada
+            // con el usuario 2026-09-12: escribir "SI" en el campo "Account
+            // Number" (Customers.AccountNumber) de los clientes relacionados.
+            // Ese mismo campo se reusa más abajo como tipoCliente para
+            // clientes del exterior; si un cliente es a la vez exterior y
+            // relacionado, el texto "SI" queda también como tipoCliente —
+            // se replica tal cual la convención, sin tratar de adivinar.
+            parteRelVtas = EsParteRelacionada(fila.Cliente.TipoCliente) ? parteRelType.SI : parteRelType.NO,
             parteRelVtasSpecified = true,
             numeroComprobantes = fila.NumeroComprobantes,
             tipoEmision = tipoEmisionType.F,
@@ -56,6 +64,14 @@ public static class ArmadorVentasAts
 
         return detalle;
     }
+
+    /// <summary>
+    /// true si el "Account Number" del cliente marca "parte relacionada"
+    /// (convención 2026-09-12: la palabra exacta "SI", sin distinguir
+    /// mayúsculas/espacios).
+    /// </summary>
+    private static bool EsParteRelacionada(string tipoCliente) =>
+        string.Equals(tipoCliente.Trim(), "SI", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Arma cada fila cruda y fusiona las que comparten

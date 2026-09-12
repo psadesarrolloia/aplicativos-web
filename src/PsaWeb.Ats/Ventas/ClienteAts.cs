@@ -10,8 +10,10 @@ namespace PsaWeb.Ats.Ventas;
 /// emitir en ese caso — ver <see cref="LectorClienteAts"/>).
 /// </param>
 /// <param name="Identificacion">Cédula/RUC/pasaporte ya resuelto.</param>
-/// <param name="TipoCliente"><c>Customers.AccountNumber</c> — solo se usa en el
-/// esquema cuando el cliente es del exterior.</param>
+/// <param name="TipoCliente"><c>Customers.AccountNumber</c> — en el esquema
+/// solo se informa como <c>tipoCliente</c> cuando el cliente es del exterior,
+/// pero <see cref="Ventas.ArmadorVentasAts"/> también lo lee para "parte
+/// relacionada" (convención 2026-09-12: la palabra "SI" en este campo).</param>
 /// <param name="Nombre"><c>Customer_Bill_Name</c> + continuación — solo se usa
 /// en el esquema cuando el cliente es del exterior.</param>
 public sealed record ClienteAts(string? TipoIdentificacion, string Identificacion, string TipoCliente, string Nombre)

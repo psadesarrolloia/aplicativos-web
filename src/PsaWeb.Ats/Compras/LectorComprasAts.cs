@@ -55,6 +55,12 @@ public static class LectorComprasAts
             }
         }
 
+        // Autoretenciones que el SRI exige a los Grandes Contribuyentes: son
+        // una obligación interna de Sage 50, no una compra a un tercero — no
+        // deben reflejarse en el ATS. Convención acordada con el usuario
+        // 2026-09-12: marcarlas en Sage con ShipVia="AUTORETENCION".
+        filas.RemoveAll(f => EsAutoretencion(f.ShipVia));
+
         var resultado = new List<detalleComprasType>(filas.Count);
         foreach (var fila in filas)
         {
@@ -122,6 +128,15 @@ public static class LectorComprasAts
 
         return resultado;
     }
+
+    /// <summary>
+    /// true si la compra es una autoretención interna (convención 2026-09-12:
+    /// <c>ShipVia</c> == "AUTORETENCION", sin distinguir mayúsculas/espacios)
+    /// que el SRI exige a los Grandes Contribuyentes registrar en Sage 50 pero
+    /// que no es una compra real a un tercero — no debe entrar al ATS.
+    /// </summary>
+    public static bool EsAutoretencion(string? shipVia) =>
+        string.Equals(shipVia?.Trim(), "AUTORETENCION", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Port de la clasificación inicial de <c>LoadPurchases</c>: JournalEx 12
