@@ -1,13 +1,10 @@
 # Plan — App #3: ATSfromPeach → módulo web
 
 Ola 1, aplicativo #3. Piloto (Cierre de Caja), app #1 (`AutomaticTwhSender` →
-`/retenciones`) y app #2 (`Sage50FacturacionElectronica` → `/fe/*`) ya
-desplegados en `SERWEBPSA01`. En paralelo, en otro chat, se está portando el
-reporte **Kardex de inventarios** sobre `main` (rama `kardex-web`). Este
-documento planifica el port de **`ATSfromPeach`** ("Generar ATS"). La
-implementación arranca **cuando el Kardex esté cerrado**, para no pisar el wiring
-compartido (`Program.cs`, `Routes.razor`, `Permisos.cs`, `AppCatalogo.cs`,
-`NavMenu`, `psa-theme.css`, `_Imports`).
+`/retenciones`), app #2 (`Sage50FacturacionElectronica` → `/fe/*`) y el
+**Kardex de inventarios** (`/kardex`) ya están en `main`. Este documento
+planifica el port de **`ATSfromPeach`** ("Generar ATS"), listo para arrancar
+la implementación (el Kardex, que compartía el wiring, ya cerró).
 
 Fuente de escritorio:
 `Código fuente Aplicativos/sage50Apps-master/ATSfromPeach/` (+ proyectos
@@ -80,7 +77,12 @@ Entradas: `txtPeriodo` (año), `cboMonth` (mes `01`–`12`), y la **empresa =
   `pagoExteriorType` (+ enums `parteRelType`, `tipoEmisionType`,
   `pagoLocExtType`, `aplicConvDobTribType`, `tipoRegiType`). Tipos del esquema
   que el `.exe` **nunca llena**: `exportaciones`, `recap`, `fideicomisos`,
-  `rendFinancieros`, `codigoOperativo`, `TipoIDInformante` (quedan default/null).
+  `rendFinancieros` (no aplican a este `.exe`). `codigoOperativo` y
+  `TipoIDInformante` tampoco se asignan explícitamente, pero **no quedan
+  vacíos**: ambos enums (`codigoOperativoType`, `ivaTypeTipoIDInformante`)
+  tienen un único valor posible (`IVA` y `R` respectivamente) en la posición 0,
+  que es el default de C# — coincide exacto con el XML real de CPTDC (§6). No
+  es un bug, solo una asignación implícita.
 - **Orquestador**: `ATSModel/LoadATS.cs` (228 LOC).
   - ctor `LoadATS(RUC, periodo, mes)`: `new PeachCnn(RUC)` (→ cadena ODBC a Sage
     de esa empresa, desde `PeachConnString` + desencriptado de `pwd`); lee
@@ -137,8 +139,11 @@ que el propio DIMM usa internamente — el esquema del `.exe` sigue vigente) má
 campo + reglas de negocio) y el manual del DIMM. Además, el propio validador del
 DIMM (`Dimm\plugins\ec.gob.sri.dimm.ats.validacion_1.2.0.jar`, que envuelve
 `rig-ats-validacion`) tiene clases Java con los nombres y mensajes reales de cada
-regla. Cruzando eso contra el código del `.exe` aparecen **2 desvíos reales que
-conviene corregir en el port, no replicar**, y 1 bug cosmético:
+regla. Cruzando eso contra el código del `.exe` aparecen 4 hallazgos —
+detallados abajo, y resumidos en la decisión 5 (§5): 1 bug real a corregir
+(`numEstabRuc`), 1 desvío real que se decide **no** corregir (forma de pago),
+1 bug cosmético sin impacto en el XML (pestaña "NC Compras"), y 1 gap de
+esquema (`valorRetencionNc`):
 
 1. **`numEstabRuc` / `ventasEstablecimiento` — bug real.** La Ficha Técnica es
    explícita: *"Número de establecimientos del sujeto pasivo inscritos en el
@@ -156,33 +161,44 @@ conviene corregir en el port, no replicar**, y 1 bug cosmético:
    filtro `IsFromPeach`/activo) como fuente de verdad de `numEstabRuc`, y emitir
    un `ventaEstType` por cada establecimiento activo (con `ventasEstab = 0` si
    no facturó).
-2. **"Forma de pago" en ventas — bug real.** La Ficha Técnica: el campo es
-   condicional — *"a partir del 20 de diciembre de 2023 se genera cuando la
-   sumatoria de bases imponibles y montos de impuestos es mayor a USD 500,00...
-   para períodos anteriores... mayor a USD 1000,00"* y **no aplica a notas de
-   crédito** (confirmado también por el mensaje literal del validador:
-   `"Las formas de pago no aplican para notas de crédito"`). El `.exe`:
-   - en **Compras** (`LoadPurchases`) sí evalúa el umbral, pero lo tiene fijo en
-     500 (`CommonConst.BankPaymentNonDeductubleLimitAmount`) sin importar la
-     fecha — correcto solo para períodos ≥ dic-2023.
-   - en **Ventas** (`LoadSales.LoadValuesInvoice`) **no evalúa ningún umbral**:
-     fija `formasDePago = ["20"]` en toda factura, sin importar el monto (por
-     suerte sí lo omite en NC, que es lo correcto). **Fix propuesto**: aplicar
-     el mismo umbral por fecha (500 desde 20-dic-2023, 1000 antes) en ventas y
-     compras.
-   - Nota menor: `valRetBien10`/`valRetServ20` (retención IVA bienes 10 %/20 %)
-     la normativa los admite recién desde 06/2015 — irrelevante si solo se
-     declaran períodos corrientes; solo importa si se generan ATS de meses muy
-     atrasados.
+2. **"Forma de pago" en ventas — desvío real, pero se deja como está (decisión
+   del usuario 2026-09-12).** La Ficha Técnica dice que el campo es condicional
+   por fecha/umbral y que no aplica a notas de crédito. El `.exe` en **Compras**
+   sí evalúa un umbral (fijo en 500, sin variar por fecha) y en **Ventas**
+   (`LoadSales.LoadValuesInvoice`) **no evalúa ninguno**: fija
+   `formasDePago = ["20"]` en toda factura sin importar el monto (y sí lo omite
+   correctamente en NC). Evaluado con el usuario: **se mantiene el código `"20"`
+   fijo en ventas, sin condicionarlo a fecha/monto** — volverlo condicional
+   introduce una regla más para mantener y un riesgo de error humano/de cálculo
+   mayor al beneficio de precisión marginal que da. Por consistencia, **en
+   compras tampoco se le agrega la variante por fecha** propuesta originalmente:
+   se porta el umbral fijo del `.exe` (500) tal cual. Si en el futuro el SRI
+   objeta esto en una revisión real, se revisita.
+   - Nota menor (no accionable ahora): `valRetBien10`/`valRetServ20` (retención
+     IVA bienes 10 %/20 %) la normativa los admite recién desde 06/2015 —
+     irrelevante si solo se declaran períodos corrientes.
 3. **Pestaña "NC Compras" — bug cosmético, no afecta el XML.** `ATSform.cs`
    carga esa grilla con el mismo filtro que "Compras"
    (`.Where(tipoComprobante != "04")`) en vez de `== "04"` — es un error de
    copy-paste en la UI de escritorio. El array `compras` del XML (que sí
    incluye las NC con `tipoComprobante="04"`) no se ve afectado. **Fix
    trivial** al portar la pestaña: usar el filtro correcto.
+4. **El esquema `Esquema_at.cs` está desactualizado — no copiar tal cual.**
+   Diffeando los nodos del XML real de CPTDC julio/2026 (§6) contra las
+   propiedades de `detalleComprasType` aparece **`valorRetencionNc`** (`tipo
+   moneda`, `minOccurs="0"`), documentado en `ats.xsd` como *"Nuevo campo 2020
+   de valor de retención en notas de crédito 100%"* — **no existe en
+   `Esquema_at.cs`** (el `.exe` nunca lo generó porque su copia del esquema es
+   de antes de esa fecha). Es opcional en el XSD, así que el XML del `.exe`
+   sigue validando sin él, pero el golden real SÍ lo trae (con `0.00`) en cada
+   `detalleCompras`. **F1 no debe copiar `Esquema_at.cs` a ciegas**: hay que
+   regenerarlo/auditarlo contra `C:\SRI-DIMM\Documentacion\ats.xsd` (el vigente)
+   y al menos agregar `valorRetencionNc` (aunque el port no lo calcule todavía
+   — emitirlo en `0.00`, que es lo que hace el propio DIMM).
 
-Estos 3 hallazgos están reflejados en la decisión 5 (§5) y en las fases F3/F4/F5
-(§4).
+Estos 4 hallazgos están reflejados en la decisión 5 (§5) y en las fases F1/F3/F4/F5
+(§4). Los ejemplos reales para contrastar todo esto ya están disponibles — ver
+§6 (fixture).
 
 ---
 
@@ -205,17 +221,25 @@ Estos 3 hallazgos están reflejados en la decisión 5 (§5) y en las fases F3/F4
 
 ### 3.1 `PsaWeb.Ats` — esquema + escritor XML  *(proyecto nuevo)*
 
-- `Esquema/` — **port verbatim** de `ATSinScheme/Model/Esquema_at.cs`. Es código
-  generado por `xsd.exe` y **es el contrato con el SRI**: se copia tal cual
-  (namespace `PsaWeb.Ats.Esquema`), sin rediseñar, conservando `[XmlRoot("iva")]`,
-  los `[XmlElement(DataType="integer")]`, los `*Specified`, etc. `System.Xml.Serialization`
-  existe en .NET 9 sin paquete extra.
+- `Esquema/` — **regenerar con `xsd.exe` (o equivalente) contra el XSD vigente
+  `C:\SRI-DIMM\Documentacion\ats.xsd`**, no copiar `ATSinScheme/Model/Esquema_at.cs`
+  a ciegas (hallazgo 4 de §1.4: le falta `valorRetencionNc`). El resultado sigue
+  siendo código generado — **es el contrato con el SRI**, no se rediseña a mano
+  (namespace `PsaWeb.Ats.Esquema`, conservando `[XmlRoot("iva")]`, los
+  `[XmlElement(DataType="integer")]`, los `*Specified`, etc.). Cotejar además
+  contra los nodos reales del golden de CPTDC (§6) por si hay algún otro campo
+  nuevo que el diff no haya capturado. `System.Xml.Serialization` existe en
+  .NET 9 sin paquete extra.
 - `EscritorXmlAts` — envuelve `XmlSerializer(typeof(ivaType))`:
-  `StreamWriter` UTF-8, `XmlWriterSettings` que reproduzca **byte a byte** el
-  output del `.exe` (indentación, `<?xml version="1.0"?>`, sin `xmlns:xsi`/`xsd`
+  `StreamWriter` UTF-8, `XmlWriterSettings` que reproduzca el output real
+  (`<?xml version="1.0" encoding="UTF-8" standalone="no"?>`, sin `xmlns:xsi`/`xsd`
   → usar `XmlSerializerNamespaces` vacío). Devuelve `byte[]`.
-- Tests: serializar un `ivaType` de muestra y **diff contra un XML golden**
-  producido por el `.exe` (F1 depende de tener ese golden — ver §6).
+- Tests: serializar un `ivaType` de muestra y **comparar contra el XML golden**
+  real de CPTDC julio/2026 (§6) — comparación **estructural y numérica**, no
+  byte-a-byte: el golden puede venir ya renormalizado por el propio DIMM (su
+  cabecera `standalone="no"` no es la que produce por defecto un
+  `XmlSerializer` crudo), así que el objetivo es que cargue igual en el DIMM,
+  no un diff textual exacto.
 
 ### 3.2 `PsaWeb.PeachEbills` — entidad nueva
 
@@ -265,10 +289,15 @@ la **empresa + año fiscal de la sesión**:
   Ventas, NC Ventas, Anulados Detalle, Resumen ATS. Grillas con filtros/orden
   client-side + `overflow-x:auto`; detalle de retenciones de una compra en
   `PsaModal` (reemplaza `FrmAtsAirList`).
-- **"Generar ATS (XML)"** → `Nav.NavigateTo("/ats/export?anio=&mes=&ruc=", forceLoad:true)`.
+- **"Revisar ATS"** (§3.5) corre las validaciones sobre el `ivaType` en memoria.
+- **Dos salidas finales** (habilitadas tras revisar, ver §3.5): **"Generar ATS
+  (XML)"** → `Nav.NavigateTo("/ats/export?anio=&mes=&ruc=", forceLoad:true)`.
   Endpoint en el Host: valida acceso a `ruc` (`EmpresasDelUsuarioAsync` → 403),
   re-arma el `ivaType`, `EscritorXmlAts` → `Results.File(xml, "application/xml",
-  $"ATS_{ruc}_{anio}{mes}.xml")`. `RequireAuthorization`.
+  $"ATS_{ruc}_{anio}{mes}.xml")`. Es el archivo que luego se sube al DIMM real
+  y, ya validado ahí, a la declaración del SRI. Y **"Descargar Talón Resumen
+  (PDF)"** → mismo patrón de endpoint, `Results.File(pdf, "application/pdf",
+  $"TRSMN-ATS-{mes}-{anio}-{ruc}.pdf")`. `RequireAuthorization` en ambos.
 - **Formularios 103 / 104** → **descartados de este corte** (decisión 1/3, §5).
   El Formulario 101 queda **fuera de alcance** (decisión 2).
 - Gate: `Permisos.VerAts` (`"quats"`). **Verificado en la copia local de
@@ -285,38 +314,96 @@ la **empresa + año fiscal de la sesión**:
 
 ### 3.5 "Revisar ATS" — reemplazo del botón muerto "Ver errores"
 
-El usuario confirmó la intención original: una revisión **tipo DIMM oficial**
-antes de generar el XML. El DIMM real (`ec.gob.sri.dimm.ats.validacion` →
-`rig-ats-validacion`) trae validadores dedicados por bloque —
-`ValidacionCompras`, `ValidacionVentas`, `ValidacionVentasEstablecimiento` +
-`VentaYVentaEstablecimientoValidador` (cruce ventas↔establecimientos),
-`ValidacionAnulados`, `ValidacionRetencionesCompras`,
-`ValidadorMontosDeRetencionIVA`, `FormaPagoValidador`,
-`TipoIdentificacionProveedorValidador`, `PagoExteriorValidador` /
-`CompraExteriorValidador`, `ValidacionDuplicadosAts` (comprobantes duplicados),
-`RangosNumericos` (tolerancias de redondeo). Con eso como base, `PsaWeb.Ats`
-suma un `ValidadorAts` (parte pura, testeable) que corre **sobre el `ivaType` ya
-armado**, antes de habilitar "Generar ATS (XML)", y devuelve una lista de
-hallazgos (bloqueantes vs. advertencias):
+El usuario confirmó la intención original: una revisión **tipo DIMM oficial**,
+y que el flujo termine en **dos entregables**: el **Talón Resumen en PDF** que
+el DIMM emite, y el **XML** (que después se sube al DIMM real y, ya validado
+ahí, a la declaración). Ambos ya se pueden diseñar con precisión porque el
+usuario dejó en `C:\SRI-DIMM\Documentacion\` los dos ejemplos reales de la
+declaración de CPTDC de julio/2026 (misma información que hoy está en el Sage
+de PREDATOR — ver §6): `ATS CPTDC JULIO  2026.xml` y
+`TRSMN-ATS-07-2026-CPTDC.pdf`.
+
+#### a) Validaciones ("Revisar ATS")
+
+El DIMM real (`ec.gob.sri.dimm.ats.validacion` → `rig-ats-validacion`) trae
+validadores dedicados por bloque — `ValidacionCompras`, `ValidacionVentas`,
+`ValidacionVentasEstablecimiento` + `VentaYVentaEstablecimientoValidador`
+(cruce ventas↔establecimientos), `ValidacionAnulados`,
+`ValidacionRetencionesCompras`, `ValidadorMontosDeRetencionIVA`,
+`FormaPagoValidador`, `TipoIdentificacionProveedorValidador`,
+`PagoExteriorValidador`/`CompraExteriorValidador`, `ValidacionDuplicadosAts`
+(comprobantes duplicados), `RangosNumericos` (tolerancias de redondeo). Con eso
+como base, `PsaWeb.Ats` suma un `ValidadorAts` (parte pura, testeable) que
+corre **sobre el `ivaType` ya armado**, antes de habilitar las dos descargas, y
+devuelve una lista de hallazgos (bloqueantes vs. advertencias):
 
 - **Estructurales** (derivados del propio `ats.xsd`): longitudes/patrones por
   campo (p. ej. `razonSocialType`, RUC 13 dígitos, fechas `dd/mm/aaaa`), campos
   obligatorios sin valor.
-- **Cruce ventas ↔ establecimientos** (el hallazgo 1 de §1.4): nº de
+- **Cruce ventas ↔ establecimientos** (hallazgo 1 de §1.4): nº de
   `ventasEstablecimiento` == `numEstabRuc`, `sum(ventasEstab) <= totalVentas`.
-- **Forma de pago** (hallazgo 2 de §1.4): presente cuando corresponde por
-  umbral/fecha, ausente en notas de crédito.
 - **Compras**: al menos una de `baseImpExe`/`baseImponible`/`baseImpGrav` > 0
   por línea (regla literal de la Ficha Técnica); suma de retenciones de IVA por
   compra ≤ `montoIva` (mensaje real del validador: *"La sumatoria de los
   valores por concepto de retenciones... es mayor al valor de MONTO IVA"*).
-  fechas: registro ≥ emisión, dentro del período, posteriores a 01/01/2002.
+  Fechas: registro ≥ emisión, dentro del período, posteriores a 01/01/2002.
 - **Duplicados**: mismo `(establecimiento, puntoEmision, secuencial, idProv)`
   repetido en compras/ventas.
+- No se valida "forma de pago por umbral/fecha" (decisión 2026-09-12, hallazgo
+  2 de §1.4: queda fija en `"20"`, no es una regla a chequear).
 
 Se muestra como panel de hallazgos en la página (no bloquea la exploración de
-pestañas, pero si hay bloqueantes se advierte antes de exportar). Se desarrolla
-junto con F5 (o F5.5 si el volumen de reglas lo amerita) — ver §4.
+pestañas, pero si hay bloqueantes se advierte antes de exportar).
+
+#### b) Talón Resumen (PDF)
+
+El propio jar del validador del DIMM trae, en `resources/`, la plantilla HTML +
+CSS + logo con la que arma este PDF: `templateATS2.html` / `talonAts.css` /
+`sriTalonLogo.jpg` (más `IVA_talonResumen.properties` con los mismos bloques
+parametrizados por marcadores `#CODIGO#`/`#TRANSACCION#`/etc., usados por la
+variante RTF/HTML del generador `GeneraTalonAtsDimm`). Contrastado contra
+`TRSMN-ATS-07-2026-CPTDC.pdf` (el ejemplo real), el talón tiene:
+
+1. Cabecera: logo, "TALÓN RESUMEN / SERVICIO DE RENTAS INTERNAS / ANEXO
+   TRANSACCIONAL", razón social, RUC, período (`MM-AAAA`), fecha de generación.
+2. Párrafo de certificación ("Certifico que la información... es fiel reflejo
+   del siguiente reporte:").
+3. Tabla **COMPRAS**: Cod. | Transacción | Nº Registros | BI tarifa 0% | BI
+   tarifa diferente 0% | BI No Objeto IVA | Valor IVA — una fila por
+   `tipoComprobante` (01 Factura, 02 Nota de Venta, 03 Liquidación de compra,
+   04 Notas de crédito) + fila TOTAL.
+4. Tabla **VENTAS**: mismas columnas, fila "18 DOCUMENTOS AUTORIZADOS EN VENTAS
+   EXCEPTO ND Y NC" + TOTAL.
+5. **COMPROBANTES ANULADOS**: conteo total del período.
+6. **RESUMEN DE RETENCIONES - AGENTE DE RETENCIÓN**:
+   - Tabla "RETENCIÓN EN LA FUENTE DE IMPUESTO A LA RENTA": Cod. | Concepto |
+     Nº Registros | Base Imponible | Valor Retenido, una fila por `codRetAir`
+     (303A, 304B, 310, 312, 320, 332, 332G, 332I, 343, 3440, 501A, …) + TOTAL.
+   - Tabla "RETENCIÓN EN LA FUENTE DE IVA": Operación=COMPRA + los 6 conceptos
+     (10/20/30/50/70/100 %) + TOTAL.
+7. "RESUMEN DE RETENCIONES QUE LE EFECTUARON EN EL PERIODO": Operación=VENTA +
+   "Valor de IVA que le han retenido" / "Valor de Renta que le han retenido" +
+   TOTAL.
+8. Texto legal (Art. 101 de la Ley de Régimen Tributario Interno) + líneas de
+   firma "Firma del Contador" / "Firma del Representante Legal".
+
+**Todo esto ya está calculado** por las agregaciones de la pestaña "Resumen
+ATS" (§1.2) que el port ya planifica en F2–F4 (`purchasesSummary`/
+`salesSummary`/`purchasesTwhRFSummary`/`purchaseTwhIvaSummary`/
+`salesTwhSummary`/conteo de anulados) — el Talón es, en esencia, ese resumen
+con el layout oficial del SRI. `TalonResumenAts` (nuevo, en `PsaWeb.Ats`) arma
+el HTML reusando esa misma plantilla/CSS (adaptada a Razor/UTF-8, texto sin
+firmas reales — las líneas quedan en blanco para imprimir), y un renderer
+HTML→PDF la convierte a bytes. **Decisión pendiente de tecnología de
+renderizado** (§7): se necesita algo que corra en el servidor IIS de
+`SERWEBPSA01` sin licencia paga (mismo criterio que llevó a ClosedXML en vez de
+EPPlus). Candidatos: **PuppeteerSharp** (Chromium headless, MIT, reproduce el
+HTML/CSS con fidelidad pero descarga un binario de Chromium ~300 MB) o una
+librería de PDF nativa .NET tipo **QuestPDF** (más liviana, pero hay que
+re-maquetar el diseño en su API en vez de reusar el HTML/CSS tal cual). A
+confirmar con el usuario en F5.6.
+
+Se desarrolla en las fases F5.5 (validaciones) y F5.6 (Talón Resumen) — ver §4.
 
 ---
 
@@ -324,58 +411,67 @@ junto con F5 (o F5.5 si el volumen de reglas lo amerita) — ver §4.
 
 Mismo molde que app #1 / app #2 (`F1…Fn`, `F3` es el bloque pesado).
 
-- **F1 — Esquema + escritor XML.** `PsaWeb.Ats` nuevo: `Esquema/` (port verbatim
-  de `Esquema_at.cs`), `EscritorXmlAts` (`XmlSerializer`, ajustar `XmlWriterSettings`
-  / `XmlSerializerNamespaces` para clonar el output del `.exe`). Scaffold de
-  `dicIdentityTypeATS` en `PsaWeb.PeachEbills`. Tests: serializar un `ivaType`
-  armado a mano y **diff contra XML golden** del `.exe` (§6). ~1–2 días.
+- **F1 — Esquema + escritor XML.** `PsaWeb.Ats` nuevo: `Esquema/` **regenerado**
+  desde `C:\SRI-DIMM\Documentacion\ats.xsd` vigente (no copiado de
+  `Esquema_at.cs` — hallazgo 4 de §1.4: falta `valorRetencionNc`).
+  `EscritorXmlAts` (`XmlSerializer`, `XmlWriterSettings`/`XmlSerializerNamespaces`
+  para reproducir el formato real). Scaffold de `dicIdentityTypeATS` en
+  `PsaWeb.PeachEbills`. Tests: serializar un `ivaType` armado a mano y comparar
+  estructural/numéricamente contra **el golden real ya disponible**
+  (`C:\SRI-DIMM\Documentacion\ATS CPTDC JULIO  2026.xml`, §6). **Ya no bloquea
+  con "conseguir un golden" — el archivo ya existe.** ~1–2 días.
 - **F2 — Lector de ventas.** Port de `LoadSales` + `LoadCustomer` →
-  `LectorVentasAts` (ODBC `?`) + `ArmarVentas` puro + `LectorVentasEstablecimientoAts`
-  + impl de muestra. Tests de `ArmarVentas` (buckets por `SalesTaxType`, fusión
-  por cliente, NC negativa, retenciones recibidas) y del golden de ventas.
-  ~2 días.
+  `LectorVentasAts` (ODBC `?`) + `ArmarVentas` puro (`formasDePago` fijo `"20"`,
+  decisión 2026-09-12) + `LectorVentasEstablecimientoAts` + impl de muestra.
+  Tests de `ArmarVentas` (buckets por `SalesTaxType`, fusión por cliente, NC
+  negativa, retenciones recibidas) y contra el bloque `<ventas>`/`<compensaciones>`
+  del golden. ~2 días.
 - **F3 — Lector de compras.** Port de `LoadPurchases` (+ `LoadImponibles`,
   `LoadRetencionesRF`, `SriAuthorization`, `AirBaseImp`) + `LoadVendor`
   (extendiendo `LectorProveedor`: `dicIdentityTypeATS` + `pagoExteriorType`).
-  El bloque grande. Impl de muestra. **Aplica el fix 2 de §1.4**: forma de pago
-  por umbral y fecha (500 desde 20-dic-2023, 1000 antes), no un límite fijo.
-  Tests de la parte pura (clasificación 01/02/03/04, `codSustento`, buckets
-  `valRet*`, `detalleAir` incl. líneas `332`/`332G`, forma de pago por
-  umbral/fecha, bloque `docModificado` de NC). ~3–4 días.
+  El bloque grande. Impl de muestra. Umbral de forma de pago **fijo en 500,
+  tal cual el `.exe`** (sin variante por fecha — decisión 2026-09-12). Tests de
+  la parte pura (clasificación 01/02/03/04, `codSustento`, buckets `valRet*`,
+  `detalleAir` incl. líneas `332`/`332G`, bloque `docModificado` de NC) y
+  contra el bloque `<compras>` del golden real. ~3–4 días.
 - **F4 — Anulados + armador.** Portar el mínimo de `Sage50MetaData`
   (`SageJournalMetaData` enums + `ExternalVendorInfo`) a `PsaWeb.Comprobantes/Sri`.
   Port de `LoadCanceled` → `LectorAnuladosAts`. `ArmadorAts` (= `LoadToATSobject`:
   cabecera + ventas + compras + anulados). **Aplica el fix 1 de §1.4**:
   `numEstabRuc` y `ventasEstablecimiento` desde `Establishments` (activos del
-  RUC), no desde "los que facturaron". **Golden completo** de una empresa/
-  período real: `ivaType` web serializado == XML del `.exe` **salvo en los 2
-  puntos corregidos** (documentar el diff esperado). ~2–3 días.
+  RUC), no desde "los que facturaron" — es el único punto donde se espera
+  diferencia real contra el golden; documentar el diff. **Validación completa**
+  contra `ATS CPTDC JULIO  2026.xml` (real). ~2–3 días.
 - **F5 — Módulo + página + endpoint.** `modules/PsaWeb.Modules.Ats`, página
   `/ats` con las 7 pestañas de solo lectura (con el fix cosmético 3 de §1.4 en
-  "NC Compras") + `PsaModal` de retenciones, "Generar ATS (XML)" → endpoint
-  `/ats/export`, acotado a empresa + año de sesión, gate `quats`
-  (`GateProvisional`), `AppCatalogo` + nav. `Data/` con repos EF/ODBC +
-  interruptor real/muestra por `Sage50:ConnectionString`. Smoke en navegador
-  (login → empresa → `/ats` → Cargar → pestañas → descarga XML). ~2–3 días.
-- **F5.5 — "Revisar ATS" (§3.5).** `ValidadorAts` (puro, testeable) + panel de
+  "NC Compras") + `PsaModal` de retenciones, endpoint `/ats/export` (XML),
+  acotado a empresa + año de sesión, gate `quats` (`GateProvisional`),
+  `AppCatalogo` + nav. `Data/` con repos EF/ODBC + interruptor real/muestra por
+  `Sage50:ConnectionString`. Smoke en navegador (login → empresa → `/ats` →
+  Cargar → pestañas → descarga XML). ~2–3 días.
+- **F5.5 — "Revisar ATS" (§3.5a).** `ValidadorAts` (puro, testeable) + panel de
   hallazgos en la página, reemplazando el botón muerto "Ver errores". Tests por
-  regla (estructurales, cruce ventas↔establecimientos, forma de pago,
-  retenciones de IVA vs. `montoIva`, duplicados). ~2–3 días.
+  regla (estructurales, cruce ventas↔establecimientos, retenciones de IVA vs.
+  `montoIva`, duplicados). ~2–3 días.
+- **F5.6 — Talón Resumen (PDF) (§3.5b).** `TalonResumenAts` (arma el HTML a
+  partir de las mismas agregaciones de "Resumen ATS") + renderer HTML→PDF
+  (tecnología a confirmar, §7) + endpoint `/ats/talon-resumen`. Validar layout
+  visual contra `TRSMN-ATS-07-2026-CPTDC.pdf` (real). ~2–3 días (más si el
+  renderer HTML→PDF elegido requiere ajuste de infraestructura en el server).
 - **F6 — Deploy a `SERWEBPSA01` + validación.** Redeploy del Host con el módulo
   (`publish win-x86 self-contained`), env vars ya existentes. **Validación de
-  paridad**: para 2–3 empresas × período cerrado, comparar el XML del web contra
-  el del `.exe` (esperando el diff de los 2 fixes) y **cargar ambos en el DIMM
-  del SRI** (valida contra el XSD + su propio validador de negocio — buena
-  doble confirmación de que los fixes son correctos). Revisión por un usuario
-  del área. Sin nada "real" que enviar (el ATS es un archivo que sube el
-  contador). ~1–2 días.
+  paridad**: contrastar el XML y el Talón del web contra los reales de CPTDC
+  julio/2026 (§6) y **cargar el XML del web en el DIMM real** (valida contra el
+  XSD + su propio validador de negocio). Revisión por un usuario del área. Sin
+  nada "real" que enviar (el ATS es un archivo que sube el contador). ~1–2 días.
 - **F7 — descartado de este corte** (decisión 1/3, §5). Formularios 103 y 104
   (relleno de plantilla xlsx + "Generar JSON" vía `ConfigJsonForms`/`PSContexts`)
   quedan fuera por ahora; se retoman si se decide más adelante.
 
-**Estimación núcleo (F1–F6): ~13–19 días de dev**, concentrados en F3 (port fiel
-de ~1.000 LOC de esquema Sage + fix de forma de pago) y F4 (fix de
-establecimientos + golden).
+**Estimación núcleo (F1–F6): ~14–20 días de dev**, concentrados en F3 (port fiel
+de ~1.000 LOC de esquema Sage), F4 (fix de establecimientos + validación contra
+el golden real) y F5.6 (Talón Resumen, si el renderer HTML→PDF elegido pide
+trabajo extra de infraestructura).
 
 ---
 
@@ -395,60 +491,87 @@ establecimientos + golden).
    natural: el rol `6` "Hacer Comprobantes Electrónicos", que ya usa la empresa
    fixture CPTDC — ver 8).
 5. ✅ **Investigado contra la normativa real** (Ficha Técnica ATS del SRI +
-   validador del DIMM instalado — detalle en §1.4). Resultado: **hay 2
-   correcciones a aplicar** (no son quirks a preservar):
-   - `numEstabRuc` / `ventasEstablecimiento` deben reflejar los establecimientos
-     **activos del RUC** (vía `Establishments`), no los que facturaron ese mes.
-   - "Forma de pago" en **ventas** debe respetar el mismo umbral por fecha que
-     ya aplica (parcialmente) en compras (500 desde 20-dic-2023, 1000 antes),
-     en vez de fijarse siempre en "20".
-   Además 1 bug cosmético sin impacto en el XML: la pestaña "NC Compras" del
-   `.exe` filtra igual que "Compras" — se corrige al portar la grilla.
-   `razonSocial` con `&`→`y` y sin `.`/`-` **no es un bug**: el XSD lo exige.
-   Se documentan los 3 puntos en F3/F4/F5 (§4).
+   validador del DIMM instalado — detalle en §1.4). Resultado ajustado tras
+   feedback del usuario (2026-09-12, punto 5.2): **1 corrección real a
+   aplicar**, **1 se descarta deliberadamente**, y se sumó **1 hallazgo nuevo**:
+   - `numEstabRuc` / `ventasEstablecimiento` **sí se corrige**: deben reflejar
+     los establecimientos **activos del RUC** (vía `Establishments`), no los
+     que facturaron ese mes.
+   - "Forma de pago" en **ventas**: **se descarta el fix** — queda fija en
+     `"20"` (y en compras el umbral queda fijo en 500, sin variante por fecha),
+     por decisión explícita del usuario: condicionarla a fecha/monto agrega una
+     regla más para mantener con riesgo de error, a cambio de una precisión
+     normativa marginal. Documentado como decisión de negocio, no como
+     descuido.
+   - **Nuevo (hallazgo 4 de §1.4)**: el esquema `Esquema_at.cs` del `.exe` está
+     desactualizado — le falta `valorRetencionNc` (campo SRI de 2020), detectado
+     al comparar contra el XML real de CPTDC. F1 regenera el esquema desde el
+     XSD vigente en vez de copiar el archivo viejo.
+   - Bug cosmético sin impacto en el XML: la pestaña "NC Compras" del `.exe`
+     filtra igual que "Compras" — se corrige al portar la grilla.
+     `razonSocial` con `&`→`y` y sin `.`/`-` **no es un bug**: el XSD lo exige.
+     `TipoIDInformante`/`codigoOperativo` tampoco son un bug: su único valor de
+     enum posible es el default de C#.
 6. ✅ **Multi-establecimiento**: el módulo web queda **solo empresa de sesión**,
    sin cross-company ni worker.
-7. ✅ **Botón "Ver errores"**: no se omite — se reemplaza por una función real
-   **"Revisar ATS"** inspirada en el validador oficial del DIMM (que es lo que
-   el botón buscaba emular). Diseño en §3.5, fase F5.5.
+7. ✅ **Botón "Ver errores"**: no se omite — se reemplaza por **"Revisar ATS"**
+   (validaciones tipo DIMM, F5.5) que además, confirmado por el usuario, debe
+   terminar en **dos entregables**: el **Talón Resumen en PDF** (igual al que
+   emite el DIMM real) y el **XML** para subir al DIMM y luego a la
+   declaración. Diseño completo en §3.5 (fases F5.5 + F5.6), con la plantilla
+   HTML/CSS real del DIMM ya localizada dentro de su propio instalador.
 8. ✅ **Fixture**: **CPTDC (RUC `1792051800001`)**. Ya verificada localmente en
    PREDATOR (Sage local + `PeachConnString` + `Establishments`, del plan de
    Kardex) y **`lparedes` ya tiene acceso** (rol `6` "Hacer Comprobantes
    Electrónicos" vía `UserTransmitter`/`udrUserRolesTr`, confirmado por
-   consulta directa) — no hace falta script SQL de acceso. Falta: confirmar que
-   CPTDC tenga un mes con datos ATS completos (compras+ventas+retenciones+
-   anulados) o cargar comprobantes ficticios, y **generar con el `.exe` el XML
-   de referencia** de ese mismo período para el golden de F1/F4 (§6).
+   consulta directa) — no hace falta script SQL de acceso. **El golden ya no
+   está pendiente**: el usuario dejó en `C:\SRI-DIMM\Documentacion\` el XML y
+   el Talón Resumen reales de la declaración de CPTDC de julio/2026 — misma
+   información que hoy está en el Sage de PREDATOR (§6).
 
 ---
 
-## 6. Fixture de prueba — CPTDC (RUC `1792051800001`)
+## 6. Fixture de prueba — CPTDC (RUC `1792051800001`), julio/2026
 
-El ATS necesita una empresa con, en un **mes cerrado**: compras (factura + NV +
-liquidación + NC), ventas (factura + NC), retenciones en la fuente y de IVA en
-compras, retenciones recibidas en ventas, y algún comprobante **anulado**. Cuanto
-más completo, mejor cubre el golden.
+**El golden ya existe — no hay que generarlo.** El usuario puso en
+`C:\SRI-DIMM\Documentacion\` los dos entregables **reales** de la declaración
+de CPTDC de julio/2026 (misma información que hoy está en la Sage de CPTDC en
+PREDATOR):
 
-- **Elegida: CPTDC CHINA PETROLEUM TECHNOLOGY & DEVELOPMENT COR., RUC
-  `1792051800001`** — ya usada como fixture del Kardex, con Sage local en
-  PREDATOR (`dbq=cptdcecuadorsa202520`, DBQ Zen `CPTDCECUADORSA202520`,
-  `servername` local vía `PeachEbills:SageServerNameOverride=localhost`) y
+- **`ATS CPTDC JULIO  2026.xml`** (536 KB) — el XML real presentado al SRI.
+  Confirmado con un vistazo: cabecera `TipoIDInformante=R`,
+  `IdInformante=1792051800001`, `razonSocial="CPTDC CHINA PETROLEUM
+  TECHNOLOGY y DEVELOPMENT CORPORATION ECUADOR S A"`, `Anio=2026`, `Mes=07`,
+  `numEstabRuc=001`, `totalVentas=7380817.15`, `codigoOperativo=IVA`, con
+  bloques `compras`/`ventas`/`anulados` completos (retenciones de renta e IVA,
+  `pagoExterior`, `formasDePago`, `air` incluidos). Es la fuente del hallazgo 4
+  de §1.4 (`valorRetencionNc`).
+- **`TRSMN-ATS-07-2026-CPTDC.pdf`** (114 KB) — el Talón Resumen real que emitió
+  el DIMM para esa misma declaración. Es la referencia visual/numérica de F5.6
+  (§3.5b): las tablas de compras/ventas/retenciones de este PDF deben cuadrar
+  con las que arma el port a partir del mismo período.
+
+Con esto, **CPTDC julio/2026 es el golden de punta a punta**: F1 (esquema) y F4
+(armador completo) comparan contra el XML; F5.6 (Talón) compara contra el PDF;
+y como la información real está en el Sage de PREDATOR, **F2/F3 (lectores)
+pueden validarse consulta por consulta contra los mismos datos** en vez de
+depender de comprobantes ficticios.
+
+- Empresa: **CPTDC CHINA PETROLEUM TECHNOLOGY & DEVELOPMENT COR.**, ya usada
+  como fixture del Kardex — Sage local en PREDATOR
+  (`dbq=cptdcecuadorsa202520`, DBQ Zen `CPTDCECUADORSA202520`, `servername`
+  local vía `PeachEbills:SageServerNameOverride=localhost`) y
   `PeachConnString`/`Establishments` verificados (`001-001/002/003`).
 - **Acceso ya resuelto**: `lparedes` (login web de dev) **ya está** en
   `UserTransmitter` + `udrUserRolesTr` para este RUC (rol `6`, "Hacer
   Comprobantes Electrónicos") — confirmado por consulta directa 2026-09-12, no
   hace falta script SQL de acceso (a diferencia de SANCEV/Roller Dance/DGRV en
   el plan de FE).
-- **Pendiente del área antes de F1**: confirmar que CPTDC tenga, en algún mes
-  cerrado, datos ATS completos (compras + ventas + retenciones + anulados); si
-  no, cargar comprobantes ficticios en la Sage local `cptdc...` (como se hizo
-  para FE en `sancialu`). Luego **generar con el `.exe` el XML de referencia**
-  de ese mismo RUC+período — es el golden de F1/F4.
 - Probes ODBC 32-bit: reutilizar el patrón de
   `scratchpad/kardex-cptdc-probe*.ps1` (correr con
   `C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe`).
 
-**F1 depende del golden XML. F2/F3 dependen de datos Sage locales de CPTDC.**
+**Ya no hay nada pendiente del área para arrancar F1.**
 
 ---
 
@@ -456,16 +579,24 @@ más completo, mejor cubre el golden.
 
 - **x86**: solo el Host (ya lo es), por el driver Pervasive de 32 bits. `PsaWeb.Ats`
   y el módulo quedan AnyCPU.
-- **Salvo los 2 fixes de §1.4, sin lógica nueva**: se replica lo que hace el
-  `.exe`. El XSD del SRI es el contrato — el esquema se copia generado, no se
-  re-modela.
+- **Salvo el fix de establecimientos (hallazgo 1, §1.4) y el esquema
+  regenerado (hallazgo 4), sin lógica nueva**: se replica lo que hace el
+  `.exe`, incluida su decisión de dejar "forma de pago" fija (hallazgo 2). El
+  XSD del SRI es el contrato — el esquema se genera, no se re-modela a mano.
 - **Sin credenciales en git**: cadenas vacías en `appsettings.Development.json`;
   reales en User Secrets / env vars del sitio.
-- El `.exe` no tiene build ni CI; su "verdad" es el código fuente y el XML que
-  produce, contrastado contra la normativa oficial disponible en esta máquina:
-  `C:\SRI-DIMM\Documentacion\ats.xsd` (esquema vigente, idéntico al que usa el
-  DIMM instalado) + `Ficha Tecnica Transaccional Simplificado ATS.pdf` (reglas
-  de negocio) + el propio validador del DIMM
-  (`Dimm\plugins\ec.gob.sri.dimm.ats.validacion_1.2.0.jar`). Toda validación de
-  F6 es diff contra la salida del `.exe` (esperando el diff de los 2 fixes) +
-  carga en el DIMM real.
+- **Renderizado del Talón Resumen (F5.6) — decisión de tecnología pendiente.**
+  El diseño exacto (HTML + CSS) ya está disponible sin reconstruirlo a ojo
+  (`Dimm\plugins\ec.gob.sri.dimm.ats.validacion_1.2.0.jar\resources\
+  templateATS2.html`/`talonAts.css`/`sriTalonLogo.jpg`). Falta elegir cómo
+  convertir ese HTML a PDF en el servidor **sin licencia paga** (mismo criterio
+  que llevó a ClosedXML en vez de EPPlus): candidatos **PuppeteerSharp**
+  (Chromium headless, MIT, fidelidad total al HTML/CSS pero suma un binario
+  pesado al deploy) vs. **QuestPDF** (liviano, pero exige rearmar el layout en
+  su API en vez de reusar el HTML/CSS). A decidir en F5.6.
+- El `.exe` no tiene build ni CI; su "verdad" es el código fuente contrastado
+  contra la normativa oficial disponible en esta máquina:
+  `C:\SRI-DIMM\Documentacion\ats.xsd` (esquema vigente) + la Ficha Técnica del
+  ATS + el validador real del DIMM +, ahora, **los dos entregables reales de
+  CPTDC julio/2026** (XML + Talón Resumen, §6) — el golden ya no depende de
+  correr el `.exe` a mano.
