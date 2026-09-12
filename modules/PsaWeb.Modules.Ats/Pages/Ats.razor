@@ -1,0 +1,440 @@
+@page "/ats"
+@namespace PsaWeb.Modules.Ats.Pages
+@using System.Globalization
+@using PsaWeb.Ats.Esquema
+@using PsaWeb.Modules.Ats.Data
+@inject IAtsRepository Repositorio
+@inject IResolverEmpresaSage EmpresaSage
+@inject ILogger<Ats> Logger
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>ATS — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Anexo Transaccional Simplificado (ATS)" Subtitle="@Subtitulo" />
+
+<PsaCard Title="Parámetros">
+    <div class="psa-row" style="align-items: flex-end; gap: 1.5rem; flex-wrap: wrap">
+        <label class="psa-field">
+            <span class="psa-field__label">Año</span>
+            <input class="psa-input" type="number" min="2000" max="@DateTime.Today.Year" @bind="_anio" style="max-width: 8rem" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Mes</span>
+            <select class="psa-input" @bind="_mes" style="max-width: 12rem">
+                @for (var m = 1; m <= 12; m++)
+                {
+                    <option value="@m">@m.ToString("00") — @NombreMes(m)</option>
+                }
+            </select>
+        </label>
+        <PsaButton Variant="primary" OnClick="Cargar" Disabled="_cargando">
+            @(_cargando ? "Cargando…" : "Cargar")
+        </PsaButton>
+        @if (_ats is not null)
+        {
+            <PsaButton Variant="secondary" OnClick="Exportar">
+                Generar ATS (XML)
+            </PsaButton>
+        }
+    </div>
+</PsaCard>
+
+@if (_error is not null)
+{
+    <PsaCard Title="ATS">
+        <p class="psa-notice psa-notice--danger">@_error</p>
+    </PsaCard>
+}
+else if (_ats is not null)
+{
+    <PsaCard Title="ATS">
+        <p class="psa-muted">
+            <strong>@_ats.IdInformante</strong> — @_ats.razonSocial · período
+            <strong>@_ats.Mes/@_ats.Anio</strong> · establecimientos: <strong>@_ats.numEstabRuc</strong> ·
+            total ventas: <strong>@Num(_ats.totalVentas)</strong>
+        </p>
+
+        <div class="psa-row" style="margin-top: 1rem; flex-wrap: wrap; gap: .4rem">
+            @foreach (var p in TodasLasPestanas)
+            {
+                <PsaButton Variant="@(p == _pestana ? "primary" : "secondary")" OnClick="() => _pestana = p">
+                    @Etiqueta(p)
+                </PsaButton>
+            }
+        </div>
+
+        <div style="margin-top: 1rem">
+            @switch (_pestana)
+            {
+                case Pestana.General:
+                    @GeneralTab
+                    break;
+                case Pestana.Compras:
+                    @TablaCompras(ComprasFiltradas)
+                    break;
+                case Pestana.NcCompras:
+                    @TablaCompras(ComprasFiltradas)
+                    break;
+                case Pestana.Ventas:
+                    @TablaVentas(_ats.ventas is null ? Array.Empty<detalleVentasType>() : _ats.ventas.Where(v => v.tipoComprobante == "18"))
+                    break;
+                case Pestana.NcVentas:
+                    @TablaVentas(_ats.ventas is null ? Array.Empty<detalleVentasType>() : _ats.ventas.Where(v => v.tipoComprobante == "04"))
+                    break;
+                case Pestana.AnuladosDetalle:
+                    @AnuladosTab
+                    break;
+                case Pestana.ResumenAts:
+                    @ResumenTab
+                    break;
+            }
+        </div>
+    </PsaCard>
+}
+
+<PsaModal Visible="_modalRetencionesVisible" Title="Retenciones (AIR)" OnClose="() => _modalRetencionesVisible = false">
+    @if (_comprasEnModal is { Length: > 0 })
+    {
+        <div style="overflow-x: auto">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>Cod. retención</th><th class="num">Base imponible</th><th class="num">%</th><th class="num">Valor retenido</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in _comprasEnModal)
+                    {
+                        <tr>
+                            <td>@a.codRetAir</td>
+                            <td class="num">@Num(a.baseImpAir)</td>
+                            <td class="num">@a.porcentajeAir.ToString("0.##")</td>
+                            <td class="num">@Num(a.valRetAir)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <p class="psa-muted">Esta compra no tiene retenciones (AIR) asociadas.</p>
+    }
+</PsaModal>
+
+@code {
+    private enum Pestana { General, Compras, NcCompras, Ventas, NcVentas, AnuladosDetalle, ResumenAts }
+
+    private static readonly Pestana[] TodasLasPestanas =
+    [
+        Pestana.General, Pestana.Compras, Pestana.NcCompras, Pestana.Ventas,
+        Pestana.NcVentas, Pestana.AnuladosDetalle, Pestana.ResumenAts,
+    ];
+
+    private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
+
+    private static readonly IReadOnlyDictionary<string, string> EtiquetasTipoComprobante = new Dictionary<string, string>
+    {
+        ["01"] = "Factura", ["02"] = "Nota de venta", ["03"] = "Liquidación de compra",
+        ["04"] = "Nota de crédito", ["07"] = "Retención", ["18"] = "Factura",
+    };
+
+    private int _anio = DateTime.Today.Year;
+    private int _mes = DateTime.Today.Month;
+    private bool _cargando;
+    private string? _error;
+    private ivaType? _ats;
+    private ResumenAts? _resumen;
+    private Pestana _pestana = Pestana.General;
+
+    private bool _modalRetencionesVisible;
+    private detalleAirComprasType[]? _comprasEnModal;
+
+    private string Subtitulo => EmpresaSage.RucSesion is null
+        ? "Genera el archivo XML del ATS del SRI a partir de Sage 50. Solo lectura."
+        : $"Empresa {EmpresaSage.RucSesion} · Anexo Transaccional Simplificado.";
+
+    private IReadOnlyList<detalleComprasType> ComprasFiltradas =>
+        (_ats?.compras ?? Array.Empty<detalleComprasType>())
+            // Bug cosmético del `.exe` preservado (docs/PLAN-APP3-ATS.md §1.4,
+            // hallazgo 3): "NC Compras" filtra igual que "Compras" (!= "04"),
+            // no muestra realmente las notas de crédito. Sin impacto en el XML.
+            .Where(c => c.tipoComprobante != "04")
+            .ToList();
+
+    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+
+    public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+
+    private void Refrescar()
+    {
+        _ats = null;
+        _resumen = null;
+        _error = null;
+        _pestana = Pestana.General;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Cargar()
+    {
+        _error = null;
+        _ats = null;
+        _resumen = null;
+
+        var filtro = new FiltroAts(_anio, _mes);
+        if (!filtro.Valido)
+        {
+            _error = "El año no puede ser mayor al actual, y el mes debe estar entre 01 y 12.";
+            return;
+        }
+
+        _cargando = true;
+        try
+        {
+            _ats = await Repositorio.GenerarAsync(filtro);
+            _resumen = ResumenAtsCalculador.Calcular(_ats);
+            _pestana = Pestana.General;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error generando el ATS ({Anio}-{Mes})", _anio, _mes);
+            _error = $"No se pudo generar el ATS: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Exportar()
+    {
+        var qs = new List<string> { $"anio={_anio}", $"mes={_mes}" };
+        if (EmpresaSage.RucSesion is { } ruc) qs.Add($"ruc={Uri.EscapeDataString(ruc)}");
+        Nav.NavigateTo($"ats/export?{string.Join("&", qs)}", forceLoad: true);
+    }
+
+    private void VerRetenciones(detalleComprasType compra)
+    {
+        _comprasEnModal = compra.air;
+        _modalRetencionesVisible = true;
+    }
+
+    private static string Etiqueta(Pestana p) => p switch
+    {
+        Pestana.General => "General",
+        Pestana.Compras => "Compras",
+        Pestana.NcCompras => "NC Compras",
+        Pestana.Ventas => "Ventas",
+        Pestana.NcVentas => "NC Ventas",
+        Pestana.AnuladosDetalle => "Anulados Detalle",
+        Pestana.ResumenAts => "Resumen ATS",
+        _ => p.ToString(),
+    };
+
+    private static string EtiquetaTipo(string? codigo) =>
+        codigo is not null && EtiquetasTipoComprobante.TryGetValue(codigo, out var nombre) ? $"{codigo} — {nombre}" : codigo ?? "";
+
+    private static string NombreMes(int mes) => CultureInfo.GetCultureInfo("es-EC").DateTimeFormat.GetMonthName(mes);
+
+    private static string Num(decimal value) => value.ToString("N2", Ec);
+
+    private RenderFragment GeneralTab =>
+        @<div style="overflow-x: auto">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>Cod. establecimiento</th><th class="num">Ventas del establecimiento</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in _ats!.ventasEstablecimiento ?? Array.Empty<ventaEstType>())
+                    {
+                        <tr><td>@v.codEstab</td><td class="num">@Num(v.ventasEstab)</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>;
+
+    private RenderFragment TablaCompras(IEnumerable<detalleComprasType> filas) =>
+        @<div style="overflow-x: auto">
+            <table class="psa-table">
+                <thead>
+                    <tr>
+                        <th>Sustento</th><th>Tipo ID</th><th>Identificación</th><th>Proveedor</th>
+                        <th>Tipo comp.</th><th>Estab.</th><th>P. emisión</th><th>Secuencial</th>
+                        <th>Emisión</th><th>Autorización</th>
+                        <th class="num">Base 0%</th><th class="num">Base imponible</th><th class="num">Base grav.</th>
+                        <th class="num">Base exenta</th><th class="num">IVA</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in filas)
+                    {
+                        <tr>
+                            <td>@c.codSustento</td>
+                            <td>@c.tpIdProv</td>
+                            <td>@c.idProv</td>
+                            <td>@c.denoProv</td>
+                            <td>@EtiquetaTipo(c.tipoComprobante)</td>
+                            <td>@c.establecimiento</td>
+                            <td>@c.puntoEmision</td>
+                            <td>@c.secuencial</td>
+                            <td>@c.fechaEmision</td>
+                            <td>@c.autorizacion</td>
+                            <td class="num">@Num(c.baseNoGraIva)</td>
+                            <td class="num">@Num(c.baseImponible)</td>
+                            <td class="num">@Num(c.baseImpGrav)</td>
+                            <td class="num">@Num(c.baseImpExe)</td>
+                            <td class="num">@Num(c.montoIva)</td>
+                            <td>
+                                @if (c.air is { Length: > 0 })
+                                {
+                                    <PsaButton Variant="secondary" OnClick="() => VerRetenciones(c)">Retenciones</PsaButton>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>;
+
+    private RenderFragment TablaVentas(IEnumerable<detalleVentasType> filas) =>
+        @<div style="overflow-x: auto">
+            <table class="psa-table">
+                <thead>
+                    <tr>
+                        <th>Tipo ID</th><th>Identificación</th><th>Cliente</th><th>Tipo comp.</th>
+                        <th class="num"># Comprobantes</th><th class="num">Base 0%</th>
+                        <th class="num">Base imponible</th><th class="num">Base grav.</th>
+                        <th class="num">IVA</th><th class="num">Ret. IVA</th><th class="num">Ret. Renta</th>
+                        <th>Forma de pago</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in filas)
+                    {
+                        <tr>
+                            <td>@v.tpIdCliente</td>
+                            <td>@v.idCliente</td>
+                            <td>@v.denoCli</td>
+                            <td>@EtiquetaTipo(v.tipoComprobante)</td>
+                            <td class="num">@v.numeroComprobantes</td>
+                            <td class="num">@Num(v.baseNoGraIva)</td>
+                            <td class="num">@Num(v.baseImponible)</td>
+                            <td class="num">@Num(v.baseImpGrav)</td>
+                            <td class="num">@Num(v.montoIva)</td>
+                            <td class="num">@Num(v.valorRetIva)</td>
+                            <td class="num">@Num(v.valorRetRenta)</td>
+                            <td>@(v.formasDePago is null ? "" : string.Join(", ", v.formasDePago))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>;
+
+    private RenderFragment AnuladosTab =>
+        @<div style="overflow-x: auto">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>Tipo</th><th>Estab.</th><th>P. emisión</th><th>Secuencial inicio</th><th>Secuencial fin</th><th>Autorización</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in _ats!.anulados ?? Array.Empty<detalleAnuladosType>())
+                    {
+                        <tr>
+                            <td>@EtiquetaTipo(a.tipoComprobante)</td>
+                            <td>@a.establecimiento</td>
+                            <td>@a.puntoEmision</td>
+                            <td>@a.secuencialInicio</td>
+                            <td>@a.secuencialFin</td>
+                            <td>@a.autorizacion</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>;
+
+    private RenderFragment ResumenTab =>
+        @<div style="display: flex; flex-direction: column; gap: 1.5rem">
+            <div>
+                <p class="psa-muted"><strong>Compras por tipo de comprobante</strong></p>
+                @TablaResumenTipo(_resumen!.ComprasPorTipo)
+            </div>
+            <div>
+                <p class="psa-muted"><strong>Ventas por tipo de comprobante</strong></p>
+                @TablaResumenTipo(_resumen!.VentasPorTipo)
+            </div>
+            <div>
+                <p class="psa-muted"><strong>Retención en la fuente de renta en compras (por código)</strong></p>
+                <div style="overflow-x: auto">
+                    <table class="psa-table">
+                        <thead><tr><th>Cod.</th><th class="num">Nº registros</th><th class="num">Base imponible</th><th class="num">Valor retenido</th></tr></thead>
+                        <tbody>
+                            @foreach (var x in _resumen!.RetencionesRentaCompras)
+                            {
+                                <tr><td>@x.CodRetAir</td><td class="num">@x.Cantidad</td><td class="num">@Num(x.BaseImpAir)</td><td class="num">@Num(x.ValRetAir)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <p class="psa-muted"><strong>Retención de IVA en compras (por porcentaje)</strong></p>
+                <div style="overflow-x: auto">
+                    <table class="psa-table">
+                        <thead><tr><th>%</th><th class="num">Nº registros</th><th class="num">Valor retenido</th></tr></thead>
+                        <tbody>
+                            @foreach (var x in _resumen!.RetencionesIvaCompras)
+                            {
+                                <tr><td>@x.Porcentaje</td><td class="num">@x.Cantidad</td><td class="num">@Num(x.Valor)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <p class="psa-muted"><strong>Retenciones recibidas en ventas</strong></p>
+                <div style="overflow-x: auto">
+                    <table class="psa-table">
+                        <thead><tr><th class="num">Valor de IVA retenido</th><th class="num">Valor de Renta retenido</th></tr></thead>
+                        <tbody>
+                            <tr><td class="num">@Num(_resumen!.RetencionesRecibidasVentas.TotalIva)</td><td class="num">@Num(_resumen!.RetencionesRecibidasVentas.TotalRenta)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <p class="psa-muted"><strong>Comprobantes anulados</strong></p>
+                <div style="overflow-x: auto">
+                    <table class="psa-table">
+                        <thead><tr><th>Tipo</th><th class="num">Cantidad</th></tr></thead>
+                        <tbody>
+                            @foreach (var x in _resumen!.Anulados)
+                            {
+                                <tr><td>@EtiquetaTipo(x.TipoComprobante)</td><td class="num">@x.Cantidad</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>;
+
+    private RenderFragment TablaResumenTipo(IReadOnlyList<ResumenPorTipoComprobante> filas) =>
+        @<div style="overflow-x: auto">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>Tipo</th><th class="num">Nº registros</th><th class="num">Base 0%</th><th class="num">Base imponible</th><th class="num">Base grav.</th><th class="num">IVA</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var x in filas)
+                    {
+                        <tr>
+                            <td>@EtiquetaTipo(x.TipoComprobante)</td>
+                            <td class="num">@x.Cantidad</td>
+                            <td class="num">@Num(x.BaseNoGraIva)</td>
+                            <td class="num">@Num(x.BaseImponible)</td>
+                            <td class="num">@Num(x.BaseImpGrav)</td>
+                            <td class="num">@Num(x.MontoIva)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>;
+}

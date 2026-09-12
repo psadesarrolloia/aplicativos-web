@@ -8,6 +8,7 @@ using PsaWeb.Modules.CierreDeCaja;
 using PsaWeb.Modules.CierreDeCaja.Data;
 using PsaWeb.Modules.CierreDeCaja.Export;
 using PsaWeb.Modules.Kardex;
+using PsaWeb.Modules.Ats;
 using PsaWeb.Datil;
 using PsaWeb.Notificaciones;
 using PsaWeb.PeachEbills;
@@ -40,6 +41,7 @@ if (peachEbillsConfigurado)
     builder.Services.AddNotificaciones(builder.Configuration); // SMTP (solicitud de anulación); inerte si no hay Correo:Servidor
     builder.Services.AddRetenciones(builder.Configuration);
     builder.Services.AddFacturacionElectronica(builder.Configuration); // Ola 1 app #2: facturas / NC / liquidaciones
+    builder.Services.AddAts(builder.Configuration); // Ola 1 app #3: ATS (requiere PeachEBills por dicIdentityTypeATS/Establishments/Transmitter)
     // Shell F-Shell-0: directorio de seguridad (empresas + permisos por usuario)
     // y estado de sesión de empresa/ambiente.
     builder.Services.AddSeguridad();
@@ -126,6 +128,12 @@ app.Logger.LogInformation(
     "Kardex: repositorio {Repo}.",
     PsaWeb.Modules.Kardex.KardexModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50");
 app.Logger.LogInformation(
+    "ATS: módulo {Estado}{Repo}.",
+    peachEbillsConfigurado ? "ACTIVO" : "INACTIVO (sin PeachEbills:ConnectionString)",
+    peachEbillsConfigurado
+        ? $", repositorio {(PsaWeb.Modules.Ats.AtsModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50")}"
+        : "");
+app.Logger.LogInformation(
     "Retenciones: módulo {Estado}.",
     peachEbillsConfigurado ? "ACTIVO (PeachEBills configurado)" : "INACTIVO (sin PeachEbills:ConnectionString)");
 app.Logger.LogInformation(
@@ -211,7 +219,8 @@ app.MapRazorComponents<App>()
         typeof(PsaWeb.Modules.CierreDeCaja.ModuleInfo).Assembly,
         typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly,
         typeof(RetencionesModule).Assembly,
-        typeof(PsaWeb.Modules.FacturacionElectronica.FacturacionElectronicaModule).Assembly);
+        typeof(PsaWeb.Modules.FacturacionElectronica.FacturacionElectronicaModule).Assembly,
+        typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly);
 
 // Descarga del reporte «Cierre de Caja» en Excel. Re-consulta con las mismas
 // fechas para que el archivo coincida siempre con lo que se ve en pantalla.
@@ -308,6 +317,47 @@ app.MapGet("/kardex/export", async (
             bytes,
             PsaWeb.Modules.Kardex.Export.KardexExcelExporter.ContentType,
             exportador.NombreArchivo(desde, hasta));
+    })
+    .RequireAuthorization();
+
+// Descarga del ATS en XML. Re-arma el `ivaType` con el mismo período para que
+// el archivo coincida con lo que se ve en pantalla; es el archivo que luego se
+// sube al DIMM real.
+app.MapGet("/ats/export", async (
+        int anio,
+        int mes,
+        string? ruc,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Ats.Data.IAtsRepository repositorio,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        var filtro = new PsaWeb.Modules.Ats.Data.FiltroAts(anio, mes);
+        if (!filtro.Valido)
+        {
+            return Results.BadRequest("El año no puede ser mayor al actual, y el mes debe estar entre 01 y 12.");
+        }
+
+        PsaWeb.Ats.Esquema.ivaType ats;
+        if (!string.IsNullOrWhiteSpace(ruc))
+        {
+            var nombre = usuario.Identity?.Name ?? string.Empty;
+            var tieneAcceso = seguridad is not null
+                && (await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken))
+                    .Any(e => e.Ruc == ruc);
+            if (!tieneAcceso)
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            ats = await repositorio.GenerarParaRucAsync(ruc, filtro, cancellationToken);
+        }
+        else
+        {
+            ats = await repositorio.GenerarAsync(filtro, cancellationToken);
+        }
+
+        var xml = PsaWeb.Ats.EscritorXmlAts.Serializar(ats);
+        return Results.File(xml, "application/xml", $"ATS_{ats.IdInformante}_{anio:0000}{mes:00}.xml");
     })
     .RequireAuthorization();
 

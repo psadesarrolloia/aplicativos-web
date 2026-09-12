@@ -56,6 +56,16 @@ public static class AppCatalogo
             "Kardex de inventarios de Sage 50 (solo lectura).",
             "📦", "/kardex",
             Array.Empty<string>()),
+
+        // Provisional (GateProvisional): la fila quats existe en allowAction
+        // pero tiene 0 filas en adrAllowRol (no está asignada a ningún rol
+        // todavía — verificado 2026-09-12). Mientras tanto visible para
+        // cualquier empresa. Revertir a new[] { Permisos.VerAts } cuando el
+        // área asigne el permiso a los roles pertinentes.
+        new("ats", "ATS",
+            "Genera el XML del Anexo Transaccional Simplificado (ATS) del SRI a partir de Sage 50.",
+            "📑", "/ats",
+            Array.Empty<string>()),
     };
 
     public static IEnumerable<AppWeb> Habilitadas(ContextoDeUsuario ctx) =>
