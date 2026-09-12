@@ -2,6 +2,7 @@
 @namespace PsaWeb.Modules.Ats.Pages
 @using System.Globalization
 @using PsaWeb.Ats.Esquema
+@using PsaWeb.Ats.Validacion
 @using PsaWeb.Modules.Ats.Data
 @inject IAtsRepository Repositorio
 @inject IResolverEmpresaSage EmpresaSage
@@ -38,6 +39,12 @@
             </PsaButton>
         }
     </div>
+    @if (Bloqueantes.Count > 0)
+    {
+        <p class="psa-notice psa-notice--danger" style="margin-top: 1rem">
+            "Revisar ATS" encontró @Bloqueantes.Count hallazgo(s) bloqueante(s) — revisalos antes de declarar el XML (ver más abajo).
+        </p>
+    }
 </PsaCard>
 
 @if (_error is not null)
@@ -48,6 +55,41 @@
 }
 else if (_ats is not null)
 {
+    <PsaCard Title="Revisar ATS">
+        @if (_hallazgos.Count == 0)
+        {
+            <p class="psa-muted">Sin hallazgos.</p>
+        }
+        else
+        {
+            <p class="psa-muted">
+                @Bloqueantes.Count bloqueante(s) · @Advertencias.Count advertencia(s).
+            </p>
+            @if (Bloqueantes.Count > 0)
+            {
+                <ul style="margin-top: .5rem">
+                    @foreach (var h in Bloqueantes)
+                    {
+                        <li class="psa-notice psa-notice--danger" style="margin-top: .4rem; list-style: none">
+                            <strong>[@h.Codigo]</strong> @h.Mensaje
+                        </li>
+                    }
+                </ul>
+            }
+            @if (Advertencias.Count > 0)
+            {
+                <ul style="margin-top: .5rem">
+                    @foreach (var h in Advertencias)
+                    {
+                        <li class="psa-notice" style="margin-top: .4rem; list-style: none">
+                            <strong>[@h.Codigo]</strong> @h.Mensaje
+                        </li>
+                    }
+                </ul>
+            }
+        }
+    </PsaCard>
+
     <PsaCard Title="ATS">
         <p class="psa-muted">
             <strong>@_ats.IdInformante</strong> — @_ats.razonSocial · período
@@ -144,7 +186,14 @@ else if (_ats is not null)
     private string? _error;
     private ivaType? _ats;
     private ResumenAts? _resumen;
+    private IReadOnlyList<HallazgoAts> _hallazgos = Array.Empty<HallazgoAts>();
     private Pestana _pestana = Pestana.General;
+
+    private IReadOnlyList<HallazgoAts> Bloqueantes =>
+        _hallazgos.Where(h => h.Severidad == SeveridadHallazgo.Bloqueante).ToList();
+
+    private IReadOnlyList<HallazgoAts> Advertencias =>
+        _hallazgos.Where(h => h.Severidad == SeveridadHallazgo.Advertencia).ToList();
 
     private bool _modalRetencionesVisible;
     private detalleAirComprasType[]? _comprasEnModal;
@@ -169,6 +218,7 @@ else if (_ats is not null)
     {
         _ats = null;
         _resumen = null;
+        _hallazgos = Array.Empty<HallazgoAts>();
         _error = null;
         _pestana = Pestana.General;
         InvokeAsync(StateHasChanged);
@@ -179,6 +229,7 @@ else if (_ats is not null)
         _error = null;
         _ats = null;
         _resumen = null;
+        _hallazgos = Array.Empty<HallazgoAts>();
 
         var filtro = new FiltroAts(_anio, _mes);
         if (!filtro.Valido)
@@ -192,6 +243,7 @@ else if (_ats is not null)
         {
             _ats = await Repositorio.GenerarAsync(filtro);
             _resumen = ResumenAtsCalculador.Calcular(_ats);
+            _hallazgos = ValidadorAts.Validar(_ats, _anio, _mes);
             _pestana = Pestana.General;
         }
         catch (Exception ex)

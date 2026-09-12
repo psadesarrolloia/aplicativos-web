@@ -1,5 +1,6 @@
 using System.Xml.Serialization;
 using PsaWeb.Ats.Esquema;
+using PsaWeb.Ats.Validacion;
 
 namespace PsaWeb.Ats.Tests;
 
@@ -112,5 +113,21 @@ public class GoldenCptdcJulio2026Tests
         Assert.Equal(
             original.compras.Sum(c => c.montoIva),
             vueltaAObjeto.compras.Sum(c => c.montoIva));
+    }
+
+    [SkippableFact]
+    public void ValidadorAts_no_reporta_falsos_bloqueantes_contra_el_XML_real_ya_declarado()
+    {
+        Skip.IfNot(File.Exists(RutaGolden), "Golden real de CPTDC no está en esta máquina.");
+
+        // El XML real YA declarado es, por definición, un ATS que el SRI aceptó:
+        // "Revisar ATS" no debería levantar ningún bloqueante contra él (solo
+        // las 2 advertencias fijas sobre límites conocidos de Sage 50).
+        var ats = CargarGolden();
+
+        var hallazgos = ValidadorAts.Validar(ats, 2026, 7);
+        var bloqueantes = hallazgos.Where(h => h.Severidad == SeveridadHallazgo.Bloqueante).ToList();
+
+        Assert.Empty(bloqueantes);
     }
 }
