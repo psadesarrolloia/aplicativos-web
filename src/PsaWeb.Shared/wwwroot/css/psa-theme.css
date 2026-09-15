@@ -156,6 +156,55 @@ a { color: var(--psa-magenta); }
 
 .psa-nav__link.active { color: #fff; background: var(--psa-magenta); }
 
+/* Grupo del menú superior (categoría con 1+ módulos) — mismo look que un
+   .psa-nav__link, pero es un <button> que abre un panel con los módulos de
+   esa categoría, para que el menú pueda crecer sin agregar un link por
+   módulo directo en la barra. */
+.psa-navgroup { position: relative; }
+
+.psa-navgroup__btn { border: 0; background: none; font: inherit; cursor: pointer; }
+
+.psa-navgroup__caret { font-size: .65rem; opacity: .75; }
+
+.psa-navgroup__backdrop { position: fixed; inset: 0; z-index: 40; }
+
+.psa-navgroup__panel {
+  position: absolute;
+  left: 0;
+  top: calc(100% + .35rem);
+  z-index: 41;
+  min-width: 230px;
+  padding: .4rem;
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+  background: var(--psa-surface);
+  border: 1px solid var(--psa-border);
+  border-radius: var(--psa-radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .22);
+}
+
+.psa-navgroup__item {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .5rem .6rem;
+  border-radius: var(--psa-radius-sm);
+  color: var(--psa-ink);
+  text-decoration: none;
+  font-size: .9rem;
+}
+
+.psa-navgroup__item:hover { background: var(--psa-surface-2); }
+
+.psa-navgroup__item.active {
+  background: var(--psa-surface-2);
+  box-shadow: inset 3px 0 0 var(--psa-magenta);
+  font-weight: 600;
+}
+
+.psa-navgroup__icon { font-size: 1.1rem; line-height: 1; }
+
 .psa-user { font-size: .85rem; color: rgba(255, 255, 255, .8); white-space: nowrap; }
 
 .psa-main {

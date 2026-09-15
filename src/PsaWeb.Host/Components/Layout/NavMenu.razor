@@ -5,14 +5,43 @@
 @inject EmpresaActualService EmpresaActual
 @inject AuthenticationStateProvider AuthState
 @inject IOptions<PlataformaOptions> Plataforma
+@inject NavigationManager Nav
 @implements IDisposable
 
 <nav class="psa-nav">
     <NavLink class="psa-nav__link" href="/" Match="NavLinkMatch.All">Inicio</NavLink>
-    @foreach (var app in _apps)
+
+    @foreach (var categoria in Categorias.Orden)
     {
-        <NavLink class="psa-nav__link" href="@app.Ruta">@app.Nombre</NavLink>
+        var modulos = _apps.Where(a => a.Categoria == categoria).ToList();
+        if (modulos.Count == 0)
+        {
+            continue;
+        }
+
+        <div class="psa-navgroup">
+            <button type="button"
+                    class="psa-nav__link psa-navgroup__btn @(EsCategoriaActiva(modulos) ? "active" : null)"
+                    @onclick="() => Alternar(categoria)">
+                @categoria <span class="psa-navgroup__caret">▾</span>
+            </button>
+
+            @if (_categoriaAbierta == categoria)
+            {
+                <div class="psa-navgroup__backdrop" @onclick="Cerrar"></div>
+                <div class="psa-navgroup__panel">
+                    @foreach (var modulo in modulos)
+                    {
+                        <NavLink class="psa-navgroup__item" href="@modulo.Ruta">
+                            <span class="psa-navgroup__icon">@modulo.Icono</span>
+                            <span>@modulo.Nombre</span>
+                        </NavLink>
+                    }
+                </div>
+            }
+        </div>
     }
+
     @if (_esAdmin)
     {
         <NavLink class="psa-nav__link" href="/admin/usuarios">Administración</NavLink>
@@ -22,8 +51,13 @@
 @code {
     private IReadOnlyList<AppWeb> _apps = Array.Empty<AppWeb>();
     private bool _esAdmin;
+    private string? _categoriaAbierta;
 
-    protected override void OnInitialized() => EmpresaActual.Cambio += AlCambiar;
+    protected override void OnInitialized()
+    {
+        EmpresaActual.Cambio += AlCambiar;
+        Nav.LocationChanged += AlNavegar;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -36,6 +70,12 @@
     {
         await CargarAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void AlNavegar(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _categoriaAbierta = null;
+        InvokeAsync(StateHasChanged);
     }
 
     private async Task CargarAsync()
@@ -52,5 +92,20 @@
         _apps = AppCatalogo.Habilitadas(ctx).ToList();
     }
 
-    public void Dispose() => EmpresaActual.Cambio -= AlCambiar;
+    private void Alternar(string categoria) =>
+        _categoriaAbierta = _categoriaAbierta == categoria ? null : categoria;
+
+    private void Cerrar() => _categoriaAbierta = null;
+
+    private bool EsCategoriaActiva(IEnumerable<AppWeb> modulos)
+    {
+        var ruta = "/" + Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        return modulos.Any(m => ruta == m.Ruta || ruta.StartsWith(m.Ruta + "/", StringComparison.Ordinal));
+    }
+
+    public void Dispose()
+    {
+        EmpresaActual.Cambio -= AlCambiar;
+        Nav.LocationChanged -= AlNavegar;
+    }
 }

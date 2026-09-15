@@ -1,12 +1,31 @@
 namespace PsaWeb.Seguridad;
 
-/// <summary>Un aplicativo web del menú / dashboard.</summary>
+/// <summary>
+/// Categorías del menú superior — agrupan los módulos para que el menú
+/// crezca de forma ordenada a medida que se migran más aplicativos.
+/// <see cref="Orden"/> fija el orden en que aparecen en la barra.
+/// </summary>
+public static class Categorias
+{
+    public const string Caja = "Caja";
+    public const string Impuestos = "Impuestos";
+    public const string ComprobantesElectronicos = "Comprobantes Electrónicos";
+    public const string Inventario = "Inventario";
+
+    public static readonly IReadOnlyList<string> Orden = new[]
+    {
+        Caja, Impuestos, ComprobantesElectronicos, Inventario,
+    };
+}
+
+/// <summary>Un módulo web del menú / dashboard.</summary>
 public sealed record AppWeb(
     string Id,
     string Nombre,
     string Descripcion,
     string Icono,
     string Ruta,
+    string Categoria,
     IReadOnlyList<string> PermisosQueLaHabilitan)
 {
     /// <summary>Visible si el usuario tiene al menos uno de los permisos (o si la lista está vacía).</summary>
@@ -15,7 +34,7 @@ public sealed record AppWeb(
 }
 
 /// <summary>
-/// Catálogo de apps web. Por ahora en código; puede pasar a una tabla
+/// Catálogo de módulos web. Por ahora en código; puede pasar a una tabla
 /// (<c>AppRegistry</c> en <c>PsaWebPlataforma</c>) en F-Shell-4.
 /// </summary>
 public static class AppCatalogo
@@ -24,38 +43,8 @@ public static class AppCatalogo
     {
         new("cierre-de-caja", "Cierre de Caja",
             "Cobros contra ventas registradas en Sage 50.",
-            "💵", "/cierre-de-caja",
+            "💵", "/cierre-de-caja", Categorias.Caja,
             Array.Empty<string>()), // sin código propio todavía: visible para cualquier empresa
-
-        new("retenciones", "Retenciones",
-            "Genera y emite en Datil las retenciones de compra pendientes.",
-            "📄", "/retenciones",
-            new[] { Permisos.VerRetenciones, Permisos.HacerRetencion, Permisos.HacerRetencionesLote }),
-
-        new("fe-facturas", "FE · Facturas",
-            "Genera y emite en Datil las facturas de venta de Sage 50.",
-            "🧾", "/fe/facturas",
-            new[] { Permisos.VerFacturas, Permisos.HacerFactura, Permisos.HacerFacturasLote }),
-
-        new("fe-notas-credito", "FE · Notas de crédito",
-            "Genera y emite en Datil las notas de crédito de venta.",
-            "↩️", "/fe/notas-credito",
-            new[] { Permisos.VerNotasCredito, Permisos.HacerNotaCredito }),
-
-        // Provisional: sin código propio hasta que el área cargue qupurchliq/mkpurchliq
-        // en allowAction. Mientras tanto visible para cualquier empresa con FE.
-        new("fe-liquidaciones", "FE · Liquidaciones",
-            "Genera y emite en Datil las liquidaciones de compra.",
-            "📥", "/fe/liquidaciones",
-            Array.Empty<string>()),
-
-        // Provisional (GateProvisional): sin código propio hasta que el área
-        // cargue quKardex en allowAction. Mientras tanto visible para cualquier
-        // empresa. Revertir a new[] { Permisos.VerKardex } cuando esté el código.
-        new("kardex", "Kardex",
-            "Kardex de inventarios de Sage 50 (solo lectura).",
-            "📦", "/kardex",
-            Array.Empty<string>()),
 
         // Provisional (GateProvisional): la fila quats existe en allowAction
         // pero tiene 0 filas en adrAllowRol (no está asignada a ningún rol
@@ -64,7 +53,37 @@ public static class AppCatalogo
         // área asigne el permiso a los roles pertinentes.
         new("ats", "ATS",
             "Genera el XML del Anexo Transaccional Simplificado (ATS) del SRI a partir de Sage 50.",
-            "📑", "/ats",
+            "📑", "/ats", Categorias.Impuestos,
+            Array.Empty<string>()),
+
+        new("fe-facturas", "Facturas de venta",
+            "Genera y emite en Datil las facturas de venta de Sage 50.",
+            "🧾", "/fe/facturas", Categorias.ComprobantesElectronicos,
+            new[] { Permisos.VerFacturas, Permisos.HacerFactura, Permisos.HacerFacturasLote }),
+
+        new("retenciones", "Retenciones",
+            "Genera y emite en Datil las retenciones de compra pendientes.",
+            "📄", "/retenciones", Categorias.ComprobantesElectronicos,
+            new[] { Permisos.VerRetenciones, Permisos.HacerRetencion, Permisos.HacerRetencionesLote }),
+
+        // Provisional: sin código propio hasta que el área cargue qupurchliq/mkpurchliq
+        // en allowAction. Mientras tanto visible para cualquier empresa con FE.
+        new("fe-liquidaciones", "Liquidaciones de compra",
+            "Genera y emite en Datil las liquidaciones de compra.",
+            "📥", "/fe/liquidaciones", Categorias.ComprobantesElectronicos,
+            Array.Empty<string>()),
+
+        new("fe-notas-credito", "Notas de crédito",
+            "Genera y emite en Datil las notas de crédito de venta.",
+            "↩️", "/fe/notas-credito", Categorias.ComprobantesElectronicos,
+            new[] { Permisos.VerNotasCredito, Permisos.HacerNotaCredito }),
+
+        // Provisional (GateProvisional): sin código propio hasta que el área
+        // cargue quKardex en allowAction. Mientras tanto visible para cualquier
+        // empresa. Revertir a new[] { Permisos.VerKardex } cuando esté el código.
+        new("kardex", "Kardex",
+            "Kardex de inventarios de Sage 50 (solo lectura).",
+            "📦", "/kardex", Categorias.Inventario,
             Array.Empty<string>()),
     };
 
