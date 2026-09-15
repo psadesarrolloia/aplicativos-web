@@ -2,8 +2,14 @@
 
 Documento de referencia único para arrancar cualquier trabajo nuevo sobre este
 repo sin tener que releer todo el historial. Complementa (no reemplaza) a
-`docs/COMO-MIGRAR-UN-APLICATIVO.md` (la receta paso a paso para portar un app
-nuevo) y a los planes/runbooks individuales listados en §8.
+`docs/COMO-MIGRAR-UN-APLICATIVO.md` (la receta paso a paso para portar un
+módulo nuevo) y a los planes/runbooks individuales listados en §8.
+
+**Terminología**: cada aplicativo de escritorio que se porta a la web se
+llama **módulo** (no "aplicación" ni "app") — así se lo nombra en el menú, el
+dashboard y cualquier texto de cara al usuario. "Aplicativo" queda reservado
+para los 26 programas de escritorio originales (el punto de partida de cada
+migración).
 
 ## 1. Qué es esto
 
@@ -12,7 +18,8 @@ escriben contra **Sage 50 US** (Peachtree, motor Pervasive/Actian Zen vía
 ODBC) y, algunos, contra una base SQL Server compartida **`PeachEBills`**.
 Este repo (`aplicativos-web`, https://github.com/psadesarrolloia/aplicativos-web)
 es la reescritura de esos aplicativos como **un solo sitio web** (Blazor
-Server, .NET 9), app por app, empezando por los de solo lectura.
+Server, .NET 9) con un **módulo por aplicativo**, empezando por los de solo
+lectura.
 
 Proyecto **separado** del re-theme de WinForms (`sage50Apps-master`, repo
 `Interfaz Gráfica Aplicativos PSA` — memoria `sage50-redesign-status`): ese es
@@ -41,7 +48,7 @@ completa de la capa de datos y UI.
 ## 3. Arquitectura
 
 - **ASP.NET Core 9 + Blazor Server**, un solo Host (`src/PsaWeb.Host`), varios
-  **módulos RCL** (`modules/PsaWeb.Modules.*`) — uno por aplicativo migrado —
+  **módulos RCL** (`modules/PsaWeb.Modules.*`) — uno por módulo migrado —
   más librerías compartidas en `src/`:
   - `PsaWeb.Sage50` — `ISageConnectionFactory`/`OdbcSageConnectionFactory`,
     `IResolverEmpresaSage` (RUC de sesión → cadena ODBC; `SinShellResolverEmpresaSage`
@@ -53,8 +60,8 @@ completa de la capa de datos y UI.
   - `PsaWeb.Datil` — cliente REST propio del API de Datil (facturación
     electrónica / retenciones), `DatilOptions.DryRun` (default `true`: arma y
     valida, no envía — **nada de emisión real hasta terminar de migrar los 26
-    apps**, decisión 2026-09-07).
-  - `PsaWeb.Comprobantes` — piezas compartidas entre apps de comprobantes
+    aplicativos**, decisión 2026-09-07).
+  - `PsaWeb.Comprobantes` — piezas compartidas entre módulos de comprobantes
     (proveedor/cliente Sage, validadores de número de documento SRI,
     constructor de retenciones, lectores de factura/NC/liquidación).
   - `PsaWeb.Seguridad` — el shell (ver §4).
@@ -102,7 +109,7 @@ pantallas en `src/PsaWeb.Host`.
   `.exe` — `users`/`UserTransmitter` (usuario→empresas)/`roles`/
   `udrUserRolesTr` (rol por empresa)/`allowAction`+`adrAllowRol` (permisos por
   rol). `ISecurityDirectory` (`EmpresasDelUsuarioAsync`/`PermisosAsync`/
-  `TienePermisoAsync`). Apps nuevas → agregar código a `Permisos.cs` +
+  `TienePermisoAsync`). Módulo nuevo → agregar código a `Permisos.cs` +
   eventualmente filas en `allowAction`/`adrAllowRol` (el área las carga).
 - **`GateProvisional`**: patrón para lanzar un módulo cuyo permiso todavía no
   está asignado a ningún rol — la entrada en `AppCatalogo` queda con lista de
@@ -113,53 +120,64 @@ pantallas en `src/PsaWeb.Host`.
   `EmpresaSwitcher` en la barra superior (cambio sin re-login), persistido en
   `ProtectedLocalStorage`. Todos los módulos de solo lectura reaccionan a
   `IResolverEmpresaSage.Cambio` / `EmpresaActual.Cambio`.
-- **Dashboard dinámico**: `AppCatalogo.Habilitadas(ctx)` arma la grilla de
-  íconos + el `NavMenu` según los permisos del usuario en la empresa actual —
-  agregar una app nueva es solo agregar una fila a `AppCatalogo.Todas`.
+- **Dashboard + menú dinámicos**: `AppCatalogo.Habilitadas(ctx)` arma la
+  grilla de íconos del dashboard y (desde 2026-09-15) el menú superior
+  (`NavMenu`) agrupado por **categoría** — módulo nuevo es solo agregar una
+  fila a `AppCatalogo.Todas` (`Id`/`Nombre`/`Descripcion`/`Icono`/`Ruta`/
+  **`Categoria`**/`Permisos`), sin tocar `NavMenu.razor` ni `Home.razor`.
+  `Categorias.Orden` fija las categorías y su orden en la barra — hoy
+  `Caja` → `Impuestos` → `Comprobantes Electrónicos` → `Inventario`; agregar
+  una categoría nueva es agregarla ahí, en la posición donde deba aparecer.
+  Una categoría con un solo módulo sigue rindiéndose como grupo desplegable
+  (no como link directo) — así no hay que tocar nada cuando un segundo módulo
+  se suma a esa categoría más adelante.
 - **Admin** (`/admin/usuarios`, `/admin/auditoria`): alta/baja de login local,
   reseteo de clave, quitar 2FA, auditoría de eventos de auth. Gate:
   `Plataforma:Admins` (config), no un permiso de `PeachEBills`.
 - Usuario de prueba en dev: `lparedes` / `Psa.Web.Dev.2026!`
   (`Plataforma:UsuarioDev`/`ClaveDev` en `appsettings.Development.json`).
 
-## 5. Apps migradas (estado al 2026-09-15)
+## 5. Módulos migrados (estado al 2026-09-15)
 
-Todas viven en el mismo sitio IIS (`CierreDeCaja` en `SERWEBPSA01`,
+Todos viven en el mismo sitio IIS (`CierreDeCaja` en `SERWEBPSA01`,
 `http://192.168.0.11:8088/`) — es un solo Host con módulos, no sitios
-separados.
+separados. Los docs de plan/runbook de cada uno usan la numeración histórica
+"app #N de la Ola 1" (`docs/PLAN-APP2-*.md`, `docs/DESPLEGAR-APP3-*.md`) —
+esa numeración no tiene relación con las categorías del menú (§4).
 
-### 5.1 Piloto — Cierre de Caja (`ReceiptsReportRollerD`)
-Solo lectura, `/cierre-de-caja` + export Excel. Primera app migrada (probó
-todo el patrón). **Desplegada.**
+### 5.1 Cierre de Caja — categoría **Caja** (piloto, `ReceiptsReportRollerD`)
+Solo lectura, `/cierre-de-caja` + export Excel. Primer módulo migrado (probó
+todo el patrón). **Desplegado.**
 
-### 5.2 Kardex de inventarios
+### 5.2 Kardex — categoría **Inventario**
 No es un `.exe` standalone — es la pantalla "Reporte de Stock" que vive
 dentro del monolito `Sage50usIntegration`, levantada sola. `/kardex` + export
 Excel (`ClosedXML`, reproduce fórmulas de saldo corrido del original).
-Gate `quKardex` (`GateProvisional`). **Desplegada y validada** (2026-09-12)
-contra datos reales de CPTDC — fila a fila idéntica contra una
+Gate `quKardex` (`GateProvisional`). **Desplegado y validado** (2026-09-12)
+contra datos reales de CPTDC — fila a fila idéntico contra una
 reimplementación independiente de verificación.
 
-### 5.3 App #1 — Retenciones (`AutomaticTwhSender`)
+### 5.3 Retenciones — categoría **Comprobantes Electrónicos** (app #1, `AutomaticTwhSender`)
 Lee compras pendientes de retención de Sage, arma y emite retenciones vía
 Datil, guarda en `PeachEBills`. `/retenciones`, acotado a empresa de sesión +
 toggle "Ver todas las empresas" (si el usuario tiene el permiso de lote).
 Worker en background (`RetencionesWorker`, deshabilitado por defecto) +
 `EjecucionRetencionesGate` (candado single-flight compartido con el botón
-manual). Popup de detalle con enlace a PDF/XML de Datil. **Desplegada.**
+manual). Popup de detalle con enlace a PDF/XML de Datil. **Desplegado.**
 `Datil:DryRun=true` — nada de emisión real todavía.
 
-### 5.4 App #2 — Facturación Electrónica (`Sage50FacturacionElectronica`)
-Facturas de venta + Notas de crédito + Liquidaciones de compra (las
-retenciones de compra del mismo `.exe` ya las cubre app #1, no se duplican).
-Páginas separadas `/fe/facturas`, `/fe/notas-credito`, `/fe/liquidaciones`,
-mismo patrón de tablero que Retenciones (guardados + pendientes + lote +
-popup). Liquidaciones con `GateProvisional` (`qupurchliq`/`mkpurchliq`
-todavía no cargados en `allowAction`). "Solicitar anulación de retención"
-(SMTP, remitente fijo `anulaciones@paredes.com.ec`) vive acá aunque el botón
-esté en `/retenciones`. **Desplegada y validada** (2026-09-10).
+### 5.4 Facturas de venta / Notas de crédito / Liquidaciones de compra — categoría **Comprobantes Electrónicos** (app #2, `Sage50FacturacionElectronica`)
+3 módulos separados salidos del mismo `.exe` (las retenciones de compra del
+mismo `.exe` ya las cubre el módulo de Retenciones, no se duplican). Páginas
+`/fe/facturas`, `/fe/notas-credito`, `/fe/liquidaciones`, mismo patrón de
+tablero que Retenciones (guardados + pendientes + lote + popup).
+Liquidaciones con `GateProvisional` (`qupurchliq`/`mkpurchliq` todavía no
+cargados en `allowAction`). "Solicitar anulación de retención" (SMTP,
+remitente fijo `anulaciones@paredes.com.ec`) vive en el módulo de Facturas
+aunque el botón esté en `/retenciones`. **Desplegados y validados**
+(2026-09-10).
 
-### 5.5 App #3 — ATS (`ATSfromPeach`)
+### 5.5 ATS — categoría **Impuestos** (app #3, `ATSfromPeach`)
 Genera el XML del Anexo Transaccional Simplificado del SRI + valida + genera
 el Talón Resumen en PDF. La más grande e intrincada de las 3 (~2.300 LOC
 originales de lógica Sage sin documentar). **Desplegada y validada**
@@ -193,7 +211,7 @@ originales de lógica Sage sin documentar). **Desplegada y validada**
 
 Sage 50 no tiene campos nativos para estos 2 conceptos — se resuelven
 reusando campos existentes de la ficha del cliente/proveedor/documento, por
-convención acordada con el usuario. **Importante si otro app toca las mismas
+convención acordada con el usuario. **Importante si otro módulo toca las mismas
 tablas**: no reusar estos mismos campos para otra cosa sin coordinarlo.
 
 - **"Parte relacionada" (ventas)**: se marca asignándole al **cliente** un
@@ -245,7 +263,7 @@ anónima ON / Windows Auth OFF (el login lo maneja el shell de Identity, no
 IIS). App pool 32-bit, **"Always Running" + `idleTimeout=0`** para que no se
 duerma.
 
-**Patrón de redeploy** (cada app nueva es un delta sobre esto, no un deploy
+**Patrón de redeploy** (cada módulo nuevo es un delta sobre esto, no un deploy
 desde cero — ver `docs/DESPLEGAR-APP3-ATS-EN-SERWEBPSA01.md` como ejemplo
 más reciente):
 
@@ -297,16 +315,16 @@ público, sin tocar nada de esto) — decisión explícita, no pendiente urgente
 
 ## 8. Índice de documentación del repo
 
-- `docs/COMO-MIGRAR-UN-APLICATIVO.md` — la receta para portar un app nuevo.
+- `docs/COMO-MIGRAR-UN-APLICATIVO.md` — la receta para portar un módulo nuevo.
 - `docs/PLAN-SHELL-PLATAFORMA.md` — diseño del shell (F-Shell-0..5).
 - `docs/PLAN-KARDEX-INVENTARIOS.md`, `docs/PLAN-APP2-FACTURACION-ELECTRONICA.md`,
-  `docs/PLAN-APP3-ATS.md` — planes de cada app (investigación + decisiones).
-- `docs/APPS-SDK-VS-SOLO-LECTURA.md` — clasificación de los 26 apps
+  `docs/PLAN-APP3-ATS.md` — planes de cada módulo (investigación + decisiones).
+- `docs/APPS-SDK-VS-SOLO-LECTURA.md` — clasificación de los 26 aplicativos
   (cuáles son solo lectura vs. cuáles necesitan el SDK/Sage Bridge).
 - `docs/DESPLEGAR-SHELL-EN-SERWEBPSA01.md` — runbook del deploy fundacional
   del shell (referencia; ya ejecutado, no repetir).
 - `docs/DESPLEGAR-APP2-FE-EN-SERWEBPSA01.md`,
-  `docs/DESPLEGAR-APP3-ATS-EN-SERWEBPSA01.md` — runbooks delta de cada app
+  `docs/DESPLEGAR-APP3-ATS-EN-SERWEBPSA01.md` — runbooks delta de cada módulo
   (patrón a copiar para la próxima).
 - `docs/DESPLEGAR-EN-PSACONTABILIDAD2.md` — runbook del modelo standalone
   viejo (pre-shell), solo como referencia histórica.
@@ -315,7 +333,7 @@ público, sin tocar nada de esto) — decisión explícita, no pendiente urgente
 
 ## 9. Pendiente / backlog global
 
-- **Wave 1 (apps de solo lectura) — quedan sin portar**: revisar
+- **Wave 1 (aplicativos de solo lectura) — quedan sin portar**: revisar
   `docs/APPS-SDK-VS-SOLO-LECTURA.md` para la lista completa de los 26; de los
   ya identificados, el pool de standalone read-only está casi agotado
   (`PaymentsMailing` = obsoleto; `Sage50IntegrationConfig`/`Sage50MetaData` se
@@ -326,13 +344,13 @@ público, sin tocar nada de esto) — decisión explícita, no pendiente urgente
 - **SMTP real** para "Solicitar anulación de retención" (`Correo:*`) — hoy
   sin configurar en el server, el botón avisa "correo no configurado".
 - **Emisión real** (`Datil:DryRun=false`) — decisión explícita: no antes de
-  terminar de migrar los 26 apps.
+  terminar de migrar los 26 aplicativos.
 - **Formularios 103/104 del ATS** — descartados de este corte (F7 del plan
   ATS), quedan si se decide retomarlos.
-- **Backlog del ATS para apps de escritura futuras**: si un cliente recibe
+- **Backlog del ATS para módulos de escritura futuros**: si un cliente recibe
   una retención en un período sin comprobante de venta en ese mismo período,
   el ATS no la reporta (limitación real de qué puede saber Sage). Cuando se
-  porte un app de **escritura** de retenciones/facturación, agregar una
+  porte un módulo de **escritura** de retenciones/facturación, agregar una
   alerta + botón "Pasar a período correcto" cuando la fecha del comprobante
   de retención no coincide con el período del comprobante de venta
   relacionado.

@@ -83,7 +83,17 @@ Registrar el ensamblado del módulo en el Host (una sola vez por módulo):
 - `src/PsaWeb.Host/Components/Routes.razor` → `AdditionalAssemblies="[... typeof(<Nombre>.ModuleInfo).Assembly]"`
 - `Program.cs` → `.AddAdditionalAssemblies(typeof(<Nombre>.ModuleInfo).Assembly)` en `MapRazorComponents`
 
-Agregar el enlace en `src/PsaWeb.Host/Components/Layout/NavMenu.razor`.
+**El menú y el dashboard NO se editan directamente** — ambos salen de
+`AppCatalogo.Todas` (`src/PsaWeb.Seguridad/AppCatalogo.cs`). Agregar ahí una
+fila `new(id, nombre, descripción, ícono, ruta, categoría, permisos)`:
+- `categoría` es una de `Categorias.Orden` (`Caja`/`Impuestos`/
+  `ComprobantesElectronicos`/`Inventario` al momento de escribir esto). Si el
+  módulo nuevo no encaja en ninguna, agregar la categoría a
+  `Categorias.Orden` en el orden en que debe aparecer en el menú — el menú
+  superior agrupa automáticamente por categoría (`NavMenu.razor`), no hace
+  falta tocarlo.
+- `permisos`: lista vacía = visible para cualquier empresa (`GateProvisional`,
+  mientras el área no cargue el código real en `allowAction`/`adrAllowRol`).
 
 ### 6. Exportaciones / descargas (si aplica)
 
@@ -116,7 +126,7 @@ en el módulo si hay que testear tipos `internal`.
 - [ ] `Data/`: interfaz + repo ODBC (parametrizado) + repo de muestra.
 - [ ] `Add<Nombre>()` y llamada en `Program.cs`.
 - [ ] Página con `@page`, componentes `Psa*`, los 4 estados, validaciones, `es-EC`.
-- [ ] Ensamblado registrado en `Routes.razor` y `MapRazorComponents`. Enlace en `NavMenu`.
+- [ ] Ensamblado registrado en `Routes.razor` y `MapRazorComponents`. Fila nueva en `AppCatalogo.Todas` con su `Categoria` (existente o agregada a `Categorias.Orden`).
 - [ ] Export + endpoint + botón (si aplica).
 - [ ] Pruebas.
 - [ ] `dotnet build` 0 warnings / 0 errors. `dotnet test` verde.
