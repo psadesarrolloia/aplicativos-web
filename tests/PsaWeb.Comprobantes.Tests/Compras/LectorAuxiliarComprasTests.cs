@@ -1,8 +1,8 @@
-using PsaWeb.Ats.Compras;
+using PsaWeb.Comprobantes.Compras;
 
-namespace PsaWeb.Ats.Tests;
+namespace PsaWeb.Comprobantes.Tests.Compras;
 
-public class LectorComprasAtsTests
+public class LectorAuxiliarComprasTests
 {
     [Theory]
     [InlineData("AUTORETENCION")]
@@ -10,7 +10,7 @@ public class LectorComprasAtsTests
     [InlineData(" AUTORETENCION ")]
     public void EsAutoretencion_reconoce_la_palabra_sin_distinguir_mayusculas_ni_espacios(string shipVia)
     {
-        Assert.True(LectorComprasAts.EsAutoretencion(shipVia));
+        Assert.True(LectorAuxiliarCompras.EsAutoretencion(shipVia));
     }
 
     [Theory]
@@ -20,6 +20,6 @@ public class LectorComprasAtsTests
     [InlineData(null)]
     public void EsAutoretencion_es_false_para_cualquier_otro_valor(string? shipVia)
     {
-        Assert.False(LectorComprasAts.EsAutoretencion(shipVia));
+        Assert.False(LectorAuxiliarCompras.EsAutoretencion(shipVia));
     }
 }

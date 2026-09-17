@@ -1,4 +1,5 @@
 using PsaWeb.Ats.Esquema;
+using PsaWeb.Comprobantes.Compras;
 
 namespace PsaWeb.Ats.Compras;
 
@@ -28,7 +29,7 @@ public sealed record CompraCruda(
     string FechaEmision,
     string Autorizacion,
     ProveedorAts Proveedor,
-    BucketsComprasAts Buckets,
+    BucketsCompra Buckets,
     string ShipToAddress2,
     string ShipToCity,
     detalleAirComprasType[]? RetencionesRenta,

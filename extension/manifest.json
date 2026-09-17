@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "PSA - Conciliación SRI",
+  "version": "0.1.0",
+  "description": "Sube el reporte de comprobantes electrónicos recibidos del SRI a PSA para conciliarlo contra Sage 50.",
+  "permissions": ["storage", "notifications"],
+  "host_permissions": [
+    "https://srienlinea.sri.gob.ec/*",
+    "http://192.168.0.11/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://srienlinea.sri.gob.ec/*"],
+      "js": ["content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "PSA - Conciliación SRI"
+  }
+}

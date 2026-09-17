@@ -30,6 +30,8 @@
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.FacturacionElectronica\PsaWeb.Modules.FacturacionElectronica.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.Ats\PsaWeb.Modules.Ats.csproj" />
     <ProjectReference Include="..\PsaWeb.Ats\PsaWeb.Ats.csproj" />
+    <ProjectReference Include="..\PsaWeb.Conciliacion\PsaWeb.Conciliacion.csproj" />
+    <ProjectReference Include="..\..\modules\PsaWeb.Modules.ConciliacionSri\PsaWeb.Modules.ConciliacionSri.csproj" />
   </ItemGroup>
 
   <!-- Antes de compilar, cierra cualquier instancia colgada del Host de una sesión

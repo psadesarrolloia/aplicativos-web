@@ -1,6 +1,7 @@
 using PsaWeb.Ats.Compras;
 using PsaWeb.Ats.Compras.Muestra;
 using PsaWeb.Ats.Esquema;
+using PsaWeb.Comprobantes.Compras;
 
 namespace PsaWeb.Ats.Tests;
 
@@ -20,7 +21,7 @@ public class ArmadorComprasAtsTests
         FechaEmision: "05/09/2026",
         Autorizacion: "auth-123",
         Proveedor: proveedor ?? ProveedorNacional(),
-        Buckets: BucketsComprasAts.Cero,
+        Buckets: BucketsCompra.Cero,
         ShipToAddress2: string.Empty,
         ShipToCity: string.Empty,
         RetencionesRenta: null,
@@ -100,7 +101,7 @@ public class ArmadorComprasAtsTests
     {
         var crudo = Base(TiposComprobanteComprasAts.Factura) with
         {
-            Buckets = BucketsComprasAts.Cero with { BaseImpGrav = totalCompra },
+            Buckets = BucketsCompra.Cero with { BaseImpGrav = totalCompra },
         };
 
         var detalle = ArmadorComprasAts.Armar(crudo);
@@ -120,7 +121,7 @@ public class ArmadorComprasAtsTests
     {
         var crudo = Base(TiposComprobanteComprasAts.NotaCredito) with
         {
-            Buckets = BucketsComprasAts.Cero with { BaseImpGrav = 1000m },
+            Buckets = BucketsCompra.Cero with { BaseImpGrav = 1000m },
             RetencionesRenta = new[] { new detalleAirComprasType { codRetAir = "310" } },
         };
 

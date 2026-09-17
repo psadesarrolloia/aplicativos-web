@@ -56,6 +56,15 @@ public static class AppCatalogo
             "📑", "/ats", Categorias.Impuestos,
             Array.Empty<string>()),
 
+        // Provisional (GateProvisional): sin código propio hasta que el área
+        // cargue quconcsri en allowAction. Mientras tanto visible para
+        // cualquier empresa. Revertir a new[] { Permisos.VerConciliacionSri }
+        // cuando el área asigne el permiso a los roles pertinentes.
+        new("conciliacion-sri", "Conciliación SRI",
+            "Concilia los comprobantes electrónicos recibidos del SRI contra Sage 50.",
+            "🔎", "/conciliacion-sri", Categorias.Impuestos,
+            Array.Empty<string>()),
+
         new("fe-facturas", "Facturas de venta",
             "Genera y emite en Datil las facturas de venta de Sage 50.",
             "🧾", "/fe/facturas", Categorias.ComprobantesElectronicos,

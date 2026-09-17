@@ -75,7 +75,7 @@ public class ProcesadorRetencionesTests
     {
         var f = new Factory();
         return new ProcesadorRetenciones(
-            new PendientesRepository(f),
+            new PendientesRepository(f, new EmpresasActivasRepository(f)),
             new EmpresaLookup(f),
             new PeachConnStringResolver(f),
             new SageQueFalla(),

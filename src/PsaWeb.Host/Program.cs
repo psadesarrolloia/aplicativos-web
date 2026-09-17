@@ -17,6 +17,10 @@ using PsaWeb.Modules.FacturacionElectronica;
 using PsaWeb.Sage50;
 using PsaWeb.Seguridad;
 using PsaWeb.Identidad;
+using Microsoft.EntityFrameworkCore;
+using PsaWeb.Conciliacion;
+using PsaWeb.Conciliacion.Data;
+using PsaWeb.Modules.ConciliacionSri;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -63,6 +67,20 @@ if (plataformaConfigurada)
 {
     builder.Services.AddIdentidadPlataforma(builder.Configuration);
     builder.Services.AddRateLimiter(PsaWeb.Identidad.ServiceCollectionExtensions.AgregarPoliticaLimiteLogin);
+    // Módulo de Conciliación SRI (F1): staging de comprobantes del SRI, misma
+    // base física que PsaWebPlataforma. El endpoint de subida y la pantalla
+    // /mi-cuenta/extension solo tienen sentido si hay plataforma (token de API
+    // atado a un usuario de Identity).
+    builder.Services.AddConciliacion(builder.Configuration);
+}
+
+// El módulo de Conciliación SRI (procesador de verificación + worker + página)
+// necesita staging (arriba, requiere Plataforma) Y Sage/PeachEbills (para
+// resolver la conexión de cada empresa) — solo se activa si ambos están.
+var conciliacionSriActiva = plataformaConfigurada && peachEbillsConfigurado;
+if (conciliacionSriActiva)
+{
+    builder.Services.AddConciliacionSri(builder.Configuration);
 }
 
 // --- Autenticación -----------------------------------------------------------
@@ -139,6 +157,9 @@ app.Logger.LogInformation(
 app.Logger.LogInformation(
     "Plataforma (identidad local): {Estado}.",
     plataformaConfigurada ? "ACTIVA" : "INACTIVA (sin Plataforma:ConnectionString)");
+app.Logger.LogInformation(
+    "Conciliación SRI: módulo {Estado}.",
+    conciliacionSriActiva ? "ACTIVO" : "INACTIVO (necesita Plataforma:ConnectionString y PeachEbills:ConnectionString)");
 
 // Puesta al día del esquema de PsaWebPlataforma + siembra del primer usuario.
 // - En Development: siembra el usuario de prueba (Plataforma:UsuarioDev/ClaveDev).
@@ -155,6 +176,10 @@ if (plataformaConfigurada)
     {
         await seeder.MigrarAsync();
         app.Logger.LogInformation("PsaWebPlataforma: migraciones aplicadas.");
+
+        var conciliacionDb = scope.ServiceProvider.GetRequiredService<ConciliacionDbContext>();
+        await conciliacionDb.Database.MigrateAsync();
+        app.Logger.LogInformation("Conciliación SRI: migraciones aplicadas.");
     }
 
     if (app.Environment.IsDevelopment())
@@ -220,7 +245,8 @@ app.MapRazorComponents<App>()
         typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly,
         typeof(RetencionesModule).Assembly,
         typeof(PsaWeb.Modules.FacturacionElectronica.FacturacionElectronicaModule).Assembly,
-        typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly);
+        typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly,
+        typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly);
 
 // Descarga del reporte «Cierre de Caja» en Excel. Re-consulta con las mismas
 // fechas para que el archivo coincida siempre con lo que se ve en pantalla.
@@ -402,5 +428,47 @@ app.MapGet("/ats/talon-resumen", async (
         return Results.File(pdf, "application/pdf", $"TRSMN-ATS-{mes:00}-{anio:0000}-{ats.IdInformante}.pdf");
     })
     .RequireAuthorization();
+
+// Subida del reporte de "Comprobantes electrónicos recibidos" del SRI, desde
+// la extensión de Chrome del módulo de Conciliación SRI (F1). No usa la
+// cookie de Identity — se autentica por token de API (Bearer) vía
+// TokenExtensionEndpointFilter, por eso AllowAnonymous(): la policy de cookie
+// del sitio no aplica acá, la autenticación la hace el filtro.
+app.MapPost("/conciliacion-sri/api/comprobantes", async (
+        SubidaReporteRequest body,
+        HttpContext http,
+        UserManager<UsuarioApp> usuarios,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        IRepositorioComprobantesSri repositorio,
+        CancellationToken cancellationToken) =>
+    {
+        var usuarioId = (string)http.Items[TokenExtensionEndpointFilter.ItemUsuarioId]!;
+        var usuario = await usuarios.FindByIdAsync(usuarioId);
+        if (usuario is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        if (seguridad is not null)
+        {
+            var empresas = await seguridad.EmpresasDelUsuarioAsync(usuario.UserName ?? string.Empty, cancellationToken);
+            if (!empresas.Any(e => e.Ruc == body.Ruc))
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+        }
+
+        try
+        {
+            var resultado = await repositorio.GuardarReporteAsync(body.Ruc, body.ContenidoReporte, usuarioId, cancellationToken);
+            return Results.Ok(resultado);
+        }
+        catch (FormatoReporteInvalidoException ex)
+        {
+            return Results.BadRequest(ex.Message);
+        }
+    })
+    .AllowAnonymous()
+    .AddEndpointFilter<TokenExtensionEndpointFilter>();
 
 app.Run();

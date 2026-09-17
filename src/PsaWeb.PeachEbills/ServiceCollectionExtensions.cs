@@ -30,6 +30,7 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<PeachConnStringResolver>();
         services.AddScoped<RepositorioComprobantesVenta>();
+        services.AddScoped<IEmpresasActivasRepository, EmpresasActivasRepository>();
 
         return services;
     }

@@ -14,6 +14,7 @@ public class PlataformaDbContext : IdentityDbContext<UsuarioApp>
     public PlataformaDbContext(DbContextOptions<PlataformaDbContext> options) : base(options) { }
 
     public DbSet<EventoAuth> EventosAuth => Set<EventoAuth>();
+    public DbSet<TokenExtension> TokensExtension => Set<TokenExtension>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -21,6 +22,8 @@ public class PlataformaDbContext : IdentityDbContext<UsuarioApp>
         builder.Entity<UsuarioApp>().HasIndex(u => u.PeachUsername);
         builder.Entity<EventoAuth>().HasIndex(e => e.Utc);
         builder.Entity<EventoAuth>().HasIndex(e => e.Usuario);
+        builder.Entity<TokenExtension>().HasIndex(t => t.Prefijo);
+        builder.Entity<TokenExtension>().HasIndex(t => t.UsuarioId);
     }
 }
 

@@ -8,46 +8,25 @@ public sealed record EmpresaActiva(string Ruc, string Nombre, short Ambiente);
 /// <summary>
 /// Consultas de la base PeachEBills para el worker de retenciones: empresas
 /// activas y facturas de compra pendientes de generar la retención.
-/// Port de las consultas de <c>Program.cs</c>.
+/// Port de las consultas de <c>Program.cs</c>. La lista base de empresas
+/// activas vive en <c>PsaWeb.PeachEbills.Data.EmpresasActivasRepository</c>
+/// (compartida con Conciliación SRI) — acá solo se le aplican los filtros
+/// propios de Retenciones (<c>omitirRucs</c>/<c>ambienteForzado</c>).
 /// </summary>
-public sealed class PendientesRepository
+public sealed class PendientesRepository(
+    IDbContextFactory<PeachEbillsContext> contextFactory, IEmpresasActivasRepository empresasActivas)
 {
-    private readonly IDbContextFactory<PeachEbillsContext> _contextFactory;
-
-    public PendientesRepository(IDbContextFactory<PeachEbillsContext> contextFactory)
-        => _contextFactory = contextFactory;
+    private readonly IDbContextFactory<PeachEbillsContext> _contextFactory = contextFactory;
 
     public async Task<IReadOnlyList<EmpresaActiva>> EmpresasActivasAsync(
         IEnumerable<string> omitirRucs, short? ambienteForzado, CancellationToken cancellationToken = default)
     {
         var omitir = omitirRucs.ToHashSet();
+        var todas = await empresasActivas.ObtenerAsync(cancellationToken);
 
-        await using var db = await _contextFactory.CreateDbContextAsync(cancellationToken);
-
-        // Son ~18 empresas: se traen enteras y se cruzan en memoria (evita
-        // traducir List.Contains, que en SQL Server viejo usa OPENJSON).
-        var activos = await db.TransmitterStatus.AsNoTracking()
-            .Where(s => s.IsActive)
-            .Select(s => s.TransmitterRuc)
-            .ToListAsync(cancellationToken);
-
-        var nombres = await db.Transmitter.AsNoTracking()
-            .Select(t => new { t.Ruc, Nombre = t.NameAlias ?? t.Name })
-            .ToListAsync(cancellationToken);
-
-        var ambientes = await db.CurrentAmbient.AsNoTracking()
-            .Select(a => new { a.Ruc, a.AmbientDefault })
-            .ToListAsync(cancellationToken);
-
-        var mapaNombre = nombres.ToDictionary(x => x.Ruc, x => x.Nombre);
-        var mapaAmbiente = ambientes.ToDictionary(x => x.Ruc, x => x.AmbientDefault);
-
-        return activos
-            .Where(ruc => !omitir.Contains(ruc))
-            .Select(ruc => new EmpresaActiva(
-                ruc,
-                mapaNombre.GetValueOrDefault(ruc, ruc),
-                ambienteForzado ?? (mapaAmbiente.TryGetValue(ruc, out var a) ? a : (short)2)))
+        return todas
+            .Where(e => !omitir.Contains(e.Ruc))
+            .Select(e => new EmpresaActiva(e.Ruc, e.Nombre, ambienteForzado ?? e.AmbienteDefault))
             .ToList();
     }
 

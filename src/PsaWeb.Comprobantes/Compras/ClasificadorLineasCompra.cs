@@ -1,20 +1,19 @@
 using System.Globalization;
 
-namespace PsaWeb.Ats.Compras;
+namespace PsaWeb.Comprobantes.Compras;
 
 /// <summary>
 /// Clasifica una línea de compra (<c>LineItem</c>+<c>JrnlRow</c>) en los
-/// buckets de <see cref="BucketsComprasAts"/>. Parte <b>pura</b> de
+/// buckets de <see cref="BucketsCompra"/>. Parte <b>pura</b> de
 /// <c>LoadImponibles</c> (<c>ATSfromPeach</c>), separada del ODBC para poder
-/// testearla directo.
+/// testearla directo. Compartida entre el ATS y Conciliación SRI (§13.1).
 /// </summary>
-public static class ClasificadorLineasComprasAts
+public static class ClasificadorLineasCompra
 {
     /// <summary>
     /// Acumula una línea sobre <paramref name="acumulado"/> y devuelve el
-    /// resultado (sin aplicar todavía abs/round — eso lo hace
-    /// <see cref="LectorDetalleComprasAts"/> al final, una sola vez, igual que
-    /// el `.exe`).
+    /// resultado (sin aplicar todavía abs/round — eso lo hace el lector al
+    /// final, una sola vez, igual que el `.exe`).
     /// </summary>
     /// <param name="laborCost">
     /// Se compara como texto contra literales con punto decimal ("0.1", "0.3",
@@ -25,8 +24,8 @@ public static class ClasificadorLineasComprasAts
     /// (0.1=10%, 0.2=20%, 0.3=30%, 0.5=50%, 0.7=70%, 1.0=100%), así que el
     /// `.exe` compara en cultura invariante (o equivalente) — no la del SO.
     /// </param>
-    public static BucketsComprasAts AcumularLinea(
-        BucketsComprasAts acumulado, string category, string customField1, string customField3, string customField4,
+    public static BucketsCompra AcumularLinea(
+        BucketsCompra acumulado, string category, string customField1, string customField3, string customField4,
         decimal amount, decimal laborCost)
     {
         category = category.ToUpperInvariant();
@@ -101,7 +100,7 @@ public static class ClasificadorLineasComprasAts
     }
 
     /// <summary>Redondea (abs + 2 decimales) todos los buckets — una sola vez, al final.</summary>
-    public static BucketsComprasAts Redondear(BucketsComprasAts b) => new(
+    public static BucketsCompra Redondear(BucketsCompra b) => new(
         Corregir(b.BaseNoGraIva), Corregir(b.BaseImponible), Corregir(b.BaseImpGrav), Corregir(b.BaseImpExe),
         Corregir(b.MontoIva), Corregir(b.ValRetBien10), Corregir(b.ValRetServ20), Corregir(b.ValorRetBienes),
         Corregir(b.ValRetServ50), Corregir(b.ValorRetServicios), Corregir(b.ValRetServ100));

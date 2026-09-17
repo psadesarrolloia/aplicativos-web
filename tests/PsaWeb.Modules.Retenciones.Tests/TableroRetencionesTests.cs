@@ -31,7 +31,7 @@ public class TableroRetencionesTests
     private static TableroRetenciones Construir()
     {
         var f = new Factory();
-        return new TableroRetenciones(f, new PendientesRepository(f), Options.Create(new RetencionesOptions()));
+        return new TableroRetenciones(f, new PendientesRepository(f, new EmpresasActivasRepository(f)), Options.Create(new RetencionesOptions()));
     }
 
     [SkippableFact]

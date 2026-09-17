@@ -193,6 +193,45 @@ namespace PsaWeb.Identidad.Migrations
                     b.ToTable("EventosAuth");
                 });
 
+            modelBuilder.Entity("PsaWeb.Identidad.TokenExtension", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreadoUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HashSecreto")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Prefijo")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<DateTime?>("RevocadoUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UltimoUsoUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UsuarioId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Prefijo");
+
+                    b.HasIndex("UsuarioId");
+
+                    b.ToTable("TokensExtension");
+                });
+
             modelBuilder.Entity("PsaWeb.Identidad.UsuarioApp", b =>
                 {
                     b.Property<string>("Id")

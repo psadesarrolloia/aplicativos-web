@@ -1,5 +1,6 @@
 using System.Data.Odbc;
 using PsaWeb.Ats.Esquema;
+using PsaWeb.Comprobantes.Compras;
 using PsaWeb.Comprobantes.Sri;
 
 namespace PsaWeb.Ats.Compras;
@@ -59,7 +60,7 @@ public static class LectorComprasAts
         // una obligación interna de Sage 50, no una compra a un tercero — no
         // deben reflejarse en el ATS. Convención acordada con el usuario
         // 2026-09-12: marcarlas en Sage con ShipVia="AUTORETENCION".
-        filas.RemoveAll(f => EsAutoretencion(f.ShipVia));
+        filas.RemoveAll(f => LectorAuxiliarCompras.EsAutoretencion(f.ShipVia));
 
         var resultado = new List<detalleComprasType>(filas.Count);
         foreach (var fila in filas)
@@ -83,8 +84,8 @@ public static class LectorComprasAts
             var establecimiento = fila.Reference[..3];
             var puntoEmision = fila.Reference.Substring(4, 3);
             var secuencial = fila.Reference[8..];
-            var autorizacion = await LectorAuxiliarComprasAts.NumeroAutorizacionAsync(connection, fila.PostOrder, cancellationToken);
-            var buckets = await LectorDetalleComprasAts.LeerImponiblesAsync(connection, fila.PostOrder, cancellationToken);
+            var autorizacion = await LectorAuxiliarCompras.NumeroAutorizacionAsync(connection, fila.PostOrder, cancellationToken);
+            var buckets = await LectorImponiblesCompra.LeerImponiblesAsync(connection, fila.PostOrder, cancellationToken);
 
             detalleAirComprasType[]? retencionesRenta = null;
             string? numeroCompletoOriginal = null;
@@ -96,12 +97,12 @@ public static class LectorComprasAts
             }
             else if (tipoComprobante == TiposComprobanteComprasAts.NotaCredito)
             {
-                numeroCompletoOriginal = await LectorAuxiliarComprasAts.NumeroCompletoDeCompraOriginalAsync(connection, fila.PostOrder, cancellationToken);
+                numeroCompletoOriginal = await LectorAuxiliarCompras.NumeroCompletoDeCompraOriginalAsync(connection, fila.PostOrder, cancellationToken);
                 if (!string.IsNullOrEmpty(numeroCompletoOriginal))
                 {
-                    var postOrderOriginal = await LectorAuxiliarComprasAts.PostOrderCompraOriginalAsync(connection, fila.PostOrder, cancellationToken);
+                    var postOrderOriginal = await LectorAuxiliarCompras.PostOrderCompraOriginalAsync(connection, fila.PostOrder, cancellationToken);
                     autorizacionOriginal = postOrderOriginal is not null
-                        ? await LectorAuxiliarComprasAts.NumeroAutorizacionAsync(connection, postOrderOriginal.Value, cancellationToken)
+                        ? await LectorAuxiliarCompras.NumeroAutorizacionAsync(connection, postOrderOriginal.Value, cancellationToken)
                         : string.Empty;
                 }
             }
@@ -130,15 +131,6 @@ public static class LectorComprasAts
     }
 
     /// <summary>
-    /// true si la compra es una autoretención interna (convención 2026-09-12:
-    /// <c>ShipVia</c> == "AUTORETENCION", sin distinguir mayúsculas/espacios)
-    /// que el SRI exige a los Grandes Contribuyentes registrar en Sage 50 pero
-    /// que no es una compra real a un tercero — no debe entrar al ATS.
-    /// </summary>
-    public static bool EsAutoretencion(string? shipVia) =>
-        string.Equals(shipVia?.Trim(), "AUTORETENCION", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
     /// Port de la clasificación inicial de <c>LoadPurchases</c>: JournalEx 12
     /// = nota de crédito (el sustento se hereda de la compra original);
     /// JournalEx 11 = factura/nota de venta/liquidación según <c>ShipVia</c>.
@@ -148,11 +140,11 @@ public static class LectorComprasAts
     {
         if (journalEx == DiarioSage.JournalExNotaCreditoCompra)
         {
-            var postOrderOriginal = await LectorAuxiliarComprasAts.PostOrderCompraOriginalAsync(connection, postOrder, cancellationToken);
+            var postOrderOriginal = await LectorAuxiliarCompras.PostOrderCompraOriginalAsync(connection, postOrder, cancellationToken);
             var codSustento = string.Empty;
             if (postOrderOriginal is not null)
             {
-                codSustento = await LectorAuxiliarComprasAts.CodigoSustentoCostoAsync(connection, postOrderOriginal.Value, cancellationToken);
+                codSustento = await LectorAuxiliarCompras.CodigoSustentoCostoAsync(connection, postOrderOriginal.Value, cancellationToken);
             }
 
             return (TiposComprobanteComprasAts.NotaCredito, codSustento);
@@ -163,17 +155,17 @@ public static class LectorComprasAts
             var viaTrim = shipVia.Trim();
             if (shipVia == "1" || viaTrim == "FACTURA")
             {
-                return (TiposComprobanteComprasAts.Factura, await LectorAuxiliarComprasAts.CodigoSustentoCostoAsync(connection, postOrder, cancellationToken));
+                return (TiposComprobanteComprasAts.Factura, await LectorAuxiliarCompras.CodigoSustentoCostoAsync(connection, postOrder, cancellationToken));
             }
 
             if (shipVia == "2" || viaTrim == "NOTA DE VENTA")
             {
-                return (TiposComprobanteComprasAts.NotaVenta, await LectorAuxiliarComprasAts.CodigoSustentoCostoAsync(connection, postOrder, cancellationToken));
+                return (TiposComprobanteComprasAts.NotaVenta, await LectorAuxiliarCompras.CodigoSustentoCostoAsync(connection, postOrder, cancellationToken));
             }
 
             if (shipVia == "3" || viaTrim.Contains("LIQUIDACION"))
             {
-                return (TiposComprobanteComprasAts.Liquidacion, await LectorAuxiliarComprasAts.CodigoSustentoCostoAsync(connection, postOrder, cancellationToken));
+                return (TiposComprobanteComprasAts.Liquidacion, await LectorAuxiliarCompras.CodigoSustentoCostoAsync(connection, postOrder, cancellationToken));
             }
 
             return (TiposComprobanteComprasAts.Desconocido, TiposComprobanteComprasAts.Desconocido);

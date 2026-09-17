@@ -1,0 +1,110 @@
+@page "/mi-cuenta/extension"
+@using Microsoft.AspNetCore.Identity
+@using PsaWeb.Identidad
+@inject UserManager<UsuarioApp> Users
+@inject IServicioTokensExtension Tokens
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Extensión de Chrome — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Extensión de Chrome"
+               Subtitle="Token de acceso para que la extensión del módulo de Conciliación SRI suba reportes a nombre tuyo." />
+
+@if (_cargando)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else if (_usuario is null)
+{
+    <p class="psa-notice psa-notice--danger">No se pudo identificar tu usuario.</p>
+}
+else if (_tokenRecienGenerado is not null)
+{
+    <PsaCard Title="Token generado">
+        <p class="psa-notice psa-notice--danger">
+            Copiá este token ahora — no se va a volver a mostrar. Pegalo en el ícono de la extensión de Chrome.
+        </p>
+        <code style="display:block;padding:.75rem;word-break:break-all;background:var(--psa-surface-2,#f2f2f2);border-radius:6px">@_tokenRecienGenerado</code>
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="secondary" OnClick="Cerrar">Ya lo copié</PsaButton>
+        </div>
+    </PsaCard>
+}
+else if (_info is not null)
+{
+    <PsaCard Title="Token activo">
+        <p class="psa-notice">
+            Creado el @_info.CreadoUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+            · último uso: @(_info.UltimoUsoUtc is { } u ? u.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "nunca usado")
+        </p>
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="secondary" OnClick="Generar" Disabled="_procesando">Generar uno nuevo</PsaButton>
+            <PsaButton Variant="danger" OnClick="Revocar" Disabled="_procesando">Revocar</PsaButton>
+        </div>
+    </PsaCard>
+}
+else
+{
+    <PsaCard Title="Sin token">
+        <p class="psa-muted">Todavía no generaste un token para la extensión.</p>
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="primary" OnClick="Generar" Disabled="_procesando">Generar token para la extensión</PsaButton>
+        </div>
+    </PsaCard>
+}
+
+@code {
+    private UsuarioApp? _usuario;
+    private TokenExtensionInfo? _info;
+    private string? _tokenRecienGenerado;
+    private bool _cargando = true;
+    private bool _procesando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        var nombre = state.User.Identity?.Name;
+        if (!string.IsNullOrEmpty(nombre))
+        {
+            _usuario = await Users.FindByNameAsync(nombre);
+        }
+        if (_usuario is not null)
+        {
+            _info = await Tokens.ObtenerInfoAsync(_usuario.Id);
+        }
+        _cargando = false;
+    }
+
+    private async Task Generar()
+    {
+        _procesando = true;
+        try
+        {
+            _tokenRecienGenerado = await Tokens.GenerarAsync(_usuario!.Id);
+        }
+        finally
+        {
+            _procesando = false;
+        }
+    }
+
+    private async Task Revocar()
+    {
+        _procesando = true;
+        try
+        {
+            await Tokens.RevocarAsync(_usuario!.Id);
+            _info = null;
+        }
+        finally
+        {
+            _procesando = false;
+        }
+    }
+
+    private async Task Cerrar()
+    {
+        _tokenRecienGenerado = null;
+        _info = await Tokens.ObtenerInfoAsync(_usuario!.Id);
+    }
+}

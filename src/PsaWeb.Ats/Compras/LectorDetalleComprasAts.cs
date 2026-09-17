@@ -5,23 +5,15 @@ using PsaWeb.Comprobantes.Sri;
 namespace PsaWeb.Ats.Compras;
 
 /// <summary>
-/// Lee de Sage 50 las bases imponibles (<c>LoadImponibles</c>) y las
-/// retenciones de renta (<c>LoadRetencionesRF</c>) de una compra por
-/// <c>PostOrder</c>. Port de <c>ATSfromPeach.ATSModel.LoadPurchases</c>.
+/// Lee de Sage 50 las retenciones de renta (<c>LoadRetencionesRF</c>) de una
+/// compra por <c>PostOrder</c>. Port de <c>ATSfromPeach.ATSModel.LoadPurchases</c>.
+/// Las bases imponibles (<c>LoadImponibles</c>) se movieron a
+/// <c>PsaWeb.Comprobantes.Compras.LectorImponiblesCompra</c> (§13.1 del plan
+/// de Conciliación SRI) — esto se queda acá porque devuelve
+/// <see cref="detalleAirComprasType"/>, el tipo del esquema XML del ATS.
 /// </summary>
 public static class LectorDetalleComprasAts
 {
-    private static readonly string SqlImponibles = $"""
-        SELECT LineItem.Category, LineItem.CustomField1, LineItem.CustomField3, LineItem.CustomField4, JrnlRow.Amount, LineItem.LaborCost
-        FROM JrnlRow, LineItem
-        WHERE JrnlRow.ItemRecordNumber = LineItem.ItemRecordNumber
-          AND JrnlRow.Journal = {DiarioSage.Compras}
-          AND JrnlRow.RowType = 0
-          AND JrnlRow.RowNumber > 0
-          AND JrnlRow.PostOrder = ?
-        ORDER BY JrnlRow.RowNumber
-        """;
-
     // Retenciones de renta con porcentaje > 0 (categoría R-...RF, excepto 332).
     private static readonly string SqlRetencionesConPorcentaje = $"""
         SELECT LineItem.Category, LineItem.CustomField1, JrnlRow.Amount, LineItem.LaborCost, JrnlRow.Quantity
@@ -47,29 +39,6 @@ public static class LectorDetalleComprasAts
           AND JrnlRow.PostOrder = ?
         GROUP BY LineItem.CustomField5
         """;
-
-    public static async Task<BucketsComprasAts> LeerImponiblesAsync(
-        OdbcConnection connection, long postOrder, CancellationToken cancellationToken = default)
-    {
-        await using var cmd = new OdbcCommand(SqlImponibles, connection);
-        cmd.Parameters.Add(new OdbcParameter { OdbcType = OdbcType.BigInt, Value = postOrder });
-
-        var acumulado = BucketsComprasAts.Cero;
-        await using var r = await cmd.ExecuteReaderAsync(cancellationToken);
-        while (await r.ReadAsync(cancellationToken))
-        {
-            acumulado = ClasificadorLineasComprasAts.AcumularLinea(
-                acumulado,
-                category: Texto(r, "Category"),
-                customField1: Texto(r, "CustomField1"),
-                customField3: Texto(r, "CustomField3"),
-                customField4: Texto(r, "CustomField4"),
-                amount: Decimal(r, "Amount"),
-                laborCost: Decimal(r, "LaborCost"));
-        }
-
-        return ClasificadorLineasComprasAts.Redondear(acumulado);
-    }
 
     public static async Task<detalleAirComprasType[]?> LeerRetencionesRentaAsync(
         OdbcConnection connection, long postOrder, CancellationToken cancellationToken = default)

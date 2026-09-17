@@ -1,0 +1,234 @@
+@page "/conciliacion-sri"
+@namespace PsaWeb.Modules.ConciliacionSri.Pages
+@using PsaWeb.Conciliacion
+@using PsaWeb.Sage50
+@inject ProcesadorVerificacionEstado Procesador
+@inject EjecucionVerificacionGate Gate
+@inject IResolverEmpresaSage EmpresaSage
+@inject ILogger<ConciliacionSri> Logger
+@implements IDisposable
+
+<PageTitle>Conciliación SRI — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Conciliación SRI"
+               Subtitle="Concilia los comprobantes electrónicos recibidos del SRI (subidos por la extensión de Chrome) contra las compras registradas en Sage 50." />
+
+@if (EmpresaSage.RucSesion is null)
+{
+    <PsaCard Title="Conciliación SRI">
+        <p class="psa-notice psa-notice--danger">Este módulo necesita una empresa de sesión activa.</p>
+    </PsaCard>
+}
+else
+{
+    <PsaCard Title="Período">
+        <PsaDateRange From="_desde" To="_hasta" FromChanged="v => _desde = v" ToChanged="v => _hasta = v" />
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
+                @(_cargando ? "Consultando…" : "Consultar")
+            </PsaButton>
+        </div>
+        <p class="psa-muted" style="margin-top:.6rem">
+            Recordatorio: el listado de "recibidos" del portal del SRI solo cubre bien los últimos 5 días del mes en
+            curso — si el período no está completo, corré la extensión de nuevo antes de confiar en el resultado.
+        </p>
+    </PsaCard>
+
+    @if (_error is not null)
+    {
+        <PsaCard Title="Conciliación SRI">
+            <p class="psa-notice psa-notice--danger">@_error</p>
+        </PsaCard>
+    }
+    else if (_filas is not null)
+    {
+        var pendientesDeVerificar = _filas.Count(f => f.Clasificacion == ClasificacionConciliacion.CoincidePendienteDeVerificar);
+
+        <PsaCard Title="Resultado">
+            <Actions>
+                <PsaButton Variant="secondary" OnClick="VerificarPendientes" Disabled="@(_verificando || pendientesDeVerificar == 0)">
+                    @(_verificando ? "Verificando…" : $"Verificar pendientes ({pendientesDeVerificar})")
+                </PsaButton>
+            </Actions>
+            <ChildContent>
+
+            @if (_avisoVerificacion is not null)
+            {
+                <p class="psa-notice">@_avisoVerificacion</p>
+            }
+
+            <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
+                @foreach (var (clasificacion, etiqueta) in Etiquetas)
+                {
+                    var cantidad = _filas.Count(f => f.Clasificacion == clasificacion);
+                    <button type="button" style="@EstiloFiltro(clasificacion)" @onclick="() => _filtro = clasificacion">
+                        <PsaStat Label="@etiqueta" Value="@cantidad.ToString()"
+                                 State="@(clasificacion is ClasificacionConciliacion.SoloEnSri or ClasificacionConciliacion.SoloEnSage or ClasificacionConciliacion.ValoresDistintos && cantidad > 0 ? "warn" : "ok")" />
+                    </button>
+                }
+            </div>
+
+            @if (_filtro == ClasificacionConciliacion.SoloEnSage)
+            {
+                <p class="psa-notice">
+                    "Solo en Sage" puede ser por clave de acceso vacía o mal tecleada, no necesariamente porque el
+                    comprobante sea inválido — ver el detalle de cada fila.
+                </p>
+            }
+
+            @{ var vista = _filas.Where(f => f.Clasificacion == _filtro).ToList(); }
+            @if (vista.Count == 0)
+            {
+                <p class="psa-muted">Sin filas en esta categoría.</p>
+            }
+            else
+            {
+                <div style="overflow-x:auto">
+                <table class="psa-table">
+                    <thead>
+                        <tr>
+                            <th>Clave de acceso</th>
+                            <th>Proveedor (SRI)</th>
+                            <th>Proveedor (Sage)</th>
+                            <th class="num">Total (SRI)</th>
+                            <th class="num">Total (Sage)</th>
+                            <th>Estado</th>
+                            <th>Diferencias</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var fila in vista)
+                        {
+                            <tr>
+                                <td>@(fila.ClaveAcceso ?? fila.Sage?.Autorizacion)</td>
+                                <td>@fila.Sri?.RazonSocialEmisor</td>
+                                <td>@fila.Sage?.NombreProveedor</td>
+                                <td class="num">@(fila.Sri is not null ? fila.Sri.Total.ToString("N2") : "")</td>
+                                <td class="num">@(fila.Sage is not null ? fila.Sage.Total.ToString("N2") : "")</td>
+                                <td>@(fila.Sri?.Estado ?? "sin verificar")</td>
+                                <td>@string.Join("; ", fila.Diferencias)</td>
+                                <td>
+                                    @if (fila.ClaveAcceso is not null && fila.Sri is not null)
+                                    {
+                                        <PsaButton Variant="ghost" OnClick="@(() => VerificarUna(fila.Sri.Id, fila.ClaveAcceso))"
+                                                   Disabled="_verificandoFila == fila.Sri.Id">
+                                            @(_verificandoFila == fila.Sri.Id ? "…" : "Verificar con el SRI")
+                                        </PsaButton>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                </div>
+            }
+
+            </ChildContent>
+        </PsaCard>
+    }
+}
+
+@code {
+    private static readonly (ClasificacionConciliacion, string)[] Etiquetas =
+    [
+        (ClasificacionConciliacion.SoloEnSri, "Solo en SRI"),
+        (ClasificacionConciliacion.SoloEnSage, "Solo en Sage"),
+        (ClasificacionConciliacion.ValoresDistintos, "Valores distintos"),
+        (ClasificacionConciliacion.MetadataDistinta, "Metadata distinta"),
+        (ClasificacionConciliacion.CoincidePendienteDeVerificar, "Conciliado sin verificar"),
+    ];
+
+    private DateOnly _desde = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
+    private bool _cargando;
+    private bool _verificando;
+    private long? _verificandoFila;
+    private string? _error;
+    private string? _avisoVerificacion;
+    private IReadOnlyList<FilaConciliacion>? _filas;
+    private ClasificacionConciliacion _filtro = ClasificacionConciliacion.SoloEnSri;
+
+    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+
+    public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+
+    private void Refrescar()
+    {
+        _filas = null;
+        _error = null;
+        _avisoVerificacion = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string EstiloFiltro(ClasificacionConciliacion c) =>
+        "border:none;background:none;padding:0;text-align:left;cursor:pointer;border-radius:8px;"
+        + (c == _filtro ? "outline:2px solid var(--psa-magenta,#B40046)" : "outline:none");
+
+    private async Task Consultar()
+    {
+        if (EmpresaSage.RucSesion is not { } ruc)
+        {
+            return;
+        }
+
+        _cargando = true;
+        _error = null;
+        _avisoVerificacion = null;
+        try
+        {
+            _filas = await Procesador.ConciliarAsync(ruc, _desde, _hasta);
+        }
+        catch (Exception ex)
+        {
+            _error = $"No se pudo conciliar: {ex.Message}";
+            Logger.LogError(ex, "Conciliación SRI para {Ruc}", ruc);
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task VerificarUna(long comprobanteId, string claveAcceso)
+    {
+        _verificandoFila = comprobanteId;
+        try
+        {
+            await Procesador.VerificarUnaAsync(comprobanteId, claveAcceso);
+            await Consultar(); // vuelve a conciliar para reflejar el estado ya guardado
+        }
+        finally
+        {
+            _verificandoFila = null;
+        }
+    }
+
+    private async Task VerificarPendientes()
+    {
+        if (EmpresaSage.RucSesion is not { } ruc)
+        {
+            return;
+        }
+
+        _verificando = true;
+        _avisoVerificacion = null;
+        try
+        {
+            var resultado = await Gate.EjecutarAsync(ct => Procesador.ProcesarUnaAsync(ruc, ruc, ct));
+            if (!resultado.Ejecuto)
+            {
+                _avisoVerificacion = resultado.Motivo;
+                return;
+            }
+
+            var r = resultado.Resumen!.Empresas[0];
+            _avisoVerificacion = $"Verificados: {r.Verificados} · Anulados: {r.Anulados} · Con error: {r.ConErrores}.";
+            await Consultar();
+        }
+        finally
+        {
+            _verificando = false;
+        }
+    }
+}

@@ -1,4 +1,5 @@
 using PsaWeb.Ats.Esquema;
+using PsaWeb.Comprobantes.Compras;
 
 namespace PsaWeb.Ats.Compras.Muestra;
 
@@ -29,7 +30,7 @@ public static class ComprasMuestraAts
         FechaEmision: "05/09/2026",
         Autorizacion: "0509202601179001111000120010010000000121642330011",
         Proveedor: ProveedorNacional(),
-        Buckets: new BucketsComprasAts(
+        Buckets: new BucketsCompra(
             BaseNoGraIva: 0m, BaseImponible: 1996.00m, BaseImpGrav: 0m, BaseImpExe: 0m, MontoIva: 0m,
             ValRetBien10: 0m, ValRetServ20: 0m, ValorRetBienes: 0m, ValRetServ50: 0m, ValorRetServicios: 0m, ValRetServ100: 0m),
         ShipToAddress2: "001-001-000000045",
@@ -51,7 +52,7 @@ public static class ComprasMuestraAts
         FechaEmision: "24/09/2026",
         Autorizacion: string.Empty,
         Proveedor: ProveedorNacional("1792278767001", "OTRO PROVEEDOR S.A."),
-        Buckets: new BucketsComprasAts(0m, 110.00m, 0m, 0m, 0m, 0, 0, 0, 0, 0, 0),
+        Buckets: new BucketsCompra(0m, 110.00m, 0m, 0m, 0m, 0, 0, 0, 0, 0, 0),
         ShipToAddress2: string.Empty,
         ShipToCity: string.Empty,
         RetencionesRenta: null,
@@ -72,7 +73,7 @@ public static class ComprasMuestraAts
             "02", InfoProveedorExterior.ArmarPagoExterior(new InfoProveedorExterior(
                 TipoProveedorExterior.Sociedad, TipoPagoExterior.Exterior, "01", "331", "331", RespuestaSiNo.No, RespuestaSiNo.Ninguna)),
             null),
-        Buckets: new BucketsComprasAts(0m, 0m, 19215.00m, 0m, 2882.25m, 0, 0, 0, 0, 0, 0),
+        Buckets: new BucketsCompra(0m, 0m, 19215.00m, 0m, 2882.25m, 0, 0, 0, 0, 0, 0),
         ShipToAddress2: string.Empty,
         ShipToCity: string.Empty,
         RetencionesRenta: null,

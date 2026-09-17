@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>PSA - Conciliación SRI</title>
+  <style>
+    body { font-family: sans-serif; width: 280px; padding: 12px; }
+    h1 { font-size: 14px; margin: 0 0 10px; color: #163154; }
+    label { display: block; font-size: 12px; margin: 10px 0 4px; color: #333; }
+    input { width: 100%; box-sizing: border-box; padding: 6px; font-size: 13px; }
+    button {
+      margin-top: 12px; width: 100%; padding: 8px; background: #B40046; color: #fff;
+      border: none; border-radius: 6px; cursor: pointer; font-size: 13px;
+    }
+    #estado { margin-top: 8px; font-size: 12px; color: #1b5e20; display: none; }
+  </style>
+</head>
+<body>
+  <h1>PSA - Conciliación SRI</h1>
+
+  <label for="hostPsa">Sitio de PSA</label>
+  <input id="hostPsa" type="text" placeholder="http://192.168.0.11:8088" />
+
+  <label for="tokenApi">Token de API</label>
+  <input id="tokenApi" type="password" placeholder="psaext_..." />
+
+  <button id="guardar">Guardar</button>
+  <div id="estado"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,14 +1,16 @@
 using System.Data.Odbc;
 using PsaWeb.Comprobantes.Sri;
 
-namespace PsaWeb.Ats.Compras;
+namespace PsaWeb.Comprobantes.Compras;
 
 /// <summary>
-/// Consultas auxiliares chicas de <c>LoadPurchases</c> (<c>ATSfromPeach</c>):
-/// ubicar el <c>PostOrder</c> de la compra original de una NC, el código de
-/// sustento tributario, y el número de autorización del SRI.
+/// Consultas auxiliares chicas sobre compras de Sage 50 (port de piezas de
+/// <c>LoadPurchases</c>, <c>ATSfromPeach</c>): ubicar el <c>PostOrder</c> de la
+/// compra original de una NC, el código de sustento tributario, y el número de
+/// autorización del SRI. Compartidas entre el ATS y Conciliación SRI (§13.1
+/// del plan) — no tienen ninguna dependencia del esquema del ATS.
 /// </summary>
-public static class LectorAuxiliarComprasAts
+public static class LectorAuxiliarCompras
 {
     /// <summary>Port de <c>PostOrderPurchase(VendorID, PurchaseNumber)</c>.</summary>
     public static async Task<long?> PostOrderPorReferenciaAsync(
@@ -154,6 +156,16 @@ public static class LectorAuxiliarComprasAts
         return string.IsNullOrEmpty(autorizacion) ? respaldo : autorizacion;
     }
 
+    /// <summary>
+    /// true si la compra es una autoretención interna (convención 2026-09-12:
+    /// <c>ShipVia</c> == "AUTORETENCION", sin distinguir mayúsculas/espacios)
+    /// que el SRI exige a los Grandes Contribuyentes registrar en Sage 50 pero
+    /// que no es una compra real a un tercero — no debe entrar al ATS ni a
+    /// Conciliación SRI (nunca va a aparecer en el reporte del SRI).
+    /// </summary>
+    public static bool EsAutoretencion(string? shipVia) =>
+        string.Equals(shipVia?.Trim(), "AUTORETENCION", StringComparison.OrdinalIgnoreCase);
+
     private static async Task<string> ShipToAddress1Async(OdbcConnection connection, long postOrder, CancellationToken ct)
     {
         const string sql = "SELECT JrnlHdr.ShipToAddress1 AS Autorizacion FROM JrnlHdr WHERE JrnlHdr.JournalEx = ? AND JrnlHdr.PostOrder = ?";
@@ -194,7 +206,7 @@ public static class LectorAuxiliarComprasAts
     }
 }
 
-/// <summary>Códigos de sustento tributario (Tabla 5 del ATS).</summary>
+/// <summary>Códigos de sustento tributario (Tabla 5 del ATS) — se quedan acá, no se usan fuera de compras.</summary>
 public static class CodigosSustentoAts
 {
     public const string Credito = "01";

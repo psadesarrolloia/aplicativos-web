@@ -31,7 +31,7 @@ public class PendientesRepositoryTests
         catch { return false; }
     }
 
-    private static PendientesRepository Repo() => new(new Factory());
+    private static PendientesRepository Repo() => new(new Factory(), new EmpresasActivasRepository(new Factory()));
 
     [SkippableFact]
     public async Task Lista_empresas_activas_y_respeta_la_omision()

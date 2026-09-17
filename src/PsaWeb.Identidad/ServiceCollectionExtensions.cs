@@ -59,6 +59,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<GestorSegundoFactor>();
         services.AddScoped<AuditoriaAuth>();
         services.AddScoped<IdentidadSeeder>();
+        services.AddScoped<IServicioTokensExtension, ServicioTokensExtension>();
 
         return services;
     }

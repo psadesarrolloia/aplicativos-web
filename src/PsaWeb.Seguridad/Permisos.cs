@@ -31,6 +31,10 @@ public static class Permisos
     // Requiere 1 fila nueva en allowAction de PeachEBills asignada a los roles.
     public const string VerKardex = "quKardex";
 
+    // Conciliación SRI — módulo sin equivalente de escritorio, código nuevo.
+    // Requiere 1 fila nueva en allowAction de PeachEBills asignada a los roles.
+    public const string VerConciliacionSri = "quconcsri";
+
     // Configuración
     public const string ConfigurarDatil = "setDatilP";
     public const string ConfigurarOdbc = "setODBC";
