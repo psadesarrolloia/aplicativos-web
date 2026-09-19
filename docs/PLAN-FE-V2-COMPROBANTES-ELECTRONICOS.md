@@ -111,7 +111,7 @@ Patrón existente en `allowAction`: `qu*` = ver, `mk*` = hacer, `*Batch` = lote,
 | Liquidaciones | `qupurchliq` (nuevo) | `mkpurchliq` (nuevo) | `mkliqBatch` (nuevo) | `auCanceLiq` (nuevo) |
 
 = **7 filas nuevas** + asignación a roles copiando el de su equivalente (para no dar ni quitar
-acceso por sorpresa). «Verificar en el SRI»: individual con «Ver», masivo con «Lote».
+acceso por sorpresa). «Verificar en el SRI»: individual con «Ver»; masivo con quien puede generar (Hacer o Lote) — ver nota F4 abajo.
 Sin permiso de «Autorizar anulación» el usuario solo **solicita** la anulación (correo al
 Supervisor, como hoy en retenciones). Al cargar los códigos desaparece `GateProvisional`.
 El script SQL lo genera este plan y lo ejecuta el usuario.

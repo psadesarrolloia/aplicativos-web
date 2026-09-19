@@ -694,10 +694,11 @@ else
     // pendientes de las empresas asignadas al usuario.
     private bool PuedeTodas => _puedeGenerar;
 
-    // Verificar UNA fila: cualquiera que vea el listado. Verificar en MASA: solo con permiso de lote
-    // (son cientos de consultas al SRI).
+    // Verificar UNA fila: cualquiera que vea el listado. Verificar en MASA: quien puede generar (Hacer o Lote,
+    // igual que «Procesar lote» y «Ver todas las empresas»): es solo lectura del SRI/Datil y en la práctica
+    // las llaves *Batch no están asignadas a los roles de uso diario (medido en lparedes, 2026-09-19).
     private bool PuedeVerificar => MostrarEstadoSri && _puedeVer;
-    private bool PuedeVerificarMasiva => MostrarEstadoSri && _puedeLote;
+    private bool PuedeVerificarMasiva => MostrarEstadoSri && _puedeGenerar;
 
     private List<ComprobanteAVerificar> CandidatosSri =>
         _estadoSri is null || !MostrarEstadoSri
@@ -1039,7 +1040,7 @@ else
 
     private async Task VerificarMasiva()
     {
-        if (_estadoSri is null || _verificando || !_puedeLote) return;
+        if (_estadoSri is null || _verificando || !_puedeGenerar) return;
         var candidatos = CandidatosSri;
         if (candidatos.Count == 0) return;
 
