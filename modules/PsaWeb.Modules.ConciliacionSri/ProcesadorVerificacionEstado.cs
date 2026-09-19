@@ -34,6 +34,7 @@ public sealed class ProcesadorVerificacionEstado(
     ILectorComprobantesSri lectorSri,
     IVerificadorEstadoSri verificador,
     IRepositorioComprobantesSri repositorioSri,
+    IRepositorioRevisionesConciliacion repositorioRevisiones,
     IOptions<ConciliacionOptions> opciones,
     ILogger<ProcesadorVerificacionEstado> logger)
 {
@@ -68,14 +69,46 @@ public sealed class ProcesadorVerificacionEstado(
         return new ResumenVerificacionCorrida(inicio, DateTimeOffset.Now, [resumen]);
     }
 
-    /// <summary>El revisor acepta una diferencia (§ítem 4 del feedback post-deploy) a su criterio.</summary>
-    public Task AceptarDiferenciaAsync(
-        long comprobanteId, string aceptadaPor, string? comentario, CancellationToken cancellationToken = default) =>
-        repositorioSri.AceptarDiferenciaAsync(comprobanteId, aceptadaPor, comentario, cancellationToken);
+    /// <summary>
+    /// El revisor acepta un hallazgo ("Aceptada / Revisada OK") con un comentario obligatorio.
+    /// Solo aplica a las 4 categorías con algo que revisar, no a "Conciliado sin verificar".
+    /// </summary>
+    /// <exception cref="ArgumentException">Comentario vacío.</exception>
+    public Task RevisarAsync(
+        string ruc, FilaConciliacion fila, string comentario, string usuario, CancellationToken cancellationToken = default)
+    {
+        if (fila.Clasificacion == ClasificacionConciliacion.CoincidePendienteDeVerificar)
+        {
+            throw new InvalidOperationException("Una fila conciliada no tiene nada que aceptar.");
+        }
 
-    /// <summary>Deshace una aceptación marcada por error.</summary>
-    public Task QuitarAceptacionAsync(long comprobanteId, CancellationToken cancellationToken = default) =>
-        repositorioSri.QuitarAceptacionAsync(comprobanteId, cancellationToken);
+        return repositorioRevisiones.RegistrarAsync(
+            ruc, ClaveRevision.De(fila), ClaveRevision.Huella(fila), comentario, usuario, cancellationToken);
+    }
+
+    /// <summary>Deshace una revisión marcada por error.</summary>
+    public Task QuitarRevisionAsync(string ruc, FilaConciliacion fila, CancellationToken cancellationToken = default) =>
+        repositorioRevisiones.QuitarAsync(ruc, ClaveRevision.De(fila), cancellationToken);
+
+    /// <summary>La conciliación con la revisión manual de cada fila ya resuelta — lo que muestra la página.</summary>
+    public async Task<IReadOnlyList<FilaConRevision>> ConciliarConRevisionesAsync(
+        string ruc, DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default)
+    {
+        var filas = await ConciliarAsync(ruc, desde, hasta, cancellationToken);
+        if (filas.Count == 0)
+        {
+            return [];
+        }
+
+        var revisiones = await repositorioRevisiones.ListarAsync(ruc, cancellationToken);
+        return filas.Select(f =>
+        {
+            revisiones.TryGetValue(ClaveRevision.De(f), out var revision);
+            return new FilaConRevision(f, revision is null
+                ? null
+                : new RevisionDeFila(revision.Comentario, revision.RevisadaPor, revision.RevisadaUtc, ClaveRevision.Evaluar(f, revision)));
+        }).ToList();
+    }
 
     /// <summary>El desglose de líneas de una compra en Sage, para el popup de detalle (§ítem 2 del feedback post-deploy).</summary>
     public async Task<IReadOnlyList<LineaCompraSage>> LeerLineasSageAsync(

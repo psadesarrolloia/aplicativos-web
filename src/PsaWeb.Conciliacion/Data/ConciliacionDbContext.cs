@@ -18,9 +18,15 @@ public class ConciliacionDbContext(DbContextOptions<ConciliacionDbContext> optio
     /// <summary>Solicitudes de anulación de comprobantes emitidos y su seguimiento.</summary>
     public DbSet<SolicitudAnulacionComprobante> SolicitudesAnulacion => Set<SolicitudAnulacionComprobante>();
 
+    /// <summary>Hallazgos de la conciliación marcados como "Aceptada / Revisada OK".</summary>
+    public DbSet<RevisionConciliacion> RevisionesConciliacion => Set<RevisionConciliacion>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.Entity<RevisionConciliacion>()
+            .HasIndex(r => new { r.Ruc, r.Clave })
+            .IsUnique();
         builder.Entity<ComprobanteSriDescargado>()
             .HasIndex(c => new { c.Ruc, c.ClaveAcceso })
             .IsUnique();

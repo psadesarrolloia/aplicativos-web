@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddDbContext<ConciliacionDbContext>(o => o.UseSqlServer(cs));
         services.AddScoped<IRepositorioComprobantesSri, RepositorioComprobantesSri>();
         services.AddScoped<ILectorComprobantesSri, LectorComprobantesSri>();
+        services.AddScoped<IRepositorioRevisionesConciliacion, RepositorioRevisionesConciliacion>();
 
         return services;
     }

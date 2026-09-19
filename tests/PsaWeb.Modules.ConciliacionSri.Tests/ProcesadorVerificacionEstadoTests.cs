@@ -56,12 +56,36 @@ public class ProcesadorVerificacionEstadoTests
 
         public Task ActualizarEstadoAsync(long id, string estado, DateTime fechaVerificacionUtc, CancellationToken ct = default) =>
             Task.CompletedTask;
+    }
 
-        public Task AceptarDiferenciaAsync(long id, string aceptadaPor, string? comentario, CancellationToken ct = default) =>
-            throw new NotSupportedException("No hace falta para este test.");
+    /// <summary>Guarda en memoria, con la misma validación del comentario que el repositorio real.</summary>
+    private sealed class RevisionesFake : IRepositorioRevisionesConciliacion
+    {
+        public Dictionary<string, RevisionConciliacion> Guardadas { get; } = new();
 
-        public Task QuitarAceptacionAsync(long id, CancellationToken ct = default) =>
-            throw new NotSupportedException("No hace falta para este test.");
+        public Task<IReadOnlyDictionary<string, RevisionConciliacion>> ListarAsync(string ruc, CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, RevisionConciliacion>>(Guardadas);
+
+        public Task RegistrarAsync(
+            string ruc, string clave, string huella, string comentario, string revisadaPor, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(comentario))
+            {
+                throw new ArgumentException("El comentario es obligatorio.", nameof(comentario));
+            }
+
+            Guardadas[clave] = new RevisionConciliacion
+            {
+                Ruc = ruc, Clave = clave, Huella = huella, Comentario = comentario.Trim(), RevisadaPor = revisadaPor,
+            };
+            return Task.CompletedTask;
+        }
+
+        public Task QuitarAsync(string ruc, string clave, CancellationToken ct = default)
+        {
+            Guardadas.Remove(clave);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class VerificadorFake : IVerificadorEstadoSri
@@ -89,7 +113,8 @@ public class ProcesadorVerificacionEstadoTests
         Estado: null, FechaVerificacionEstado: null);
 
     private static ProcesadorVerificacionEstado Construir(
-        IEmpresasActivasRepository empresas, ILectorComprobantesSri lectorSri, IVerificadorEstadoSri verificador) =>
+        IEmpresasActivasRepository empresas, ILectorComprobantesSri lectorSri, IVerificadorEstadoSri verificador,
+        IRepositorioRevisionesConciliacion? revisiones = null) =>
         new(
             empresas,
             new PeachConnStringResolver(new Factory()),
@@ -97,6 +122,7 @@ public class ProcesadorVerificacionEstadoTests
             lectorSri,
             verificador,
             new RepositorioSriFake(),
+            revisiones ?? new RevisionesFake(),
             Options.Create(new ConciliacionOptions()),
             NullLogger<ProcesadorVerificacionEstado>.Instance);
 
@@ -135,5 +161,84 @@ public class ProcesadorVerificacionEstadoTests
         var empresa = Assert.Single(resultado.Empresas);
         Assert.Equal(0, empresa.ConErrores);
         Assert.Equal(0, verificador.Llamadas);
+    }
+
+    // ------------------------------------------------------------ revisión manual ("Aceptada / Revisada OK")
+
+    private const string Ruc = "1799999999006";
+    private const string Clave = "0109202601179111111100120010010000000011234567811";
+
+    private static FilaConciliacion FilaDe(ClasificacionConciliacion c, bool conSri = true, bool conSage = true) => new(
+        conSri ? Clave : null,
+        conSri ? FilaSri(Clave) : null,
+        conSage ? new CompraSage(5, "1791111111001", "PROV", "001-001-000000001", new DateOnly(2026, 9, 1), Clave, 100, 12, 112) : null,
+        c,
+        c == ClasificacionConciliacion.ValoresDistintos ? ["Total: SRI 112.00 vs Sage 110.00"] : []);
+
+    private static ProcesadorVerificacionEstado ProcesadorConRevisiones(RevisionesFake revisiones, params ComprobanteSriGuardado[] setA) =>
+        Construir(new EmpresasActivasFake([]), new LectorSriFake(setA), new VerificadorFake(), revisiones);
+
+    [Theory]
+    [InlineData(ClasificacionConciliacion.SoloEnSri)]
+    [InlineData(ClasificacionConciliacion.SoloEnSage)]
+    [InlineData(ClasificacionConciliacion.ValoresDistintos)]
+    [InlineData(ClasificacionConciliacion.MetadataDistinta)]
+    public async Task Se_puede_revisar_cada_una_de_las_4_categorias_con_algo_que_revisar(ClasificacionConciliacion c)
+    {
+        var revisiones = new RevisionesFake();
+        var procesador = ProcesadorConRevisiones(revisiones);
+        var fila = FilaDe(c, conSri: c != ClasificacionConciliacion.SoloEnSage, conSage: c != ClasificacionConciliacion.SoloEnSri);
+
+        await procesador.RevisarAsync(Ruc, fila, "Corresponde a ICE", "lparedes");
+
+        var guardada = Assert.Single(revisiones.Guardadas).Value;
+        Assert.Equal(ClaveRevision.De(fila), guardada.Clave);
+        Assert.Equal(ClaveRevision.Huella(fila), guardada.Huella);
+        Assert.Equal("lparedes", guardada.RevisadaPor);
+    }
+
+    [Fact]
+    public async Task Una_fila_conciliada_no_se_puede_aceptar()
+    {
+        var procesador = ProcesadorConRevisiones(new RevisionesFake());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            procesador.RevisarAsync(Ruc, FilaDe(ClasificacionConciliacion.CoincidePendienteDeVerificar), "ok", "lparedes"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Revisar_exige_comentario(string comentario)
+    {
+        var revisiones = new RevisionesFake();
+        var procesador = ProcesadorConRevisiones(revisiones);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            procesador.RevisarAsync(Ruc, FilaDe(ClasificacionConciliacion.ValoresDistintos), comentario, "lparedes"));
+        Assert.Empty(revisiones.Guardadas);
+    }
+
+    [Fact]
+    public async Task Quitar_revision_borra_la_marca()
+    {
+        var revisiones = new RevisionesFake();
+        var procesador = ProcesadorConRevisiones(revisiones);
+        var fila = FilaDe(ClasificacionConciliacion.ValoresDistintos);
+        await procesador.RevisarAsync(Ruc, fila, "ok", "lparedes");
+
+        await procesador.QuitarRevisionAsync(Ruc, fila);
+
+        Assert.Empty(revisiones.Guardadas);
+    }
+
+    [Fact]
+    public async Task Sin_comprobantes_del_SRI_la_conciliacion_con_revisiones_es_vacia_y_no_toca_Sage()
+    {
+        var procesador = ProcesadorConRevisiones(new RevisionesFake()); // Set A vacío: Sage (que falla) no se usa.
+
+        var filas = await procesador.ConciliarConRevisionesAsync(Ruc, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30));
+
+        Assert.Empty(filas);
     }
 }

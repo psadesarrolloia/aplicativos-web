@@ -21,11 +21,7 @@ public sealed record ComprobanteSriGuardado(
     decimal Total,
     string? NumeroDocumentoModificado,
     string? Estado,
-    DateTime? FechaVerificacionEstado,
-    bool DiferenciaAceptada = false,
-    string? DiferenciaAceptadaPor = null,
-    DateTime? DiferenciaAceptadaUtc = null,
-    string? ComentarioAceptacion = null);
+    DateTime? FechaVerificacionEstado);
 
 /// <summary>Lector de Set A (comprobantes del SRI ya en el staging) para una empresa y un período.</summary>
 public interface ILectorComprobantesSri
@@ -44,7 +40,6 @@ public sealed class LectorComprobantesSri(ConciliacionDbContext db) : ILectorCom
             .Select(c => new ComprobanteSriGuardado(
                 c.Id, c.ClaveAcceso, c.RucEmisor, c.RazonSocialEmisor, c.TipoComprobante, c.SerieComprobante,
                 c.FechaAutorizacion, c.FechaEmision, c.Subtotal, c.Iva, c.Total, c.NumeroDocumentoModificado,
-                c.Estado, c.FechaVerificacionEstado, c.DiferenciaAceptada, c.DiferenciaAceptadaPor,
-                c.DiferenciaAceptadaUtc, c.ComentarioAceptacion))
+                c.Estado, c.FechaVerificacionEstado))
             .ToListAsync(cancellationToken);
 }

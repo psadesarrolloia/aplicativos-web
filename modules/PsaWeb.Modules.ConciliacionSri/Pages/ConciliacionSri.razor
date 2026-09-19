@@ -44,7 +44,7 @@ else
     }
     else if (_filas is not null)
     {
-        var pendientesDeVerificar = _filas.Count(f => f.Clasificacion is ClasificacionConciliacion.CoincidePendienteDeVerificar
+        var pendientesDeVerificar = _filas.Count(f => f.Fila.Clasificacion is ClasificacionConciliacion.CoincidePendienteDeVerificar
             or ClasificacionConciliacion.ValoresDistintos or ClasificacionConciliacion.MetadataDistinta);
 
         <PsaCard Title="Resultado">
@@ -70,8 +70,8 @@ else
             <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
                 @foreach (var (clasificacion, etiqueta) in Etiquetas)
                 {
-                    var cantidad = _filas.Count(f => f.Clasificacion == clasificacion);
-                    <button type="button" style="@EstiloFiltro(clasificacion)" @onclick="() => _filtro = clasificacion">
+                    var cantidad = _filas.Count(f => f.Fila.Clasificacion == clasificacion);
+                    <button type="button" style="@EstiloFiltro(clasificacion)" @onclick="() => CambiarListado(clasificacion)">
                         <PsaStat Label="@etiqueta" Value="@cantidad.ToString()"
                                  State="@(clasificacion is ClasificacionConciliacion.SoloEnSri or ClasificacionConciliacion.SoloEnSage or ClasificacionConciliacion.ValoresDistintos && cantidad > 0 ? "warn" : "ok")" />
                     </button>
@@ -87,74 +87,148 @@ else
                 </p>
             }
 
-            @{ var vista = _filas.Where(f => f.Clasificacion == _filtro).ToList(); }
-            @if (vista.Count == 0)
+            @{
+                var delListado = _filas.Where(f => f.Fila.Clasificacion == _filtro).ToList();
+                var vista = VistaConciliacion.Aplicar(delListado, Criterios);
+                var puedeAceptar = _filtro != ClasificacionConciliacion.CoincidePendienteDeVerificar;
+            }
+            @if (delListado.Count == 0)
             {
                 <p class="psa-muted">Sin filas en esta categoría.</p>
             }
             else
             {
-                <label class="psa-row" style="align-items:center;gap:.5rem;margin:0 0 .7rem;cursor:pointer;font-weight:700;color:var(--psa-magenta,#B40046)">
-                    <input type="checkbox" style="width:1.15rem;height:1.15rem;accent-color:var(--psa-magenta,#B40046)"
-                           checked="@_mostrarClave" @onchange="e => _mostrarClave = (bool)e.Value!" />
-                    Mostrar clave de acceso
-                </label>
+                <div class="psa-row" style="margin:0 0 .7rem;gap:1rem">
+                    <input class="@ClaseFiltro(_busqueda)" style="max-width:20rem" placeholder="Buscar en este listado…"
+                           @bind="_busqueda" @bind:event="oninput" />
+                    <label class="psa-row" style="align-items:center;gap:.5rem;cursor:pointer;font-weight:700;color:var(--psa-magenta,#B40046)">
+                        <input type="checkbox" style="width:1.15rem;height:1.15rem;accent-color:var(--psa-magenta,#B40046)"
+                               checked="@_mostrarClave" @onchange="e => _mostrarClave = (bool)e.Value!" />
+                        Mostrar clave de acceso
+                    </label>
+                    @if (Criterios.HayFiltros)
+                    {
+                        <button type="button" class="psa-linkbtn" @onclick="LimpiarFiltros">Limpiar filtros</button>
+                    }
+                    <span class="psa-muted">@vista.Count de @delListado.Count</span>
+                </div>
                 <div style="overflow-x:auto">
                 <table class="psa-table">
                     <thead>
                         <tr>
-                            <th>@(_filtro == ClasificacionConciliacion.SoloEnSri ? "Documento (SRI)" : "Documento (Sage)")</th>
-                            <th>Proveedor (SRI)</th>
-                            <th>Proveedor (Sage)</th>
-                            <th class="num">Total (SRI)</th>
-                            <th class="num">Total (Sage)</th>
-                            <th>Estado en SRI</th>
+                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.Documento)">
+                                @(_filtro == ClasificacionConciliacion.SoloEnSri ? "Documento (SRI)" : "Documento (Sage)") @Flecha(ColumnaConciliacion.Documento)
+                            </th>
+                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.ProveedorSri)">Proveedor (SRI) @Flecha(ColumnaConciliacion.ProveedorSri)</th>
+                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.ProveedorSage)">Proveedor (Sage) @Flecha(ColumnaConciliacion.ProveedorSage)</th>
+                            <th class="num sortable" @onclick="() => Ordenar(ColumnaConciliacion.TotalSri)">Total (SRI) @Flecha(ColumnaConciliacion.TotalSri)</th>
+                            <th class="num sortable" @onclick="() => Ordenar(ColumnaConciliacion.TotalSage)">Total (Sage) @Flecha(ColumnaConciliacion.TotalSage)</th>
+                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.EstadoSri)">Estado en SRI @Flecha(ColumnaConciliacion.EstadoSri)</th>
                             <th>Diferencias</th>
+                            @if (puedeAceptar)
+                            {
+                                <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.Revision)">Revisión @Flecha(ColumnaConciliacion.Revision)</th>
+                            }
                             <th></th>
                             @if (_mostrarClave)
                             {
                                 <th>Clave de acceso</th>
                             }
                         </tr>
+                        <tr class="psa-table__filtros">
+                            <th><input class="@ClaseFiltro(_fDocumento)" placeholder="buscar…" @bind="_fDocumento" @bind:event="oninput" /></th>
+                            <th><input class="@ClaseFiltro(_fProveedorSri)" placeholder="buscar…" @bind="_fProveedorSri" @bind:event="oninput" /></th>
+                            <th><input class="@ClaseFiltro(_fProveedorSage)" placeholder="buscar…" @bind="_fProveedorSage" @bind:event="oninput" /></th>
+                            <th></th>
+                            <th></th>
+                            <th>
+                                <select class="@ClaseFiltro(_fEstadoSri)" @bind="_fEstadoSri">
+                                    <option value="">Todos</option>
+                                    <option value="@CriteriosVista.EstadoSinVerificar">Sin verificar</option>
+                                    <option value="@CriteriosVista.EstadoAutorizado">Autorizado</option>
+                                    <option value="@CriteriosVista.EstadoNoVigente">Anulado / No autorizado</option>
+                                    <option value="@CriteriosVista.EstadoOtro">Otros</option>
+                                </select>
+                            </th>
+                            <th><input class="@ClaseFiltro(_fDiferencias)" placeholder="buscar…" @bind="_fDiferencias" @bind:event="oninput" /></th>
+                            @if (puedeAceptar)
+                            {
+                                <th>
+                                    <select class="@ClaseFiltro(_fRevision)" @bind="_fRevision">
+                                        <option value="">Todas</option>
+                                        <option value="@CriteriosVista.RevisionPendientes">Por revisar</option>
+                                        <option value="@CriteriosVista.RevisionRevisadas">Revisadas OK</option>
+                                    </select>
+                                </th>
+                            }
+                            <th></th>
+                            @if (_mostrarClave)
+                            {
+                                <th></th>
+                            }
+                        </tr>
                     </thead>
                     <tbody>
-                        @foreach (var fila in vista)
+                        @if (vista.Count == 0)
                         {
-                            <tr style="@(fila.Diferencias.Count > 0 ? "cursor:pointer" : "")"
-                                @onclick="() => AbrirDetalleSiAplica(fila)">
+                            <tr><td colspan="@(7 + (puedeAceptar ? 1 : 0) + 1 + (_mostrarClave ? 1 : 0))" class="psa-muted">Ninguna fila coincide con el filtro.</td></tr>
+                        }
+                        @foreach (var d in vista)
+                        {
+                            var fila = d.Fila;
+                            <tr style="@(d.Aceptable ? "cursor:pointer" : "")" @onclick="() => AbrirDetalle(d)">
                                 <td>
-                                    @if (_filtro == ClasificacionConciliacion.SoloEnSri)
+                                    @d.Documento
+                                    @if (fila.Clasificacion == ClasificacionConciliacion.SoloEnSage && DocumentoFisico.EsProbable(fila.ClaveAcceso))
                                     {
-                                        @fila.Sri?.SerieComprobante
-                                    }
-                                    else
-                                    {
-                                        @fila.Sage?.Referencia
-                                        @if (_filtro == ClasificacionConciliacion.SoloEnSage && DocumentoFisico.EsProbable(fila.ClaveAcceso))
-                                        {
-                                            <br /><span class="psa-estado psa-estado--warn" style="font-size:.7rem">Documento físico</span>
-                                        }
+                                        <br /><span class="psa-estado psa-estado--warn" style="font-size:.7rem">Documento físico</span>
                                     }
                                 </td>
-                                <td>@fila.Sri?.RazonSocialEmisor</td>
-                                <td>@fila.Sage?.NombreProveedor</td>
+                                <td>@d.ProveedorSri</td>
+                                <td>@d.ProveedorSage</td>
                                 <td class="num">@(fila.Sri is not null ? fila.Sri.Total.ToString("N2") : "")</td>
                                 <td class="num">@(fila.Sage is not null ? fila.Sage.Total.ToString("N2") : "")</td>
                                 <td>
-                                    @{ var (textoEstado, claseEstado) = EstadoVisual(fila.Sri?.Estado); }
-                                    <span class="psa-estado @claseEstado" style="font-size:.85rem">@textoEstado</span>
+                                    @if (fila.Sri is null)
+                                    {
+                                        <span class="psa-muted">—</span>
+                                    }
+                                    else
+                                    {
+                                        var (textoEstado, claseEstado) = EstadoVisual(fila.Sri.Estado);
+                                        <span class="psa-estado @claseEstado" style="font-size:.85rem">@textoEstado</span>
+                                    }
                                 </td>
                                 <td>
-                                    @foreach (var d in fila.Diferencias)
+                                    @foreach (var dif in fila.Diferencias)
                                     {
-                                        var (campo, resto) = PartirDiferencia(d);
+                                        var (campo, resto) = PartirDiferencia(dif);
                                         <div><strong>@campo:</strong>@resto</div>
                                     }
-                                    @if (fila.Sri?.DiferenciaAceptada == true)
+                                    @if (fila.Diferencias.Count == 0)
                                     {
-                                        <span class="psa-estado psa-estado--ok" style="font-size:.75rem">✓ diferencia aceptada</span>
+                                        <span class="psa-muted">@Hallazgo(fila.Clasificacion)</span>
                                     }
                                 </td>
+                                @if (puedeAceptar)
+                                {
+                                    <td>
+                                        @if (d.EstadoRevision == EstadoRevision.Revisada)
+                                        {
+                                            <span class="psa-estado psa-estado--ok" style="font-size:.75rem"
+                                                  title="@TextoRevision(d.Revision!)">✓ Revisada OK</span>
+                                        }
+                                        else if (d.EstadoRevision == EstadoRevision.Desactualizada)
+                                        {
+                                            <span class="psa-estado psa-estado--warn" style="font-size:.75rem"
+                                                  title="Se revisó, pero el hallazgo cambió desde entonces. @TextoRevision(d.Revision!)">↻ Cambió, revisar</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="psa-muted" style="font-size:.8rem">Por revisar</span>
+                                        }
+                                    </td>
+                                }
                                 <td @onclick:stopPropagation="true">
                                     @if (fila.ClaveAcceso is not null && fila.Sri is not null)
                                     {
@@ -180,101 +254,143 @@ else
     }
 }
 
-<PsaModal Visible="_detalle is not null" Title="@("Comprobante " + _detalle?.Sri?.SerieComprobante)" OnClose="CerrarDetalle">
+<PsaModal Visible="_detalle is not null" Title="@("Comprobante " + _detalle?.Documento)" OnClose="CerrarDetalle">
     <ChildContent>
-        @if (_detalle is not null)
+        @if (_detalle is { } d)
         {
+            var fila = d.Fila;
             <div class="psa-grid" style="grid-template-columns:1fr 1fr">
                 <div>
                     <h3 style="margin:0 0 .4rem">SRI</h3>
-                    <p class="psa-muted" style="margin:.2rem 0">@_detalle.Sri?.RazonSocialEmisor (@_detalle.Sri?.RucEmisor)</p>
-                    <p class="psa-muted" style="margin:.2rem 0">Serie: @_detalle.Sri?.SerieComprobante</p>
-                    <p class="psa-muted" style="margin:.2rem 0">Fecha emisión: @_detalle.Sri?.FechaEmision.ToString("dd/MM/yyyy")</p>
-                    <p class="psa-muted" style="margin:.2rem 0">
-                        Subtotal @_detalle.Sri?.Subtotal.ToString("N2") · IVA @_detalle.Sri?.Iva.ToString("N2") ·
-                        Total @_detalle.Sri?.Total.ToString("N2")
-                    </p>
+                    @if (fila.Sri is null)
+                    {
+                        <p class="psa-muted" style="margin:.2rem 0">No hay comprobante del SRI para esta compra.</p>
+                    }
+                    else
+                    {
+                        var (textoEstado, claseEstado) = EstadoVisual(fila.Sri.Estado);
+                        <p class="psa-muted" style="margin:.2rem 0">@fila.Sri.RazonSocialEmisor (@fila.Sri.RucEmisor)</p>
+                        <p class="psa-muted" style="margin:.2rem 0">Serie: @fila.Sri.SerieComprobante</p>
+                        <p class="psa-muted" style="margin:.2rem 0">Fecha emisión: @fila.Sri.FechaEmision.ToString("dd/MM/yyyy")</p>
+                        <p class="psa-muted" style="margin:.2rem 0">
+                            Subtotal @fila.Sri.Subtotal.ToString("N2") · IVA @fila.Sri.Iva.ToString("N2") ·
+                            Total @fila.Sri.Total.ToString("N2")
+                        </p>
+                        <p class="psa-muted" style="margin:.2rem 0">Estado en SRI: <span class="psa-estado @claseEstado" style="font-size:.85rem">@textoEstado</span></p>
+                    }
                 </div>
                 <div>
                     <h3 style="margin:0 0 .4rem">Sage</h3>
-                    <p class="psa-muted" style="margin:.2rem 0">@_detalle.Sage?.NombreProveedor (@_detalle.Sage?.RucProveedor)</p>
-                    <p class="psa-muted" style="margin:.2rem 0">Referencia: @_detalle.Sage?.Referencia</p>
-                    <p class="psa-muted" style="margin:.2rem 0">Fecha: @_detalle.Sage?.Fecha.ToString("dd/MM/yyyy")</p>
-                    <p class="psa-muted" style="margin:.2rem 0">
-                        Subtotal @_detalle.Sage?.Subtotal.ToString("N2") · IVA @_detalle.Sage?.Iva.ToString("N2") ·
-                        Total @_detalle.Sage?.Total.ToString("N2")
-                    </p>
+                    @if (fila.Sage is null)
+                    {
+                        <p class="psa-muted" style="margin:.2rem 0">Esta compra no está registrada en Sage.</p>
+                    }
+                    else
+                    {
+                        <p class="psa-muted" style="margin:.2rem 0">@fila.Sage.NombreProveedor (@fila.Sage.RucProveedor)</p>
+                        <p class="psa-muted" style="margin:.2rem 0">Referencia: @fila.Sage.Referencia</p>
+                        <p class="psa-muted" style="margin:.2rem 0">Fecha: @fila.Sage.Fecha.ToString("dd/MM/yyyy")</p>
+                        <p class="psa-muted" style="margin:.2rem 0">
+                            Subtotal @fila.Sage.Subtotal.ToString("N2") · IVA @fila.Sage.Iva.ToString("N2") ·
+                            Total @fila.Sage.Total.ToString("N2")
+                        </p>
+                    }
                 </div>
             </div>
 
-            <h3 style="margin:1rem 0 .4rem">Líneas de la compra en Sage</h3>
-            @if (_lineasSageCargando)
+            @if (fila.Sage is not null)
             {
-                <p class="psa-muted">Cargando…</p>
-            }
-            else if (_lineasSageError is not null)
-            {
-                <p class="psa-notice psa-notice--danger">@_lineasSageError</p>
-            }
-            else if (_lineasSage is { Count: 0 })
-            {
-                <p class="psa-muted">Sin líneas.</p>
-            }
-            else if (_lineasSage is not null)
-            {
-                <div style="overflow-x:auto">
-                <table class="psa-table">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Descripción</th>
-                            <th class="num">Monto</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var linea in _lineasSage)
-                        {
+                <h3 style="margin:1rem 0 .4rem">Líneas de la compra en Sage</h3>
+                @if (_lineasSageCargando)
+                {
+                    <p class="psa-muted">Cargando…</p>
+                }
+                else if (_lineasSageError is not null)
+                {
+                    <p class="psa-notice psa-notice--danger">@_lineasSageError</p>
+                }
+                else if (_lineasSage is { Count: 0 })
+                {
+                    <p class="psa-muted">Sin líneas.</p>
+                }
+                else if (_lineasSage is not null)
+                {
+                    <div style="overflow-x:auto">
+                    <table class="psa-table">
+                        <thead>
                             <tr>
-                                <td>@linea.ItemId</td>
-                                <td>@linea.Descripcion</td>
-                                <td class="num">@linea.Monto.ToString("N2")</td>
+                                <th>Item</th>
+                                <th>Descripción</th>
+                                <th class="num">Monto</th>
                             </tr>
-                        }
-                    </tbody>
-                </table>
-                </div>
+                        </thead>
+                        <tbody>
+                            @foreach (var linea in _lineasSage)
+                            {
+                                <tr>
+                                    <td>@linea.ItemId</td>
+                                    <td>@linea.Descripcion</td>
+                                    <td class="num">@linea.Monto.ToString("N2")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    </div>
+                }
             }
 
-            <h3 style="margin:1rem 0 .4rem">Diferencias</h3>
-            @foreach (var d in _detalle.Diferencias)
+            <h3 style="margin:1rem 0 .4rem">Hallazgo</h3>
+            @foreach (var dif in fila.Diferencias)
             {
-                var (campo, resto) = PartirDiferencia(d);
+                var (campo, resto) = PartirDiferencia(dif);
                 <p style="margin:.2rem 0"><strong>@campo:</strong>@resto</p>
             }
-
-            @if (_detalle.Sri?.DiferenciaAceptada == true)
+            @if (fila.Diferencias.Count == 0)
             {
+                <p style="margin:.2rem 0">@Hallazgo(fila.Clasificacion)</p>
+            }
+            @if (fila.Clasificacion == ClasificacionConciliacion.SoloEnSage && DocumentoFisico.EsProbable(fila.ClaveAcceso))
+            {
+                <p style="margin:.2rem 0">
+                    <span class="psa-estado psa-estado--warn" style="font-size:.8rem">Documento físico</span>
+                    <span class="psa-muted">— la autorización tecleada ("@fila.ClaveAcceso") no tiene 49 dígitos, por eso no aparece en el SRI.</span>
+                </p>
+            }
+
+            @if (d.EstadoRevision == EstadoRevision.Revisada)
+            {
+                var rev = d.Revision!;
                 <p class="psa-notice psa-notice--ok" style="margin-top:1rem">
-                    Aceptada por @_detalle.Sri.DiferenciaAceptadaPor el
-                    @(_detalle.Sri.DiferenciaAceptadaUtc is { } f ? DateTime.SpecifyKind(f, DateTimeKind.Utc).ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "")
-                    @if (!string.IsNullOrWhiteSpace(_detalle.Sri.ComentarioAceptacion))
-                    {
-                        <text> — "@_detalle.Sri.ComentarioAceptacion"</text>
-                    }
+                    Revisada OK por <strong>@rev.RevisadaPor</strong> el @FechaLocal(rev.RevisadaUtc).
+                    <br />Comentario: "@rev.Comentario"
                 </p>
                 <div class="psa-row" style="margin-top:.6rem">
-                    <PsaButton Variant="ghost" OnClick="QuitarAceptacion" Disabled="_procesandoAceptacion">Quitar aceptación</PsaButton>
+                    <PsaButton Variant="ghost" OnClick="QuitarRevision" Disabled="_procesandoRevision">Quitar revisión</PsaButton>
                 </div>
             }
             else
             {
+                @if (d.EstadoRevision == EstadoRevision.Desactualizada)
+                {
+                    var previa = d.Revision!;
+                    <p class="psa-notice" style="margin-top:1rem">
+                        Este hallazgo ya se había revisado (@previa.RevisadaPor, @FechaLocal(previa.RevisadaUtc):
+                        "@previa.Comentario"), pero <strong>cambió desde entonces</strong>. Revisalo de nuevo.
+                    </p>
+                }
                 <div class="psa-field" style="margin-top:1rem;max-width:100%;width:100%">
-                    <span class="psa-field__lbl">Comentario (opcional) — ej. "Corresponde a ICE"</span>
-                    <input class="psa-input" style="width:100%" @bind="_comentarioAceptacion" @bind:event="oninput" />
+                    <span class="psa-field__lbl">Comentario (obligatorio) — ej. "Corresponde a ICE", "Factura física conciliada a mano"</span>
+                    <textarea class="psa-input" style="width:100%" rows="3" maxlength="@ClaveRevision.MaxComentario"
+                              @bind="_comentarioRevision" @bind:event="oninput"></textarea>
                 </div>
+                @if (_errorRevision is not null)
+                {
+                    <p class="psa-notice psa-notice--danger" style="margin-top:.6rem">@_errorRevision</p>
+                }
                 <div class="psa-row" style="margin-top:.6rem">
-                    <PsaButton Variant="secondary" OnClick="Aceptar" Disabled="_procesandoAceptacion">
-                        @(_procesandoAceptacion ? "Guardando…" : "Aceptar diferencia")
+                    <PsaButton Variant="secondary" OnClick="Aceptar"
+                               Disabled="@(_procesandoRevision || string.IsNullOrWhiteSpace(_comentarioRevision))">
+                        @(_procesandoRevision ? "Guardando…" : "Aceptar diferencia / Revisada OK")
                     </PsaButton>
                 </div>
             }
@@ -303,15 +419,31 @@ else
     private string? _error;
     private string? _avisoVerificacion;
     private DateTime? _ultimaVerificacionMasiva;
-    private IReadOnlyList<FilaConciliacion>? _filas;
+    private List<FilaConRevision>? _filas;
     private ClasificacionConciliacion _filtro = ClasificacionConciliacion.SoloEnSri;
     private string? _usuarioActual;
     private bool _mostrarClave;
 
-    // Popup de detalle / aceptación de diferencias.
-    private FilaConciliacion? _detalle;
-    private string _comentarioAceptacion = "";
-    private bool _procesandoAceptacion;
+    // Filtros, búsqueda y orden del listado (la clave de acceso queda fuera a propósito).
+    private string _busqueda = "";
+    private string _fDocumento = "";
+    private string _fProveedorSri = "";
+    private string _fProveedorSage = "";
+    private string _fDiferencias = "";
+    private string _fEstadoSri = "";
+    private string _fRevision = "";
+    private ColumnaConciliacion? _ordenColumna;
+    private bool _ordenAscendente = true;
+
+    private CriteriosVista Criterios => new(
+        _busqueda, _fDocumento, _fProveedorSri, _fProveedorSage, _fDiferencias, _fEstadoSri, _fRevision,
+        _ordenColumna, _ordenAscendente);
+
+    // Popup de detalle / revisión manual.
+    private FilaConRevision? _detalle;
+    private string _comentarioRevision = "";
+    private bool _procesandoRevision;
+    private string? _errorRevision;
     private IReadOnlyList<LineaCompraSage>? _lineasSage;
     private bool _lineasSageCargando;
     private string? _lineasSageError;
@@ -331,6 +463,8 @@ else
         _error = null;
         _avisoVerificacion = null;
         _ultimaVerificacionMasiva = null;
+        _detalle = null;
+        LimpiarFiltros();
         InvokeAsync(StateHasChanged);
     }
 
@@ -338,7 +472,53 @@ else
         "border:none;background:none;padding:0;text-align:left;cursor:pointer;border-radius:8px;"
         + (c == _filtro ? "outline:2px solid var(--psa-magenta,#B40046)" : "outline:none");
 
+    private void CambiarListado(ClasificacionConciliacion c)
+    {
+        if (c == _filtro)
+        {
+            return;
+        }
+
+        _filtro = c;
+        LimpiarFiltros(); // un filtro puesto en otro listado no debe esconder filas sin que se note
+    }
+
+    private void LimpiarFiltros() =>
+        _busqueda = _fDocumento = _fProveedorSri = _fProveedorSage = _fDiferencias = _fEstadoSri = _fRevision = "";
+
+    private static string ClaseFiltro(string valor) =>
+        "psa-input psa-input--sm" + (string.IsNullOrEmpty(valor) ? "" : " psa-input--activo");
+
+    private void Ordenar(ColumnaConciliacion columna)
+    {
+        if (_ordenColumna == columna)
+        {
+            _ordenAscendente = !_ordenAscendente;
+        }
+        else
+        {
+            _ordenColumna = columna;
+            _ordenAscendente = true;
+        }
+    }
+
+    private MarkupString Flecha(ColumnaConciliacion columna) =>
+        new(_ordenColumna == columna ? (_ordenAscendente ? " ▲" : " ▼") : "");
+
     private static (string Texto, string Clase) EstadoVisual(string? estado) => EstadoSriPresentacion.Visual(estado);
+
+    private static string Hallazgo(ClasificacionConciliacion c) => c switch
+    {
+        ClasificacionConciliacion.SoloEnSri => "Falta registrarla en Sage.",
+        ClasificacionConciliacion.SoloEnSage => "No hay comprobante en el SRI con esta autorización.",
+        _ => "",
+    };
+
+    private static string FechaLocal(DateTime utc) =>
+        DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+
+    private static string TextoRevision(RevisionDeFila r) =>
+        $"{r.RevisadaPor}, {FechaLocal(r.RevisadaUtc)}: {r.Comentario}";
 
     /// <summary>"Subtotal: SRI 969.47 vs Sage 974.32" → ("Subtotal", " SRI 969.47 vs Sage 974.32") para resaltar el campo.</summary>
     private static (string Campo, string Resto) PartirDiferencia(string diferencia)
@@ -359,12 +539,12 @@ else
         _avisoVerificacion = null;
         try
         {
-            _filas = await Procesador.ConciliarAsync(ruc, _desde, _hasta);
+            _filas = (await Procesador.ConciliarConRevisionesAsync(ruc, _desde, _hasta)).ToList();
             if (_ultimaVerificacionMasiva is null)
             {
                 var fechas = _filas
-                    .Where(f => f.Sri?.FechaVerificacionEstado is not null)
-                    .Select(f => f.Sri!.FechaVerificacionEstado!.Value)
+                    .Where(f => f.Fila.Sri?.FechaVerificacionEstado is not null)
+                    .Select(f => f.Fila.Sri!.FechaVerificacionEstado!.Value)
                     .ToList();
                 if (fechas.Count > 0)
                 {
@@ -437,23 +617,25 @@ else
         }
     }
 
-    private async Task AbrirDetalleSiAplica(FilaConciliacion fila)
+    private async Task AbrirDetalle(FilaConRevision fila)
     {
-        if (fila.Diferencias.Count == 0)
+        if (!fila.Aceptable)
         {
             return;
         }
 
         _detalle = fila;
-        _comentarioAceptacion = "";
+        _comentarioRevision = "";
+        _errorRevision = null;
         await CargarLineasSageAsync(fila);
     }
 
-    private async Task CargarLineasSageAsync(FilaConciliacion fila)
+    // Las líneas de Sage solo aplican donde hay compra registrada en Sage (no en "Solo en SRI").
+    private async Task CargarLineasSageAsync(FilaConRevision fila)
     {
         _lineasSage = null;
         _lineasSageError = null;
-        if (fila.Sage is null || EmpresaSage.RucSesion is not { } ruc)
+        if (fila.Fila.Sage is null || EmpresaSage.RucSesion is not { } ruc)
         {
             return;
         }
@@ -461,12 +643,12 @@ else
         _lineasSageCargando = true;
         try
         {
-            _lineasSage = await Procesador.LeerLineasSageAsync(ruc, fila.Sage.PostOrder);
+            _lineasSage = await Procesador.LeerLineasSageAsync(ruc, fila.Fila.Sage.PostOrder);
         }
         catch (Exception ex)
         {
             _lineasSageError = $"No se pudo cargar el detalle: {ex.Message}";
-            Logger.LogError(ex, "Líneas de Sage para PostOrder {PostOrder}", fila.Sage.PostOrder);
+            Logger.LogError(ex, "Líneas de Sage para PostOrder {PostOrder}", fila.Fila.Sage.PostOrder);
         }
         finally
         {
@@ -477,53 +659,81 @@ else
     private void CerrarDetalle()
     {
         _detalle = null;
-        _comentarioAceptacion = "";
+        _comentarioRevision = "";
+        _errorRevision = null;
         _lineasSage = null;
         _lineasSageError = null;
     }
 
     private async Task Aceptar()
     {
-        if (_detalle?.Sri is null)
+        if (_detalle is not { } actual || EmpresaSage.RucSesion is not { } ruc)
         {
             return;
         }
 
-        var clave = _detalle.ClaveAcceso;
-        _procesandoAceptacion = true;
+        var comentario = _comentarioRevision.Trim();
+        if (comentario.Length == 0)
+        {
+            _errorRevision = "El comentario es obligatorio.";
+            return;
+        }
+
+        _procesandoRevision = true;
+        _errorRevision = null;
         try
         {
-            await Procesador.AceptarDiferenciaAsync(
-                _detalle.Sri.Id, _usuarioActual ?? "desconocido",
-                string.IsNullOrWhiteSpace(_comentarioAceptacion) ? null : _comentarioAceptacion.Trim());
-            await Consultar();
-            _detalle = _filas?.FirstOrDefault(f => f.ClaveAcceso == clave);
-            _comentarioAceptacion = "";
+            var usuario = _usuarioActual ?? "desconocido";
+            await Procesador.RevisarAsync(ruc, actual.Fila, comentario, usuario);
+            ReemplazarFila(actual, new RevisionDeFila(comentario, usuario, DateTime.UtcNow, EstadoRevision.Revisada));
+            _comentarioRevision = "";
+        }
+        catch (Exception ex)
+        {
+            _errorRevision = $"No se pudo guardar la revisión: {ex.Message}";
+            Logger.LogError(ex, "Revisión de {Documento} ({Ruc})", actual.Documento, ruc);
         }
         finally
         {
-            _procesandoAceptacion = false;
+            _procesandoRevision = false;
         }
     }
 
-    private async Task QuitarAceptacion()
+    private async Task QuitarRevision()
     {
-        if (_detalle?.Sri is null)
+        if (_detalle is not { } actual || EmpresaSage.RucSesion is not { } ruc)
         {
             return;
         }
 
-        var clave = _detalle.ClaveAcceso;
-        _procesandoAceptacion = true;
+        _procesandoRevision = true;
+        _errorRevision = null;
         try
         {
-            await Procesador.QuitarAceptacionAsync(_detalle.Sri.Id);
-            await Consultar();
-            _detalle = _filas?.FirstOrDefault(f => f.ClaveAcceso == clave);
+            await Procesador.QuitarRevisionAsync(ruc, actual.Fila);
+            ReemplazarFila(actual, null);
+        }
+        catch (Exception ex)
+        {
+            _errorRevision = $"No se pudo quitar la revisión: {ex.Message}";
+            Logger.LogError(ex, "Quitar revisión de {Documento} ({Ruc})", actual.Documento, ruc);
         }
         finally
         {
-            _procesandoAceptacion = false;
+            _procesandoRevision = false;
         }
+    }
+
+    // Actualiza la fila en memoria en vez de volver a conciliar (evita releer Sage completo por un comentario).
+    private void ReemplazarFila(FilaConRevision anterior, RevisionDeFila? revision)
+    {
+        var nueva = anterior with { Revision = revision };
+        var i = _filas?.IndexOf(anterior) ?? -1;
+        if (i >= 0)
+        {
+            _filas![i] = nueva;
+        }
+
+        _detalle = nueva;
     }
 }

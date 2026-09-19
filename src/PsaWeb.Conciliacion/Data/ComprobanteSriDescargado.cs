@@ -56,21 +56,6 @@ public class ComprobanteSriDescargado
 
     public DateTime? FechaVerificacionEstado { get; set; }
 
-    /// <summary>
-    /// El revisor marcó la diferencia (Subtotal/IVA/Total o fecha/RUC emisor)
-    /// como aceptada — ej. corresponde a ICE, propina, o un ajuste conocido —
-    /// para no tener que revisarla de nuevo en cada conciliación.
-    /// </summary>
-    public bool DiferenciaAceptada { get; set; }
-
-    [MaxLength(450)]
-    public string? DiferenciaAceptadaPor { get; set; }
-
-    public DateTime? DiferenciaAceptadaUtc { get; set; }
-
-    [MaxLength(500)]
-    public string? ComentarioAceptacion { get; set; }
-
     public DateTime FechaDescargaUtc { get; set; } = DateTime.UtcNow;
 
     /// <summary><c>UsuarioId</c> de Identity del que subió el reporte.</summary>
