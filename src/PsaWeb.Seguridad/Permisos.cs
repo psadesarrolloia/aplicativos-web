@@ -14,9 +14,17 @@ public static class Permisos
     public const string HacerNotaCredito = "mksalenc";
 
     // Liquidaciones de compra — códigos nuevos (el .exe no las gateaba).
-    // Requiere 2 filas nuevas en allowAction de PeachEBills asignadas a los roles.
+    // Filas creadas por docs/sql/permisos-comprobantes-v2.sql.
     public const string VerLiquidaciones = "qupurchliq";
     public const string HacerLiquidacion = "mkpurchliq";
+
+    // Comprobantes electrónicos v2: mismas 4 llaves para los 4 tipos
+    // (ver · hacer · lote · autorizar anulación). Filas nuevas en el mismo script SQL.
+    public const string HacerNotasCreditoLote = "mkncBatch";
+    public const string HacerLiquidacionesLote = "mkliqBatch";
+    public const string AutorizarAnulacionFactura = "auCanceInv";
+    public const string AutorizarAnulacionNotaCredito = "auCanceNc";
+    public const string AutorizarAnulacionLiquidacion = "auCanceLiq";
 
     // Retenciones
     public const string VerRetenciones = "qupurchtwh";

@@ -75,17 +75,17 @@ public static class AppCatalogo
             "📄", "/retenciones", Categorias.ComprobantesElectronicos,
             new[] { Permisos.VerRetenciones, Permisos.HacerRetencion, Permisos.HacerRetencionesLote }),
 
-        // Provisional: sin código propio hasta que el área cargue qupurchliq/mkpurchliq
-        // en allowAction. Mientras tanto visible para cualquier empresa con FE.
+        // Requiere las filas de docs/sql/permisos-comprobantes-v2.sql en allowAction
+        // (y asignadas a roles); sin ellas la app queda invisible para todos.
         new("fe-liquidaciones", "Liquidaciones de compra",
             "Genera y emite en Datil las liquidaciones de compra.",
             "📥", "/fe/liquidaciones", Categorias.ComprobantesElectronicos,
-            Array.Empty<string>()),
+            new[] { Permisos.VerLiquidaciones, Permisos.HacerLiquidacion, Permisos.HacerLiquidacionesLote }),
 
         new("fe-notas-credito", "Notas de crédito",
             "Genera y emite en Datil las notas de crédito de venta.",
             "↩️", "/fe/notas-credito", Categorias.ComprobantesElectronicos,
-            new[] { Permisos.VerNotasCredito, Permisos.HacerNotaCredito }),
+            new[] { Permisos.VerNotasCredito, Permisos.HacerNotaCredito, Permisos.HacerNotasCreditoLote }),
 
         // Provisional (GateProvisional): sin código propio hasta que el área
         // cargue quKardex en allowAction. Mientras tanto visible para cualquier

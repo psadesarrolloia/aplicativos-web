@@ -456,13 +456,6 @@ else
     [Parameter, EditorRequired] public string PermisoGenerar { get; set; } = string.Empty;
     [Parameter] public string? PermisoLote { get; set; }
 
-    /// <summary>
-    /// Provisional: los códigos de permiso (<c>qupurchliq</c>/<c>mkpurchliq</c>) todavía
-    /// no están cargados en <c>allowAction</c> de PeachEBills. Mientras tanto se
-    /// permite ver y generar sin gate. Quitar cuando el área cargue esas filas.
-    /// </summary>
-    [Parameter] public bool GateProvisional { get; set; }
-
     private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
     private const string DatilVerBase = "https://app.datil.co/ver/";
     private const int Tope = 200;
@@ -538,7 +531,7 @@ else
     // "Ver todas las empresas" se ofrece a quien puede generar / procesar lote en
     // su empresa (mismo gate que el botón «Procesar lote»). Es solo lectura de los
     // pendientes de las empresas asignadas al usuario.
-    private bool PuedeTodas => GateProvisional || _puedeGenerar;
+    private bool PuedeTodas => _puedeGenerar;
 
     protected override async Task OnInitializedAsync()
     {
@@ -579,16 +572,16 @@ else
         if (_ruc is null || _procesador is null) return;
 
         var dir = Sp.GetService<ISecurityDirectory>();
-        if (dir is null || GateProvisional)
+        if (dir is null)
         {
             _puedeVer = _puedeGenerar = true;
         }
         else
         {
             var permisos = await dir.PermisosAsync(_usuario, _ruc);
-            _puedeVer = permisos.Contains(PermisoVer) || permisos.Contains(PermisoGenerar);
-            _puedeGenerar = permisos.Contains(PermisoGenerar)
-                || (PermisoLote is not null && permisos.Contains(PermisoLote));
+            var tieneLote = PermisoLote is not null && permisos.Contains(PermisoLote);
+            _puedeVer = permisos.Contains(PermisoVer) || permisos.Contains(PermisoGenerar) || tieneLote;
+            _puedeGenerar = permisos.Contains(PermisoGenerar) || tieneLote;
         }
 
         _empresasUsuario = dir is null
