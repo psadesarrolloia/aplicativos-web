@@ -72,7 +72,7 @@ public static class AppCatalogo
 
         new("retenciones", "Retenciones",
             "Genera y emite en Datil las retenciones de compra pendientes.",
-            "📄", "/retenciones", Categorias.ComprobantesElectronicos,
+            "📄", "/fe/retenciones", Categorias.ComprobantesElectronicos,
             new[] { Permisos.VerRetenciones, Permisos.HacerRetencion, Permisos.HacerRetencionesLote }),
 
         // Requiere las filas de docs/sql/permisos-comprobantes-v2.sql en allowAction

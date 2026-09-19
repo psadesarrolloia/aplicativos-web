@@ -12,6 +12,9 @@ public class ConciliacionDbContext(DbContextOptions<ConciliacionDbContext> optio
 {
     public DbSet<ComprobanteSriDescargado> ComprobantesSriDescargados => Set<ComprobanteSriDescargado>();
 
+    /// <summary>Estado en el SRI de los comprobantes que emitimos (facturas, retenciones, NC, liquidaciones).</summary>
+    public DbSet<EstadoSriComprobante> EstadosSriComprobantes => Set<EstadoSriComprobante>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -20,6 +23,14 @@ public class ConciliacionDbContext(DbContextOptions<ConciliacionDbContext> optio
             .IsUnique();
         builder.Entity<ComprobanteSriDescargado>()
             .HasIndex(c => new { c.Ruc, c.FechaEmision });
+
+        builder.Entity<EstadoSriComprobante>()
+            .HasIndex(e => new { e.Ruc, e.CodDoc, e.RefId })
+            .IsUnique();
+        builder.Entity<EstadoSriComprobante>()
+            .HasIndex(e => new { e.Ruc, e.ClaveAcceso });
+        builder.Entity<EstadoSriComprobante>()
+            .HasIndex(e => new { e.Ruc, e.FechaEmision });
     }
 }
 

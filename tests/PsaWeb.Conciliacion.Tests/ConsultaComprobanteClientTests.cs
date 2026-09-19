@@ -83,4 +83,105 @@ public class ConsultaComprobanteClientTests
 
         Assert.Equal(EstadoComprobanteSri.NoAutorizado, resultado.Estado);
     }
+
+    // Respuestas reales del WS de producción del 2026-09-19 (claves omitidas).
+    private const string RespuestaAnulado = """
+        <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><ns2:consultarEstadoAutorizacionComprobanteResponse xmlns:ns2="http://ec.gob.sri.ws.consultas"><EstadoAutorizacionComprobante><claveAcceso>0308202601179218779600120010010000155541234567814</claveAcceso><mensajes/><estadoAutorizacion>ANULADO</estadoAutorizacion><tipoComprobante>Factura</tipoComprobante><rucEmisor>1792187796001</rucEmisor><fechaAutorizacion>2026-08-03T14:14:25-05:00</fechaAutorizacion></EstadoAutorizacionComprobante></ns2:consultarEstadoAutorizacionComprobanteResponse></soap:Body></soap:Envelope>
+        """;
+
+    private const string RespuestaFueraDeRango = """
+        <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><ns2:consultarEstadoAutorizacionComprobanteResponse xmlns:ns2="http://ec.gob.sri.ws.consultas"><EstadoAutorizacionComprobante><estadoConsulta>RECHAZADA</estadoConsulta><claveAcceso>2407201901179205180000120010010000018102793075810</claveAcceso><mensajes><mensaje><identificador>99</identificador><mensaje>ERROR AL CONSULTAR DATOS DEL SERVICIO WEB</mensaje><informacionAdicional>No es posible validar la clave de acceso ya que la fecha de emision esta fuera del rango permitido.</informacionAdicional><tipo>ERROR</tipo></mensaje></mensajes></EstadoAutorizacionComprobante></ns2:consultarEstadoAutorizacionComprobanteResponse></soap:Body></soap:Envelope>
+        """;
+
+    [Fact]
+    public void Comprobante_ANULADO_es_Anulado_y_no_se_confunde_con_NoAutorizado()
+    {
+        var r = ConsultaComprobanteClient.InterpretarRespuesta(RespuestaAnulado);
+
+        Assert.Equal(EstadoComprobanteSri.Anulado, r.Estado);
+        Assert.Equal("ANULADO", r.MensajeSri);
+        Assert.Contains("estadoAutorizacion", r.RespuestaCruda);
+    }
+
+    [Fact]
+    public void Fecha_fuera_del_rango_del_WS_es_FueraDeRango_y_no_un_error_del_servicio()
+    {
+        var r = ConsultaComprobanteClient.InterpretarRespuesta(RespuestaFueraDeRango);
+
+        Assert.Equal(EstadoComprobanteSri.FueraDeRango, r.Estado);
+        Assert.Contains("fuera del rango", r.MensajeSri);
+    }
+
+    [Fact]
+    public void Un_estado_desconocido_queda_como_Otro_con_la_respuesta_cruda_para_revisarlo()
+    {
+        const string respuesta = """
+            <EstadoAutorizacionComprobante>
+              <estadoAutorizacion>PENDIENTE DE ACEPTACION</estadoAutorizacion>
+            </EstadoAutorizacionComprobante>
+            """;
+
+        var r = ConsultaComprobanteClient.InterpretarRespuesta(respuesta);
+
+        Assert.Equal(EstadoComprobanteSri.Otro, r.Estado);
+        Assert.Equal("PENDIENTE DE ACEPTACION", r.MensajeSri);
+        Assert.Contains("PENDIENTE DE ACEPTACION", r.RespuestaCruda);
+    }
+
+    private sealed class ManejadorQueFallaLuegoResponde(int fallos, string cuerpo) : HttpMessageHandler
+    {
+        public int Llamadas;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Llamadas++;
+            if (Llamadas <= fallos) throw new HttpRequestException("Could not establish trust relationship (simulado)");
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(cuerpo) });
+        }
+    }
+
+    [Fact]
+    public async Task Reintenta_los_fallos_transitorios_de_red_y_termina_bien()
+    {
+        var manejador = new ManejadorQueFallaLuegoResponde(fallos: 2, cuerpo: RespuestaAutorizado);
+        var cliente = new ConsultaComprobanteClient(
+            new HttpClient(manejador), Microsoft.Extensions.Options.Options.Create(new ConciliacionOptions()));
+
+        var r = await cliente.VerificarAsync("0108202601179128754100120010120241297281526111115");
+
+        Assert.Equal(EstadoComprobanteSri.Autorizado, r.Estado);
+        Assert.Equal(3, manejador.Llamadas);
+    }
+
+    [Fact]
+    public async Task Si_los_tres_intentos_fallan_devuelve_ErrorServicio_sin_lanzar()
+    {
+        var manejador = new ManejadorQueFallaLuegoResponde(fallos: 99, cuerpo: string.Empty);
+        var cliente = new ConsultaComprobanteClient(
+            new HttpClient(manejador), Microsoft.Extensions.Options.Options.Create(new ConciliacionOptions()));
+
+        var r = await cliente.VerificarAsync("0108202601179128754100120010120241297281526111115");
+
+        Assert.Equal(EstadoComprobanteSri.ErrorServicio, r.Estado);
+        Assert.Equal(3, manejador.Llamadas);
+    }
+
+    [Theory]
+    [InlineData(null, "Sin verificar")]
+    [InlineData("Autorizado", "Autorizado")]
+    [InlineData("Anulado", "ANULADO")]
+    [InlineData("FueraDeRango", "Fuera de rango del SRI")]
+    [InlineData("Otro", "Otro estado (ver detalle)")]
+    public void La_presentacion_del_estado_es_la_misma_para_Conciliacion_y_los_comprobantes(string? estado, string texto)
+        => Assert.Equal(texto, EstadoSriPresentacion.Visual(estado).Texto);
+
+    [Fact]
+    public void Solo_Anulado_y_NoAutorizado_cuentan_como_no_vigentes()
+    {
+        Assert.True(EstadoSriPresentacion.NoVigente("Anulado"));
+        Assert.True(EstadoSriPresentacion.NoVigente("NoAutorizado"));
+        Assert.False(EstadoSriPresentacion.NoVigente("Autorizado"));
+        Assert.False(EstadoSriPresentacion.NoVigente("FueraDeRango"));
+        Assert.False(EstadoSriPresentacion.NoVigente(null));
+    }
 }

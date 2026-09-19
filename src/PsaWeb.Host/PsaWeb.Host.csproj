@@ -23,11 +23,10 @@
     <ProjectReference Include="..\PsaWeb.Datil\PsaWeb.Datil.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.CierreDeCaja\PsaWeb.Modules.CierreDeCaja.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.Kardex\PsaWeb.Modules.Kardex.csproj" />
-    <ProjectReference Include="..\..\modules\PsaWeb.Modules.Retenciones\PsaWeb.Modules.Retenciones.csproj" />
     <ProjectReference Include="..\PsaWeb.Seguridad\PsaWeb.Seguridad.csproj" />
     <ProjectReference Include="..\PsaWeb.Identidad\PsaWeb.Identidad.csproj" />
     <ProjectReference Include="..\PsaWeb.Notificaciones\PsaWeb.Notificaciones.csproj" />
-    <ProjectReference Include="..\..\modules\PsaWeb.Modules.FacturacionElectronica\PsaWeb.Modules.FacturacionElectronica.csproj" />
+    <ProjectReference Include="..\..\modules\PsaWeb.Modules.ComprobantesElectronicos\PsaWeb.Modules.ComprobantesElectronicos.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.Ats\PsaWeb.Modules.Ats.csproj" />
     <ProjectReference Include="..\PsaWeb.Ats\PsaWeb.Ats.csproj" />
     <ProjectReference Include="..\PsaWeb.Conciliacion\PsaWeb.Conciliacion.csproj" />

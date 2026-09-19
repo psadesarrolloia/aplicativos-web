@@ -1,0 +1,10 @@
+@page "/retenciones"
+@namespace PsaWeb.Modules.ComprobantesElectronicos.Pages
+@inject NavigationManager Nav
+
+@* La página de Retenciones pasó a ser un submódulo de Comprobantes electrónicos. *@
+<p class="psa-muted">Redirigiendo…</p>
+
+@code {
+    protected override void OnInitialized() => Nav.NavigateTo("/fe/retenciones", replace: true);
+}

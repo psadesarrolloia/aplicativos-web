@@ -157,10 +157,10 @@ El script SQL lo genera este plan y lo ejecuta el usuario.
 | Fase | Contenido |
 |---|---|
 | F0 ✔ | Investigación SRI/Datil/claves (§3, §9). **Cerrada** (huecos resueltos 2026-09-19: alcance de 2 años; Datil cubre esa ventana; sin caso de «pendiente de aceptación» → diseño defensivo §7). Único punto por reconfirmar más adelante: el rango del WS el 01/10 (debería empezar el 01/09). |
-| F1 | Permisos: script SQL, `Permisos.cs`, `AppCatalogo`, quitar `GateProvisional`. |
-| F2 | Módulo único con `TipoComprobante`; FE ya migrado; extraer `ProcesarUnaCompraAsync`, pendientes con rango y tablero de retenciones. |
-| F3 | Interfaz unificada de los 4 (Generar por fila, lote, rango, elegir empresa, solicitar anulación). Absorber Retenciones + redirección. |
-| F4 | Estado SRI: tabla, backfill de claves, columna, verificación individual y masiva. |
+| F1 ✔ | Permisos: script SQL, `Permisos.cs`, `AppCatalogo`, quitar `GateProvisional`. Commit `0880d6c`. |
+| F2 ✔ | Módulo único `PsaWeb.Modules.ComprobantesElectronicos` (renombre de FE) que **absorbe** el backend de Retenciones (`Retenciones/`); `TipoComprobante` + `Tipos` (registro de los 4 tipos); `ServicioComprobantes` (fachada de generación por tipo; retenciones detrás del candado single-flight del worker); `ProcesadorRetenciones.ListarPendientesAsync` (con rango, cruza `PurchaseOrderSync` con la fecha en Sage — `LectorComprasPendientes`), `ProcesarUnaCompraAsync`, `ProcesarLoteAsync`; `TableroComprobantes` lee también `TaxWithHoldings` (total retenido, sin IVA). Proyectos `…Retenciones` y sus tests retirados; tests unificados en `…ComprobantesElectronicos.Tests`. |
+| F3 ✔ | Una sola página `Comprobantes.razor` para los 4 (`/fe/facturas`, `/fe/retenciones`, `/fe/notas-credito`, `/fe/liquidaciones`; `/retenciones` redirige): panorama por empresa, Generar por fila, Procesar lote, rango de fechas, popup por tipo, **Solicitar anulación** en los 4 (`SolicitudAnulacion` generalizada). |
+| F4 ✔ | Estado SRI: tabla `EstadosSriComprobantes` (migración `EstadoSriEmitidos` en `PsaWeb.Conciliacion`, se aplica sola al arrancar), `ServicioEstadoSri` (SRI en su rango, Datil hasta 2 años, clave desde `DatilRequests` → Datil), columna «Estado en SRI» con la misma presentación que Conciliación (`EstadoSriPresentacion`), «verificar» por fila (permiso Ver) y **«Verificar en el SRI (N)»** masivo (permiso Lote, 5 llamadas simultáneas). El cliente del SRI ahora distingue `ANULADO`/`FueraDeRango`/`Otro` y reintenta 3 veces. **Desvío:** la clave de acceso se recupera *al verificar* (perezoso) en vez de un backfill masivo previo — mismo resultado sin migrar 74 mil filas. |
 | F5 | Worker de verificación para los 4 + ajuste de la ventana de Conciliación. |
 | F6 | Seguimiento de anulaciones y discrepancias. |
 

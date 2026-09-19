@@ -1,0 +1,1208 @@
+@namespace PsaWeb.Modules.ComprobantesElectronicos.Pages
+@implements IDisposable
+@using System.Globalization
+@using PsaWeb.Conciliacion
+@using PsaWeb.Modules.ComprobantesElectronicos.Data
+@using PsaWeb.Modules.ComprobantesElectronicos.Estado
+@using PsaWeb.Modules.ComprobantesElectronicos.Retenciones.Data
+@using PsaWeb.Seguridad
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject ILogger<Comprobantes> Logger
+
+<PsaPageHeader Title="@Info.Titulo" Subtitle="@Info.Subtitulo" />
+
+@if (_servicio is null || _tablero is null)
+{
+    <PsaCard Title="Módulo no configurado">
+        <p class="psa-notice psa-notice--danger">
+            Falta <code>PeachEbills:ConnectionString</code> en el Host. Configúrala y reiniciá la aplicación.
+        </p>
+    </PsaCard>
+}
+else if (_ruc is null)
+{
+    <PsaCard Title="Elegí una empresa">
+        <p class="psa-notice">Seleccioná una empresa en la barra superior para trabajar sus comprobantes.</p>
+    </PsaCard>
+}
+else if (!_permisosCargados)
+{
+    <PsaCard><p class="psa-muted">Verificando permisos…</p></PsaCard>
+}
+else if (!_puedeVer)
+{
+    <PsaCard Title="Sin permiso">
+        <p class="psa-notice psa-notice--danger">No tenés permiso para ver este módulo en la empresa actual.</p>
+    </PsaCard>
+}
+else
+{
+    <PsaCard Title="Modo de emisión">
+        @if (_servicio.DryRun)
+        {
+            <p class="psa-notice">
+                <strong>DRY-RUN activo.</strong> Se arma y valida cada comprobante pero <strong>no</strong> se envía a
+                Datil ni se guarda. Para emitir de verdad: <code>Datil:DryRun=false</code> en el Host.
+            </p>
+        }
+        else
+        {
+            <p class="psa-notice psa-notice--danger">
+                <strong>EMISIÓN REAL.</strong> «Generar» enviará el comprobante a Datil (autoriza ante el SRI, es
+                irreversible) y lo guardará en PeachEBills.
+            </p>
+        }
+        <p class="psa-muted" style="margin-top:.5rem">
+            Empresa: <strong>@(_verTodas ? "todas las asignadas" : _empresaNombre)</strong> · Ambiente:
+            <strong>@AmbienteTexto(_ambiente)</strong>
+        </p>
+    </PsaCard>
+
+    <PsaCard Title="@(_verTodas ? "Empresas" : "Mi empresa")">
+        <Actions>
+            @if (PuedeTodas)
+            {
+                <PsaButton Variant="ghost" OnClick="AlternarAlcance" Disabled="_cargando || _generando">
+                    @(_verTodas ? "Ver solo mi empresa" : "Ver todas las empresas")
+                </PsaButton>
+            }
+            <PsaButton Variant="secondary" OnClick="Recargar" Disabled="_cargando || _generando">
+                @(_panoramaCargando ? "Actualizando…" : "Actualizar")
+            </PsaButton>
+        </Actions>
+        <ChildContent>
+            @if (_panorama is null && _panoramaCargando)
+            {
+                <p class="psa-muted">Cargando…</p>
+            }
+            else if (_panorama is null || _panorama.Count == 0)
+            {
+                <p class="psa-notice">No tenés empresas asignadas.</p>
+            }
+            else
+            {
+                var pv = PanoramaVista();
+                if (_verTodas)
+                {
+                    <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
+                        <PsaStat Label="Empresas" Value="@($"{pv.Count} / {_panorama.Count}")" />
+                        <PsaStat Label="Pendientes de emitir" Value="@pv.Sum(f => f.Pendientes).ToString()"
+                                 State="@(pv.Sum(f => f.Pendientes) > 0 ? "warn" : "ok")" />
+                    </div>
+                }
+
+                <p class="psa-muted" style="margin-bottom:.4rem">
+                    Clic en una empresa para ver y generar sus comprobantes.
+                    @if (_fEmpresa.Length > 0)
+                    {
+                        <button type="button" class="psa-linkbtn" @onclick="() => _fEmpresa = string.Empty">Limpiar filtro</button>
+                    }
+                </p>
+
+                <div style="overflow-x:auto">
+                <table class="psa-table psa-table--interactiva">
+                    <thead>
+                        <tr>
+                            <th class="sortable" @onclick="() => OrdenarPan(ColP.Empresa)">Empresa @FlechaPan(ColP.Empresa)</th>
+                            <th>RUC</th>
+                            <th class="num sortable" @onclick="() => OrdenarPan(ColP.Pendientes)">Pendientes @FlechaPan(ColP.Pendientes)</th>
+                            <th class="num sortable" @onclick="() => OrdenarPan(ColP.Guardados)">Guardados @FlechaPan(ColP.Guardados)</th>
+                            <th class="sortable" @onclick="() => OrdenarPan(ColP.Ultima)">Última emisión @FlechaPan(ColP.Ultima)</th>
+                        </tr>
+                        <tr class="psa-table__filtros">
+                            <th><input class="@ClaseFiltro(_fEmpresa)" placeholder="filtrar…" @bind="_fEmpresa" @bind:event="oninput" /></th>
+                            <th></th><th></th><th></th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (pv.Count == 0)
+                        {
+                            <tr><td colspan="5" class="psa-muted">Ninguna empresa coincide con el filtro.</td></tr>
+                        }
+                        @foreach (var f in pv)
+                        {
+                            <tr class="@(f.Ruc == _empresaSel ? "sel" : null)" style="cursor:pointer"
+                                @onclick="() => SeleccionarEmpresa(f)">
+                                <td>@f.Empresa</td>
+                                <td>@f.Ruc</td>
+                                <td class="num">
+                                    @if (f.Error is not null)
+                                    {
+                                        <span title="@f.Error">—</span>
+                                    }
+                                    else
+                                    {
+                                        @f.Pendientes
+                                    }
+                                </td>
+                                <td class="num">@f.Guardados</td>
+                                <td>@(f.UltimaEmision is { } u ? u.ToString("dd/MM/yyyy") : "—")</td>
+                            </tr>
+                            @if (f.Error is not null)
+                            {
+                                <tr><td colspan="5" class="psa-muted" style="font-size:.85rem">@f.Error</td></tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+                </div>
+            }
+        </ChildContent>
+    </PsaCard>
+
+    <PsaCard Title="@TituloLista">
+        <Actions>
+            @if (_verTodas && _empresaSel is not null)
+            {
+                <button type="button" class="psa-linkbtn" @onclick="QuitarSeleccion">Ver todas</button>
+            }
+            <PsaButton Variant="secondary" OnClick="Recargar" Disabled="_cargando || _generando">
+                @(_cargando ? "Actualizando…" : "Actualizar")
+            </PsaButton>
+            @if (PuedeVerificarMasiva)
+            {
+                <PsaButton Variant="secondary" OnClick="VerificarMasiva"
+                           Disabled="_cargando || _generando || _verificando || CandidatosSri.Count == 0">
+                    @(_verificando ? $"Verificando… {_progreso}/{_totalVerificar}" : $"Verificar en el SRI ({CandidatosSri.Count})")
+                </PsaButton>
+            }
+            @if (_puedeGenerar)
+            {
+                <PsaButton Variant="primary" OnClick="ProcesarLote"
+                           Disabled="_cargando || _generando || ModoMulti">
+                    @(_generando ? "Procesando…" : "Procesar lote")
+                </PsaButton>
+            }
+        </Actions>
+        <ChildContent>
+            <div style="display:flex; gap:1rem; align-items:end; flex-wrap:wrap; margin-bottom:.75rem">
+                <PsaDateRange From="_desde" FromChanged="v => _desde = v" To="_hasta" ToChanged="v => _hasta = v" />
+                @if (!ModoMulti)
+                {
+                    <label class="psa-check" style="display:inline-flex; gap:.4rem; align-items:center">
+                        <input type="checkbox" @bind="_incluirPendientes" @bind:after="Recargar" />
+                        <span>Incluir pendientes de emitir@(_pendientes.Count > 0 ? $" ({_pendientes.Count})" : "")</span>
+                    </label>
+                }
+            </div>
+
+            @if (ModoMulti)
+            {
+                <p class="psa-muted" style="margin-bottom:.75rem">
+                    Mostrando los comprobantes <strong>guardados</strong> de todas tus empresas. Los pendientes de
+                    emitir se cuentan por empresa en la tabla de arriba; entrá a una para generarlos.
+                </p>
+            }
+
+            @if (_error is not null)
+            {
+                <p class="psa-notice psa-notice--danger">@_error</p>
+            }
+
+            @if (_avisoSri is not null)
+            {
+                <p class="psa-notice">@_avisoSri</p>
+            }
+
+            @if (_resumenLote is { } lote)
+            {
+                <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
+                    <PsaStat Label="Procesados" Value="@lote.Total.ToString()" />
+                    <PsaStat Label="Emitidos" Value="@lote.Emitidos.ToString()" State="ok" />
+                    <PsaStat Label="Dry-run" Value="@lote.EnDryRun.ToString()" />
+                    <PsaStat Label="Con errores" Value="@lote.ConErrores.ToString()"
+                             State="@(lote.ConErrores > 0 ? "danger" : "neutral")" />
+                </div>
+            }
+
+            @if (_cargando)
+            {
+                <p class="psa-muted">Cargando…</p>
+            }
+            else if (_emitidos.Count == 0 && _pendientes.Count == 0)
+            {
+                <p class="psa-notice">No hay comprobantes para ese rango.</p>
+            }
+            else
+            {
+                var vista = Vista();
+
+                <p class="psa-muted" style="margin-bottom:.4rem">
+                    @vista.Count de @_emitidos.Count guardado@(_emitidos.Count == 1 ? "" : "s")
+                    @if (_emitidos.Count >= Tope) { <text> (tope @Tope — acotá por fecha)</text> }
+                    @if (_incluirPendientes && !ModoMulti) { <text> · @_pendientes.Count pendiente@(_pendientes.Count == 1 ? "" : "s")</text> }
+                    @if (TieneFiltros)
+                    {
+                        <button type="button" class="psa-linkbtn" @onclick="LimpiarFiltros">Limpiar filtros</button>
+                    }
+                </p>
+
+                <div style="overflow-x:auto">
+                <table class="psa-table psa-table--interactiva">
+                    <thead>
+                        <tr>
+                            <th class="sortable" @onclick="() => Ordenar(Col.Fecha)">Fecha @Flecha(Col.Fecha)</th>
+                            @if (MostrarColEmpresa)
+                            {
+                                <th class="sortable" @onclick="() => Ordenar(Col.Empresa)">Empresa @Flecha(Col.Empresa)</th>
+                            }
+                            <th class="sortable" @onclick="() => Ordenar(Col.Numero)">Número @Flecha(Col.Numero)</th>
+                            <th>Secuencial</th>
+                            <th class="sortable" @onclick="() => Ordenar(Col.Persona)">@Info.PersonaEtiqueta @Flecha(Col.Persona)</th>
+                            @if (!Info.EsRetencion)
+                            {
+                                <th class="num sortable" @onclick="() => Ordenar(Col.Iva)">IVA @Flecha(Col.Iva)</th>
+                            }
+                            <th class="num sortable" @onclick="() => Ordenar(Col.Total)">@(Info.EsRetencion ? "Retenido" : "Total") @Flecha(Col.Total)</th>
+                            <th class="sortable" @onclick="() => Ordenar(Col.Ambiente)">Ambiente @Flecha(Col.Ambiente)</th>
+                            <th class="num">Datil</th>
+                            @if (MostrarEstadoSri)
+                            {
+                                <th>Estado en SRI</th>
+                            }
+                            <th class="num">PDF</th>
+                        </tr>
+                        <tr class="psa-table__filtros">
+                            <th></th>
+                            @if (MostrarColEmpresa)
+                            {
+                                <th><input class="@ClaseFiltro(_fEmpresa)" placeholder="filtrar…" @bind="_fEmpresa" @bind:event="oninput" /></th>
+                            }
+                            <th><input class="@ClaseFiltro(_fNumero)" placeholder="filtrar…" @bind="_fNumero" @bind:event="oninput" /></th>
+                            <th></th>
+                            <th><input class="@ClaseFiltro(_fPersona)" placeholder="filtrar…" @bind="_fPersona" @bind:event="oninput" /></th>
+                            @if (!Info.EsRetencion)
+                            {
+                                <th></th>
+                            }
+                            <th></th>
+                            <th>
+                                <select class="@ClaseFiltro(_fAmbiente)" @bind="_fAmbiente">
+                                    <option value="">todos</option>
+                                    <option value="1">Pruebas</option>
+                                    <option value="2">Producción</option>
+                                </select>
+                            </th>
+                            <th class="num">
+                                <select class="@ClaseFiltro(_fDatil)" @bind="_fDatil">
+                                    <option value="">todos</option>
+                                    <option value="ok">✓ emitido</option>
+                                    <option value="sinid">– sin id</option>
+                                </select>
+                            </th>
+                            @if (MostrarEstadoSri)
+                            {
+                                <th>
+                                    <select class="@ClaseFiltro(_fEstadoSri)" @bind="_fEstadoSri">
+                                        <option value="">todos</option>
+                                        <option value="sin">Sin verificar</option>
+                                        <option value="aut">Autorizado</option>
+                                        <option value="anul">Anulado / no autorizado</option>
+                                        <option value="otro">Otros</option>
+                                    </select>
+                                </th>
+                            }
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (vista.Count == 0)
+                        {
+                            <tr><td colspan="@Cols" class="psa-muted">Ningún comprobante coincide con el filtro.</td></tr>
+                        }
+                        @foreach (var r in vista)
+                        {
+                            var est = EstadoDe(r);
+                            var (txtEstado, claseEstado) = EstadoSriPresentacion.Visual(est.Estado);
+                            <tr style="cursor:pointer" @onclick="() => AbrirDetalle(r)">
+                                <td>@r.Fecha.ToString("dd/MM/yyyy")</td>
+                                @if (MostrarColEmpresa)
+                                {
+                                    <td title="@r.Ruc">@r.Empresa</td>
+                                }
+                                <td>@r.Numero</td>
+                                <td>@r.Secuencial</td>
+                                <td title="@r.PersonaId">@(r.PersonaNombre ?? r.PersonaId ?? "—")</td>
+                                @if (!Info.EsRetencion)
+                                {
+                                    <td class="num">@r.Iva.ToString("N2", Ec)</td>
+                                }
+                                <td class="num">@r.Total.ToString("N2", Ec)</td>
+                                <td>@AmbienteTexto(r.Ambiente)</td>
+                                <td class="num">
+                                    @if (r.Emitido)
+                                    {
+                                        <span class="psa-estado psa-estado--ok" title="Enviado a Datil · @r.DatilId">&#10003;</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="psa-estado psa-estado--warn" title="Guardado sin id de Datil">&#8211;</span>
+                                    }
+                                </td>
+                                @if (MostrarEstadoSri)
+                                {
+                                    <td @onclick:stopPropagation="true">
+                                        @if (r.Emitido)
+                                        {
+                                            <span class="psa-estado @claseEstado" style="font-size:.85rem"
+                                                  title="@(est.Detalle ?? (est.FechaVerificacion is { } fv ? $"Verificado {fv.ToLocalTime():dd/MM/yyyy HH:mm} · {est.Fuente}" : "Aún no verificado"))">@txtEstado</span>
+                                            @if (PuedeVerificar)
+                                            {
+                                                <button type="button" class="psa-linkbtn" style="font-size:.8rem"
+                                                        disabled="@(_verificando || _verificandoId == r.FacturaId)"
+                                                        @onclick="() => VerificarUna(r)">
+                                                    @(_verificandoId == r.FacturaId ? "…" : "verificar")
+                                                </button>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="psa-muted">—</span>
+                                        }
+                                    </td>
+                                }
+                                <td class="num" @onclick:stopPropagation="true">
+                                    @if (r.Emitido)
+                                    {
+                                        <a class="psa-pdf" href="@UrlDatil(r.DatilId!, "pdf")" target="_blank" rel="noopener">PDF</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="psa-muted">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+
+                    @if (_incluirPendientes && !ModoMulti && _pendientes.Count > 0)
+                    {
+                        <tbody>
+                            <tr class="psa-table__grupo"><td colspan="@Cols">Pendientes de emitir — @_pendientes.Count</td></tr>
+                            @foreach (var p in _pendientes)
+                            {
+                                var res = _resultados.GetValueOrDefault(p.PostOrder);
+                                <tr>
+                                    <td class="psa-muted">@p.Fecha.ToString("dd/MM/yyyy")</td>
+                                    <td class="psa-muted">@p.Numero</td>
+                                    <td class="psa-muted">—</td>
+                                    <td class="psa-muted">—</td>
+                                    @if (!Info.EsRetencion)
+                                    {
+                                        <td class="num psa-muted">—</td>
+                                    }
+                                    <td class="num psa-muted">—</td>
+                                    <td>@AmbienteTexto(_ambiente)</td>
+                                    <td class="num">
+                                        @if (res is null)
+                                        {
+                                            <span class="psa-estado psa-estado--bad" title="Pendiente">&#10007;</span>
+                                        }
+                                        else if (res.Estado == EstadoComprobante.Emitido)
+                                        {
+                                            <span class="psa-estado psa-estado--ok">&#10003;</span>
+                                        }
+                                        else if (res.Estado == EstadoComprobante.DryRun)
+                                        {
+                                            <span class="psa-muted">dry-run</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="psa-estado psa-estado--bad" title="@string.Join(" | ", res.Mensajes)">error</span>
+                                        }
+                                    </td>
+                                    @if (MostrarEstadoSri)
+                                    {
+                                        <td class="psa-muted">—</td>
+                                    }
+                                    <td class="num">
+                                        <PsaButton Variant="ghost"
+                                                   Disabled="@(_generando || !_puedeGenerar || res?.Estado == EstadoComprobante.Emitido)"
+                                                   OnClick="() => Generar(p.PostOrder)">
+                                            @(res?.Estado == EstadoComprobante.Emitido ? "Emitido" : res is not null ? "Reintentar" : "Generar")
+                                        </PsaButton>
+                                    </td>
+                                </tr>
+                                @if (res is { Estado: EstadoComprobante.Error })
+                                {
+                                    <tr><td colspan="@Cols" class="psa-muted" style="font-size:.85rem">@string.Join(" · ", res.Mensajes)</td></tr>
+                                }
+                            }
+                        </tbody>
+                    }
+                </table>
+                </div>
+            }
+        </ChildContent>
+    </PsaCard>
+
+    <PsaModal Visible="_detalle is not null || _detalleRet is not null || _detalleCargando"
+              Title="@TituloDetalle"
+              OnClose="CerrarDetalle">
+        <ChildContent>
+            @if (_detalleCargando)
+            {
+                <p class="psa-muted">Cargando…</p>
+            }
+            else if (_detalleRet is not null)
+            {
+                <dl class="psa-def">
+                    <dt>Empresa</dt><dd>@_detalleRet.Empresa</dd>
+                    <dt>Número</dt><dd>@_detalleRet.Numero</dd>
+                    <dt>Secuencial</dt><dd>@_detalleRet.Secuencial</dd>
+                    <dt>Fecha</dt><dd>@_detalleRet.Fecha.ToString("dd/MM/yyyy")</dd>
+                    <dt>Período fiscal</dt><dd>@_detalleRet.PeriodoFiscal</dd>
+                    <dt>Ambiente</dt><dd>@AmbienteTexto(_detalleRet.Ambiente)</dd>
+                    <dt>Clave de acceso</dt><dd>@(string.IsNullOrWhiteSpace(_detalleRet.ClaveAcceso) ? "—" : _detalleRet.ClaveAcceso)</dd>
+                    <dt>Id Datil</dt><dd>@(_detalleRet.DatilId ?? "—")</dd>
+                </dl>
+
+                <div class="psa-def__sub">Proveedor</div>
+                <dl class="psa-def">
+                    <dt>Nombre</dt><dd>@(_detalleRet.ProveedorNombre ?? "—")</dd>
+                    <dt>Identificación</dt><dd>@_detalleRet.ProveedorId</dd>
+                    <dt>Email</dt><dd>@(string.IsNullOrWhiteSpace(_detalleRet.ProveedorEmail) ? "—" : _detalleRet.ProveedorEmail)</dd>
+                    <dt>Teléfono</dt><dd>@(string.IsNullOrWhiteSpace(_detalleRet.ProveedorTelefono) ? "—" : _detalleRet.ProveedorTelefono)</dd>
+                    <dt>Dirección</dt><dd>@(string.IsNullOrWhiteSpace(_detalleRet.ProveedorDireccion) ? "—" : _detalleRet.ProveedorDireccion)</dd>
+                </dl>
+
+                <div class="psa-def__sub">Líneas (@_detalleRet.Lineas.Count)</div>
+                <div style="overflow-x:auto">
+                    <table class="psa-table">
+                        <thead>
+                            <tr>
+                                <th>Código</th><th>%</th><th class="num">Base</th><th class="num">Retenido</th>
+                                <th>Doc. sustento</th><th>Fecha doc.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_detalleRet.Lineas.Count == 0)
+                            {
+                                <tr><td colspan="6" class="psa-muted">Sin líneas.</td></tr>
+                            }
+                            @foreach (var l in _detalleRet.Lineas)
+                            {
+                                <tr>
+                                    <td>@(l.Codigo == "1" ? "Renta" : l.Codigo == "2" ? "IVA" : l.Codigo)</td>
+                                    <td>@l.Porcentaje.ToString("0.##", Ec)%</td>
+                                    <td class="num">@l.BaseImponible.ToString("N2", Ec)</td>
+                                    <td class="num">@l.ValorRetenido.ToString("N2", Ec)</td>
+                                    <td>@l.DocSustentoNumero</td>
+                                    <td>@l.DocSustentoFecha.ToString("dd/MM/yyyy")</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot>
+                            <tr><td colspan="3">Total retenido</td><td class="num">@_detalleRet.TotalRetenido.ToString("N2", Ec)</td><td colspan="2"></td></tr>
+                        </tfoot>
+                    </table>
+                </div>
+            }
+            else if (_detalle is not null)
+            {
+                <dl class="psa-def">
+                    <dt>Empresa</dt><dd>@_detalle.Empresa</dd>
+                    <dt>Número</dt><dd>@_detalle.Numero</dd>
+                    <dt>Secuencial</dt><dd>@_detalle.Secuencial</dd>
+                    <dt>Fecha</dt><dd>@_detalle.Fecha.ToString("dd/MM/yyyy")</dd>
+                    @if (_detalle.Vencimiento is { } v)
+                    {
+                        <dt>Vencimiento</dt><dd>@v.ToString("dd/MM/yyyy")</dd>
+                    }
+                    <dt>Ambiente</dt><dd>@AmbienteTexto(_detalle.Ambiente)</dd>
+                    <dt>Id Datil</dt><dd>@(_detalle.DatilId ?? "—")</dd>
+                    @if (_detalle.EsNotaCredito)
+                    {
+                        <dt>Doc. modificado</dt><dd>@(_detalle.DocModNumero ?? "—") (tipo @(_detalle.DocModTipo ?? "—"))</dd>
+                        <dt>Motivo</dt><dd>@(_detalle.DocModMotivo ?? "—")</dd>
+                    }
+                </dl>
+
+                <div class="psa-def__sub">@Info.PersonaEtiqueta</div>
+                <dl class="psa-def">
+                    <dt>Nombre</dt><dd>@(_detalle.PersonaNombre ?? "—")</dd>
+                    <dt>Identificación</dt><dd>@(_detalle.PersonaId ?? "—") @(_detalle.PersonaTipo is { } t ? $"({t})" : "")</dd>
+                    <dt>Email</dt><dd>@(string.IsNullOrWhiteSpace(_detalle.PersonaEmail) ? "—" : _detalle.PersonaEmail)</dd>
+                    <dt>Teléfono</dt><dd>@(string.IsNullOrWhiteSpace(_detalle.PersonaTelefono) ? "—" : _detalle.PersonaTelefono)</dd>
+                    <dt>Dirección</dt><dd>@(string.IsNullOrWhiteSpace(_detalle.PersonaDireccion) ? "—" : _detalle.PersonaDireccion)</dd>
+                </dl>
+
+                <div class="psa-def__sub">Líneas (@_detalle.Lineas.Count)</div>
+                <div style="overflow-x:auto">
+                    <table class="psa-table">
+                        <thead>
+                            <tr><th>Descripción</th><th class="num">Cant.</th><th class="num">P. unit.</th>
+                                <th class="num">Subtotal</th><th class="num">% IVA</th><th class="num">IVA</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var l in _detalle.Lineas)
+                            {
+                                <tr>
+                                    <td>@l.Descripcion</td>
+                                    <td class="num">@l.Cantidad.ToString("N2", Ec)</td>
+                                    <td class="num">@l.PrecioUnitario.ToString("N2", Ec)</td>
+                                    <td class="num">@l.Subtotal.ToString("N2", Ec)</td>
+                                    <td class="num">@((l.IvaPorcentaje * (l.IvaPorcentaje < 1 ? 100 : 1)).ToString("N0", Ec))%</td>
+                                    <td class="num">@l.IvaValor.ToString("N2", Ec)</td>
+                                </tr>
+                            }
+                            <tr>
+                                <td colspan="3">Totales</td>
+                                <td class="num">@_detalle.TotalSinImpuestos.ToString("N2", Ec)</td>
+                                <td class="num"></td>
+                                <td class="num">@_detalle.IvaValor.ToString("N2", Ec)</td>
+                            </tr>
+                            <tr>
+                                <td colspan="5">Total</td>
+                                <td class="num"><strong>@_detalle.Total.ToString("N2", Ec)</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            @if (!string.IsNullOrWhiteSpace(_detalleDatilId))
+            {
+                <a class="psa-btn psa-btn--primary" href="@UrlDatil(_detalleDatilId, "pdf")" target="_blank" rel="noopener">Ver PDF</a>
+                <a class="psa-btn psa-btn--secondary" href="@UrlDatil(_detalleDatilId, "xml")" target="_blank" rel="noopener">Ver XML</a>
+                <button type="button" class="psa-btn psa-btn--secondary" @onclick="SolicitarAnulacion" disabled="@_anulando">
+                    @(_anulando ? "Enviando…" : "Solicitar anulación")
+                </button>
+            }
+            @if (_avisoAnulacion is not null)
+            {
+                <span class="psa-muted" style="margin-left:.5rem">@_avisoAnulacion</span>
+            }
+            <button type="button" class="psa-btn psa-btn--ghost" @onclick="CerrarDetalle">Cerrar</button>
+        </Footer>
+    </PsaModal>
+}
+
+@code {
+    [Parameter, EditorRequired] public TipoComprobante Tipo { get; set; }
+
+    private InfoTipo Info => Tipos.De(Tipo);
+
+    private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
+    private const string DatilVerBase = "https://app.datil.co/ver/";
+    private const int Tope = 200;
+    private enum Col { Fecha, Empresa, Numero, Persona, Iva, Total, Ambiente }
+    private enum ColP { Empresa, Pendientes, Guardados, Ultima }
+
+    private ServicioComprobantes? _servicio;
+    private TableroComprobantes? _tablero;
+    private ServicioEstadoSri? _estadoSri;
+    private EmpresaActualService? _empresaActual;
+
+    private string? _ruc;
+    private string? _empresaNombre;
+    private short _ambiente = 2;
+    private string _usuario = "web";
+
+    private bool _permisosCargados;
+    private bool _puedeVer;
+    private bool _puedeGenerar;
+    private bool _puedeLote;
+
+    // Alcance multi-empresa (como Retenciones): disponible para quien puede generar.
+    private bool _verTodas;
+    private IReadOnlyList<EmpresaDelUsuario> _empresasUsuario = Array.Empty<EmpresaDelUsuario>();
+    private IReadOnlyList<FilaPanorama>? _panorama;
+    private bool _panoramaCargando;
+    private string? _empresaSel;
+    private string? _empresaSelNombre;
+    private ColP _panCol = ColP.Pendientes;
+    private bool _panAsc;
+
+    private DateOnly _desde = DateOnly.FromDateTime(DateTime.Today.AddDays(-30));
+    private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
+
+    private bool _cargando;
+    private bool _generando;
+    private bool _incluirPendientes = true;
+    private string? _error;
+
+    private IReadOnlyList<ComprobanteReciente> _emitidos = Array.Empty<ComprobanteReciente>();
+    private IReadOnlyList<PendienteComprobante> _pendientes = Array.Empty<PendienteComprobante>();
+    private readonly Dictionary<string, ResultadoComprobante> _resultados = new();
+    private ResumenLote? _resumenLote;
+
+    // Estado en el SRI (columna + verificación individual y masiva).
+    private Dictionary<(string Ruc, int RefId), EstadoSri> _estados = new();
+    private bool _verificando;
+    private int _verificandoId;
+    private int _progreso;
+    private int _totalVerificar;
+    private string? _avisoSri;
+
+    // Popup de detalle.
+    private ComprobanteDetalle? _detalle;
+    private RetencionDetalle? _detalleRet;
+    private bool _detalleCargando;
+    private string? _detalleRuc;
+    private string? _detalleNumero;
+    private string? _detalleDatilId;
+    private bool _anulando;
+    private string? _avisoAnulacion;
+
+    private string _fEmpresa = "", _fNumero = "", _fPersona = "", _fAmbiente = "", _fDatil = "", _fEstadoSri = "";
+    private Col _ordCol = Col.Fecha;
+    private bool _ordAsc;
+
+    // RUC contra el que se listan/generan comprobantes de una sola empresa.
+    // En modo "ver todas" sin empresa elegida es null (vista consolidada).
+    private string? RucTrabajo => _verTodas ? _empresaSel : _ruc;
+    private bool ModoMulti => _verTodas && _empresaSel is null;
+    private bool MostrarColEmpresa => ModoMulti;
+    private bool MostrarEstadoSri => _estadoSri?.Disponible == true;
+
+    // Fecha, [Empresa], Número, Secuencial, Persona, [IVA], Total, Ambiente, Datil, [Estado SRI], PDF.
+    private int Cols => 8 + (MostrarColEmpresa ? 1 : 0) + (Info.EsRetencion ? 0 : 1) + (MostrarEstadoSri ? 1 : 0);
+
+    private string TituloLista => _verTodas && _empresaSelNombre is not null
+        ? $"{Info.Titulo} — {_empresaSelNombre}"
+        : Info.Titulo;
+
+    private string TituloDetalle =>
+        _detalleNumero is null ? Cap(Info.Singular) : $"{Cap(Info.Singular)} {_detalleNumero}";
+
+    // "Ver todas las empresas" se ofrece a quien puede generar / procesar lote en
+    // su empresa (mismo gate que el botón «Procesar lote»). Es solo lectura de los
+    // pendientes de las empresas asignadas al usuario.
+    private bool PuedeTodas => _puedeGenerar;
+
+    // Verificar UNA fila: cualquiera que vea el listado. Verificar en MASA: solo con permiso de lote
+    // (son cientos de consultas al SRI).
+    private bool PuedeVerificar => MostrarEstadoSri && _puedeVer;
+    private bool PuedeVerificarMasiva => MostrarEstadoSri && _puedeLote;
+
+    private List<ComprobanteAVerificar> CandidatosSri =>
+        _estadoSri is null || !MostrarEstadoSri
+            ? new List<ComprobanteAVerificar>()
+            : ServicioEstadoSri.SeleccionarCandidatos(
+                _emitidos.Where(e => e.Emitido).Select(EnComprobante),
+                _estados, _estadoSri.Umbral, DateTime.Today, DateTime.UtcNow);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _servicio = Sp.GetService<ServicioComprobantes>();
+        _tablero = Sp.GetService<TableroComprobantes>();
+        _estadoSri = Sp.GetService<ServicioEstadoSri>();
+        _empresaActual = Sp.GetService<EmpresaActualService>();
+        if (_empresaActual is not null) _empresaActual.Cambio += AlCambiar;
+
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _usuario = state.User.Identity?.Name ?? "web";
+
+        await AplicarEmpresa();
+    }
+
+    private async void AlCambiar()
+    {
+        await AplicarEmpresa();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AplicarEmpresa()
+    {
+        _ruc = _empresaActual?.Ruc;
+        _empresaNombre = _empresaActual?.Nombre;
+        _ambiente = (short)(_empresaActual?.Ambiente ?? Ambiente.Produccion);
+        _emitidos = Array.Empty<ComprobanteReciente>();
+        _pendientes = Array.Empty<PendienteComprobante>();
+        _estados = new();
+        _panorama = null;
+        _empresaSel = null;
+        _empresaSelNombre = null;
+        _resultados.Clear();
+        _resumenLote = null;
+        _error = null;
+        _avisoSri = null;
+        _permisosCargados = false;
+        ResetFiltros();
+
+        if (_ruc is null || _servicio is null) return;
+
+        var dir = Sp.GetService<ISecurityDirectory>();
+        if (dir is null)
+        {
+            _puedeVer = _puedeGenerar = _puedeLote = true;
+        }
+        else
+        {
+            var permisos = await dir.PermisosAsync(_usuario, _ruc);
+            var i = Info;
+            _puedeLote = permisos.Contains(i.PermisoLote);
+            _puedeVer = permisos.Contains(i.PermisoVer) || permisos.Contains(i.PermisoHacer) || _puedeLote;
+            _puedeGenerar = permisos.Contains(i.PermisoHacer) || _puedeLote;
+        }
+
+        _empresasUsuario = dir is null
+            ? Array.Empty<EmpresaDelUsuario>()
+            : await dir.EmpresasDelUsuarioAsync(_usuario);
+        if (!PuedeTodas) _verTodas = false;
+
+        _permisosCargados = true;
+
+        await Recargar();
+    }
+
+    private async Task AlternarAlcance()
+    {
+        _verTodas = !_verTodas;
+        _empresaSel = null;
+        _empresaSelNombre = null;
+        _resumenLote = null;
+        _resultados.Clear();
+        _error = null;
+        ResetFiltros();
+        await Recargar();
+    }
+
+    private async Task SeleccionarEmpresa(FilaPanorama f)
+    {
+        if (_empresaSel == f.Ruc)
+        {
+            await QuitarSeleccion();
+            return;
+        }
+        _empresaSel = f.Ruc;
+        _empresaSelNombre = f.Empresa;
+        _resumenLote = null;
+        await Recargar();
+    }
+
+    private async Task QuitarSeleccion()
+    {
+        _empresaSel = null;
+        _empresaSelNombre = null;
+        _resumenLote = null;
+        await Recargar();
+    }
+
+    private void ResetFiltros()
+    {
+        _fEmpresa = _fNumero = _fPersona = _fAmbiente = _fDatil = _fEstadoSri = "";
+        _ordCol = Col.Fecha;
+        _ordAsc = false;
+        _desde = DateOnly.FromDateTime(DateTime.Today.AddDays(-30));
+        _hasta = DateOnly.FromDateTime(DateTime.Today);
+    }
+
+    private async Task Recargar()
+    {
+        if (_tablero is null || _servicio is null || _ruc is null) return;
+        _cargando = true;
+        _error = null;
+        _avisoSri = null;
+        try
+        {
+            var d = _desde.ToDateTime(TimeOnly.MinValue);
+            var h = _hasta.ToDateTime(TimeOnly.MinValue);
+
+            await CargarPanorama(d, h);
+
+            if (ModoMulti)
+            {
+                var rucs = _empresasUsuario.Select(e => e.Ruc).ToList();
+                _emitidos = rucs.Count == 0
+                    ? Array.Empty<ComprobanteReciente>()
+                    : await _tablero.RecientesAsync(rucs, Info.CodDoc, d, h, Tope);
+                _pendientes = Array.Empty<PendienteComprobante>();
+            }
+            else
+            {
+                var ruc = RucTrabajo!;
+                _emitidos = await _tablero.RecientesAsync(ruc, Info.CodDoc, d, h, Tope);
+
+                if (_incluirPendientes)
+                {
+                    try
+                    {
+                        _pendientes = await ListarPendientesSinEmitidosAsync(ruc, d, h);
+                    }
+                    catch (Exception ex)
+                    {
+                        _pendientes = Array.Empty<PendienteComprobante>();
+                        _error = PendientesNoDisponibles(ex);
+                        Logger.LogWarning(ex, "Pendientes {Tipo} de {Ruc}", Tipo, ruc);
+                    }
+                }
+                else
+                {
+                    _pendientes = Array.Empty<PendienteComprobante>();
+                }
+            }
+
+            await CargarEstados();
+        }
+        catch (Exception ex)
+        {
+            _error = $"No se pudo cargar: {ex.Message}";
+            Logger.LogError(ex, "Recargar {Tipo} de {Ruc}", Tipo, _ruc);
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task CargarEstados()
+    {
+        if (_estadoSri is null || !_estadoSri.Disponible || _emitidos.Count == 0)
+        {
+            _estados = new();
+            return;
+        }
+        try
+        {
+            var guardados = await _estadoSri.ObtenerAsync(Tipo, _emitidos.Select(e => (e.Ruc, e.FacturaId)).ToList());
+            _estados = new Dictionary<(string Ruc, int RefId), EstadoSri>(guardados);
+        }
+        catch (Exception ex)
+        {
+            _estados = new();
+            Logger.LogWarning(ex, "Estados SRI de {Tipo}", Tipo);
+        }
+    }
+
+    private async Task<IReadOnlyList<PendienteComprobante>> ListarPendientesSinEmitidosAsync(
+        string ruc, DateTime d, DateTime h)
+    {
+        var crudos = await _servicio!.ListarPendientesAsync(Tipo, ruc, _ambiente, d, h);
+        // Descontar los que ya se emitieron (están en Facturas con DatilId), para no
+        // mostrarlos duplicados en «guardados» y «pendientes». Retenciones ya vienen filtradas.
+        var yaEmitidos = await _tablero!.PostOrdersEmitidosAsync(ruc, Info.CodDoc);
+        return crudos
+            .Where(p => !string.IsNullOrEmpty(p.PostOrder) && !yaEmitidos.Contains(p.PostOrder))
+            .ToList();
+    }
+
+    private async Task CargarPanorama(DateTime d, DateTime h)
+    {
+        if (_tablero is null) return;
+        _panoramaCargando = true;
+        try
+        {
+            var empresas = _verTodas
+                ? _empresasUsuario.Select(e => (e.Ruc, e.Nombre)).ToList()
+                : new List<(string Ruc, string Nombre)> { (_ruc!, _empresaNombre ?? _ruc!) };
+            _panorama = await _tablero.PanoramaAsync(empresas, Info.CodDoc,
+                async (ruc, ct) => (await ListarPendientesSinEmitidosAsync(ruc, d, h)).Count);
+        }
+        catch (Exception ex)
+        {
+            _panorama = Array.Empty<FilaPanorama>();
+            _error = $"No se pudo cargar el panorama: {ex.Message}";
+            Logger.LogError(ex, "Panorama {Tipo}", Tipo);
+        }
+        finally
+        {
+            _panoramaCargando = false;
+        }
+    }
+
+    private static string PendientesNoDisponibles(Exception ex)
+    {
+        var baseNoDisponible = ex.Message.Contains("2301")
+            || ex.Message.Contains("Cannot locate the named database", StringComparison.OrdinalIgnoreCase);
+        return baseNoDisponible
+            ? "No se pudieron leer los pendientes: la base de Sage 50 de esta empresa no está disponible en esta máquina."
+            : $"No se pudieron leer los pendientes de Sage 50: {Acortar(ex.Message)}";
+    }
+
+    private async Task Generar(string postOrder)
+    {
+        var ruc = RucTrabajo;
+        if (_servicio is null || ruc is null || !_puedeGenerar) return;
+        _generando = true;
+        try
+        {
+            _resultados[postOrder] = await _servicio.ProcesarUnoAsync(Tipo, ruc, postOrder, _ambiente, _usuario);
+            await Recargar();
+        }
+        catch (Exception ex)
+        {
+            _resultados[postOrder] = ResultadoComprobante.Error(postOrder, string.Empty, ex.Message);
+            Logger.LogError(ex, "Generar {Tipo} {PostOrder}", Tipo, postOrder);
+        }
+        finally
+        {
+            _generando = false;
+        }
+    }
+
+    private async Task ProcesarLote()
+    {
+        var ruc = RucTrabajo;
+        if (_servicio is null || ruc is null || !_puedeGenerar) return;
+        _generando = true;
+        _error = null;
+        try
+        {
+            var d = _desde.ToDateTime(TimeOnly.MinValue);
+            var h = _hasta.ToDateTime(TimeOnly.MinValue);
+            _resumenLote = await _servicio.ProcesarLoteAsync(Tipo, ruc, d, h, _ambiente, _usuario);
+            foreach (var r in _resumenLote.Resultados) _resultados[r.PostOrder] = r;
+            await Recargar();
+        }
+        catch (Exception ex)
+        {
+            _error = $"El lote falló: {ex.Message}";
+            Logger.LogError(ex, "Lote {Tipo} de {Ruc}", Tipo, ruc);
+        }
+        finally
+        {
+            _generando = false;
+        }
+    }
+
+    // ---------------------------------------------------------------- Estado en el SRI
+
+    private ComprobanteAVerificar EnComprobante(ComprobanteReciente r) =>
+        new(Tipo, r.Ruc, r.FacturaId, r.Fecha, r.DatilId, r.Ambiente);
+
+    private EstadoSri EstadoDe(ComprobanteReciente r) =>
+        _estados.TryGetValue((r.Ruc, r.FacturaId), out var e) ? e : EstadoSri.SinVerificar;
+
+    private async Task VerificarUna(ComprobanteReciente r)
+    {
+        if (_estadoSri is null || _verificando) return;
+        _verificandoId = r.FacturaId;
+        _avisoSri = null;
+        try
+        {
+            var res = await _estadoSri.VerificarAsync(EnComprobante(r));
+            if (res.Estado is not null)
+            {
+                _estados[(r.Ruc, r.FacturaId)] = res;
+            }
+            else if (res.Detalle is not null)
+            {
+                _avisoSri = $"{Cap(Info.Singular)} {r.Numero}: {res.Detalle}";
+            }
+        }
+        finally
+        {
+            _verificandoId = 0;
+        }
+    }
+
+    private async Task VerificarMasiva()
+    {
+        if (_estadoSri is null || _verificando || !_puedeLote) return;
+        var candidatos = CandidatosSri;
+        if (candidatos.Count == 0) return;
+
+        _verificando = true;
+        _progreso = 0;
+        _totalVerificar = candidatos.Count;
+        _avisoSri = null;
+        try
+        {
+            var avance = new Progress<int>(n =>
+            {
+                _progreso = n;
+                _ = InvokeAsync(StateHasChanged);
+            });
+            var resumen = await _estadoSri.VerificarVariosAsync(candidatos, avance);
+            await CargarEstados();
+
+            _avisoSri = $"Verificación en el SRI: {resumen.Verificados} verificados"
+                + (resumen.Anulados > 0 ? $", {resumen.Anulados} ANULADOS" : "")
+                + (resumen.NoVerificables > 0 ? $", {resumen.NoVerificables} no verificables" : "")
+                + (resumen.ConErrores > 0 ? $", {resumen.ConErrores} con error ({Acortar(string.Join(" · ", resumen.Mensajes.Take(2)))})" : "")
+                + ".";
+        }
+        catch (Exception ex)
+        {
+            _avisoSri = $"La verificación falló: {ex.Message}";
+            Logger.LogError(ex, "Verificación masiva {Tipo}", Tipo);
+        }
+        finally
+        {
+            _verificando = false;
+        }
+    }
+
+    // ---------------------------------------------------------------- Detalle + anulación
+
+    private async Task AbrirDetalle(ComprobanteReciente r)
+    {
+        if (_tablero is null) return;
+        _detalle = null;
+        _detalleRet = null;
+        _avisoAnulacion = null;
+        _detalleRuc = r.Ruc;
+        _detalleNumero = r.Numero;
+        _detalleDatilId = r.DatilId;
+        _detalleCargando = true;
+        try
+        {
+            if (Info.EsRetencion)
+            {
+                _detalleRet = await Sp.GetService<TableroRetenciones>()!.DetalleAsync(r.FacturaId);
+            }
+            else
+            {
+                _detalle = await _tablero.DetalleAsync(r.FacturaId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Detalle {Tipo} {Id}", Tipo, r.FacturaId);
+        }
+        finally
+        {
+            _detalleCargando = false;
+        }
+    }
+
+    private void CerrarDetalle()
+    {
+        _detalle = null;
+        _detalleRet = null;
+        _detalleCargando = false;
+        _detalleNumero = null;
+        _detalleDatilId = null;
+        _avisoAnulacion = null;
+    }
+
+    private async Task SolicitarAnulacion()
+    {
+        var svc = Sp.GetService<SolicitudAnulacion>();
+        if (svc is null) { _avisoAnulacion = "La solicitud de anulación no está disponible."; return; }
+
+        var ruc = _detalleRuc ?? _ruc;
+        if (ruc is null || _detalleNumero is null) { _avisoAnulacion = "No hay comprobante seleccionado."; return; }
+
+        _anulando = true;
+        _avisoAnulacion = null;
+        try
+        {
+            var r = await svc.EnviarAsync(Tipo, ruc, _usuario, _detalleNumero, _detalleDatilId);
+            _avisoAnulacion = r.Mensaje;
+        }
+        catch (Exception ex)
+        {
+            _avisoAnulacion = "Error al enviar la solicitud: " + ex.Message;
+            Logger.LogError(ex, "Solicitud de anulación de {Tipo}", Tipo);
+        }
+        finally
+        {
+            _anulando = false;
+        }
+    }
+
+    // ---------------------------------------------------------------- Vista (filtro + orden)
+
+    private IReadOnlyList<ComprobanteReciente> Vista()
+    {
+        IEnumerable<ComprobanteReciente> q = _emitidos;
+
+        if (_fEmpresa.Length > 0)
+            q = q.Where(r => r.Empresa.Contains(_fEmpresa, StringComparison.OrdinalIgnoreCase)
+                          || r.Ruc.Contains(_fEmpresa, StringComparison.OrdinalIgnoreCase));
+        if (_fNumero.Length > 0)
+            q = q.Where(r => r.Numero.Contains(_fNumero, StringComparison.OrdinalIgnoreCase));
+        if (_fPersona.Length > 0)
+            q = q.Where(r => (r.PersonaNombre ?? r.PersonaId ?? "").Contains(_fPersona, StringComparison.OrdinalIgnoreCase));
+        if (short.TryParse(_fAmbiente, out var amb))
+            q = q.Where(r => r.Ambiente == amb);
+        if (_fDatil == "ok") q = q.Where(r => r.Emitido);
+        else if (_fDatil == "sinid") q = q.Where(r => !r.Emitido);
+
+        if (_fEstadoSri.Length > 0)
+        {
+            q = _fEstadoSri switch
+            {
+                "sin" => q.Where(r => r.Emitido && EstadoDe(r).Estado is null),
+                "aut" => q.Where(r => EstadoDe(r).Estado == nameof(EstadoComprobanteSri.Autorizado)),
+                "anul" => q.Where(r => EstadoSriPresentacion.NoVigente(EstadoDe(r).Estado)),
+                "otro" => q.Where(r => EstadoDe(r).Estado is { } e
+                    && e != nameof(EstadoComprobanteSri.Autorizado) && !EstadoSriPresentacion.NoVigente(e)),
+                _ => q,
+            };
+        }
+
+        q = _ordCol switch
+        {
+            Col.Empresa => Orden(q, r => r.Empresa),
+            Col.Numero => Orden(q, r => r.Numero),
+            Col.Persona => Orden(q, r => r.PersonaNombre ?? r.PersonaId ?? ""),
+            Col.Iva => Orden(q, r => r.Iva),
+            Col.Total => Orden(q, r => r.Total),
+            Col.Ambiente => Orden(q, r => r.Ambiente),
+            _ => Orden(q, r => r.Fecha),
+        };
+        return q.ToList();
+    }
+
+    private IEnumerable<ComprobanteReciente> Orden<TKey>(IEnumerable<ComprobanteReciente> q, Func<ComprobanteReciente, TKey> key)
+        => _ordAsc ? q.OrderBy(key) : q.OrderByDescending(key);
+
+    private void Ordenar(Col col)
+    {
+        if (_ordCol == col) _ordAsc = !_ordAsc;
+        else { _ordCol = col; _ordAsc = false; }
+    }
+
+    private MarkupString Flecha(Col col) =>
+        new(_ordCol == col ? (_ordAsc ? " ▲" : " ▼") : "");
+
+    private IReadOnlyList<FilaPanorama> PanoramaVista()
+    {
+        if (_panorama is null) return Array.Empty<FilaPanorama>();
+
+        IEnumerable<FilaPanorama> q = _panorama;
+        if (_fEmpresa.Length > 0)
+            q = q.Where(f => f.Empresa.Contains(_fEmpresa, StringComparison.OrdinalIgnoreCase)
+                          || f.Ruc.Contains(_fEmpresa, StringComparison.OrdinalIgnoreCase));
+
+        q = _panCol switch
+        {
+            ColP.Empresa => _panAsc ? q.OrderBy(f => f.Empresa) : q.OrderByDescending(f => f.Empresa),
+            ColP.Guardados => _panAsc ? q.OrderBy(f => f.Guardados) : q.OrderByDescending(f => f.Guardados),
+            ColP.Ultima => _panAsc ? q.OrderBy(f => f.UltimaEmision ?? DateTime.MinValue) : q.OrderByDescending(f => f.UltimaEmision ?? DateTime.MinValue),
+            _ => _panAsc ? q.OrderBy(f => f.Pendientes) : q.OrderByDescending(f => f.Pendientes),
+        };
+        return q.ToList();
+    }
+
+    private void OrdenarPan(ColP col)
+    {
+        if (_panCol == col) _panAsc = !_panAsc;
+        else { _panCol = col; _panAsc = false; }
+    }
+
+    private MarkupString FlechaPan(ColP col) =>
+        new(_panCol == col ? (_panAsc ? " ▲" : " ▼") : "");
+
+    private bool TieneFiltros =>
+        _fEmpresa.Length > 0 || _fNumero.Length > 0 || _fPersona.Length > 0
+        || _fAmbiente.Length > 0 || _fDatil.Length > 0 || _fEstadoSri.Length > 0;
+
+    private void LimpiarFiltros() => _fEmpresa = _fNumero = _fPersona = _fAmbiente = _fDatil = _fEstadoSri = "";
+
+    private static string ClaseFiltro(string valor) =>
+        "psa-input psa-input--sm" + (string.IsNullOrEmpty(valor) ? "" : " psa-input--activo");
+
+    private static string Cap(string s) => s.Length == 0 ? s : char.ToUpper(s[0]) + s[1..];
+
+    private static string AmbienteTexto(short ambiente) => ambiente == 1 ? "Pruebas" : "Producción";
+
+    private static string Acortar(string mensaje)
+    {
+        mensaje = mensaje.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        return mensaje.Length <= 200 ? mensaje : mensaje[..200] + "…";
+    }
+
+    private static string UrlDatil(string datilId, string formato) => $"{DatilVerBase}{datilId}/{formato}";
+
+    public void Dispose()
+    {
+        if (_empresaActual is not null) _empresaActual.Cambio -= AlCambiar;
+    }
+}

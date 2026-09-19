@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using PsaWeb.Conciliacion.Data;
 
@@ -11,9 +12,11 @@ using PsaWeb.Conciliacion.Data;
 namespace PsaWeb.Conciliacion.Migrations
 {
     [DbContext(typeof(ConciliacionDbContext))]
-    partial class ConciliacionDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260919191822_EstadoSriEmitidos")]
+    partial class EstadoSriEmitidos
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

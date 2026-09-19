@@ -338,16 +338,7 @@ else
         "border:none;background:none;padding:0;text-align:left;cursor:pointer;border-radius:8px;"
         + (c == _filtro ? "outline:2px solid var(--psa-magenta,#B40046)" : "outline:none");
 
-    private static (string Texto, string Clase) EstadoVisual(string? estado) => estado switch
-    {
-        null => ("Sin verificar", "psa-estado--warn"),
-        nameof(EstadoComprobanteSri.Autorizado) => ("Autorizado", "psa-estado--ok"),
-        nameof(EstadoComprobanteSri.NoAutorizado) => ("NO AUTORIZADO", "psa-estado--bad"),
-        nameof(EstadoComprobanteSri.FormatoInvalido) => ("Formato inválido", "psa-estado--warn"),
-        nameof(EstadoComprobanteSri.NoEncontrado) => ("No encontrado", "psa-estado--warn"),
-        nameof(EstadoComprobanteSri.ErrorServicio) => ("Error del servicio", "psa-estado--warn"),
-        _ => (estado, "psa-estado--warn"),
-    };
+    private static (string Texto, string Clase) EstadoVisual(string? estado) => EstadoSriPresentacion.Visual(estado);
 
     /// <summary>"Subtotal: SRI 969.47 vs Sage 974.32" → ("Subtotal", " SRI 969.47 vs Sage 974.32") para resaltar el campo.</summary>
     private static (string Campo, string Resto) PartirDiferencia(string diferencia)

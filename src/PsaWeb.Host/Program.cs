@@ -12,8 +12,7 @@ using PsaWeb.Modules.Ats;
 using PsaWeb.Datil;
 using PsaWeb.Notificaciones;
 using PsaWeb.PeachEbills;
-using PsaWeb.Modules.Retenciones;
-using PsaWeb.Modules.FacturacionElectronica;
+using PsaWeb.Modules.ComprobantesElectronicos;
 using PsaWeb.Sage50;
 using PsaWeb.Seguridad;
 using PsaWeb.Identidad;
@@ -34,7 +33,7 @@ builder.Services.AddCierreDeCaja(builder.Configuration);
 builder.Services.AddKardex(builder.Configuration); // Kardex de inventarios (solo lectura, empresa de sesión)
 
 // Módulo Retenciones (Ola 1). Solo se registra si hay cadena a PeachEBills; sin
-// ella la página /retenciones muestra un aviso de "no configurado" y el resto del
+// ella las páginas de Comprobantes electrónicos (/fe/*) muestran un aviso de "no configurado" y el resto del
 // sitio (piloto Cierre de Caja) sigue funcionando igual.
 var peachEbillsConfigurado = !string.IsNullOrWhiteSpace(
     builder.Configuration.GetSection(PeachEbillsOptions.SectionName)["ConnectionString"]);
@@ -43,8 +42,7 @@ if (peachEbillsConfigurado)
     builder.Services.AddPeachEbills(builder.Configuration);
     builder.Services.AddDatil(builder.Configuration);
     builder.Services.AddNotificaciones(builder.Configuration); // SMTP (solicitud de anulación); inerte si no hay Correo:Servidor
-    builder.Services.AddRetenciones(builder.Configuration);
-    builder.Services.AddFacturacionElectronica(builder.Configuration); // Ola 1 app #2: facturas / NC / liquidaciones
+    builder.Services.AddComprobantesElectronicos(builder.Configuration); // Ola 1 app #2: facturas / NC / liquidaciones
     builder.Services.AddAts(builder.Configuration); // Ola 1 app #3: ATS (requiere PeachEBills por dicIdentityTypeATS/Establishments/Transmitter)
     // Shell F-Shell-0: directorio de seguridad (empresas + permisos por usuario)
     // y estado de sesión de empresa/ambiente.
@@ -152,7 +150,7 @@ app.Logger.LogInformation(
         ? $", repositorio {(PsaWeb.Modules.Ats.AtsModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50")}"
         : "");
 app.Logger.LogInformation(
-    "Retenciones: módulo {Estado}.",
+    "Comprobantes electrónicos (facturas, retenciones, NC, liquidaciones): módulo {Estado}.",
     peachEbillsConfigurado ? "ACTIVO (PeachEBills configurado)" : "INACTIVO (sin PeachEbills:ConnectionString)");
 app.Logger.LogInformation(
     "Plataforma (identidad local): {Estado}.",
@@ -243,8 +241,7 @@ app.MapRazorComponents<App>()
     .AddAdditionalAssemblies(
         typeof(PsaWeb.Modules.CierreDeCaja.ModuleInfo).Assembly,
         typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly,
-        typeof(RetencionesModule).Assembly,
-        typeof(PsaWeb.Modules.FacturacionElectronica.FacturacionElectronicaModule).Assembly,
+        typeof(PsaWeb.Modules.ComprobantesElectronicos.ComprobantesElectronicosModule).Assembly,
         typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly,
         typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly);
 

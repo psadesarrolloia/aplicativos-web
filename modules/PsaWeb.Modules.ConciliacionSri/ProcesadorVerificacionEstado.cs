@@ -92,7 +92,8 @@ public sealed class ProcesadorVerificacionEstado(
         long comprobanteId, string claveAcceso, CancellationToken cancellationToken = default)
     {
         var resultado = await verificador.VerificarAsync(claveAcceso, cancellationToken);
-        if (resultado.Estado != EstadoComprobanteSri.ErrorServicio)
+        // FueraDeRango no se guarda: no pisa un estado bueno con un "no se puede consultar".
+        if (resultado.Estado is not (EstadoComprobanteSri.ErrorServicio or EstadoComprobanteSri.FueraDeRango))
         {
             await repositorioSri.ActualizarEstadoAsync(comprobanteId, resultado.Estado.ToString(), DateTime.UtcNow, cancellationToken);
         }
@@ -162,6 +163,11 @@ public sealed class ProcesadorVerificacionEstado(
             try
             {
                 var resultado = await verificador.VerificarAsync(fila.ClaveAcceso!, cancellationToken);
+                if (resultado.Estado == EstadoComprobanteSri.FueraDeRango)
+                {
+                    continue; // el WS no responde por este comprobante (fuera de rango): ni error ni verificado
+                }
+
                 if (resultado.Estado == EstadoComprobanteSri.ErrorServicio)
                 {
                     conErrores++;
@@ -173,7 +179,7 @@ public sealed class ProcesadorVerificacionEstado(
                     fila.Sri!.Id, resultado.Estado.ToString(), ahora, cancellationToken);
                 verificados++;
 
-                if (resultado.Estado == EstadoComprobanteSri.NoAutorizado)
+                if (resultado.Estado is EstadoComprobanteSri.NoAutorizado or EstadoComprobanteSri.Anulado or EstadoComprobanteSri.Otro)
                 {
                     anulados++;
                     mensajes.Add($"{fila.ClaveAcceso}: NO AUTORIZADO en el SRI — contabilizado como vigente en Sage.");
