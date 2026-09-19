@@ -35,7 +35,7 @@ public sealed class ConciliacionOptions
         /// <summary>Espera antes de la primera corrida (deja arrancar el Host). Por defecto 2 minutos.</summary>
         public TimeSpan RetrasoInicial { get; set; } = TimeSpan.FromMinutes(2);
 
-        /// <summary>Ventana móvil de <c>FechaEmision</c> a considerar en cada corrida. Por defecto 90 días.</summary>
+        /// <summary>Ventana móvil de <c>FechaEmision</c> a considerar en cada corrida. Por defecto 90 días, pero nunca más atrás de lo que acepta el WS del SRI (<see cref="RangoConsultaSri"/>).</summary>
         public int VentanaDias { get; set; } = 90;
     }
 }

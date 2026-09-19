@@ -161,8 +161,8 @@ El script SQL lo genera este plan y lo ejecuta el usuario.
 | F2 ✔ | Módulo único `PsaWeb.Modules.ComprobantesElectronicos` (renombre de FE) que **absorbe** el backend de Retenciones (`Retenciones/`); `TipoComprobante` + `Tipos` (registro de los 4 tipos); `ServicioComprobantes` (fachada de generación por tipo; retenciones detrás del candado single-flight del worker); `ProcesadorRetenciones.ListarPendientesAsync` (con rango, cruza `PurchaseOrderSync` con la fecha en Sage — `LectorComprasPendientes`), `ProcesarUnaCompraAsync`, `ProcesarLoteAsync`; `TableroComprobantes` lee también `TaxWithHoldings` (total retenido, sin IVA). Proyectos `…Retenciones` y sus tests retirados; tests unificados en `…ComprobantesElectronicos.Tests`. |
 | F3 ✔ | Una sola página `Comprobantes.razor` para los 4 (`/fe/facturas`, `/fe/retenciones`, `/fe/notas-credito`, `/fe/liquidaciones`; `/retenciones` redirige): panorama por empresa, Generar por fila, Procesar lote, rango de fechas, popup por tipo, **Solicitar anulación** en los 4 (`SolicitudAnulacion` generalizada). |
 | F4 ✔ | Estado SRI: tabla `EstadosSriComprobantes` (migración `EstadoSriEmitidos` en `PsaWeb.Conciliacion`, se aplica sola al arrancar), `ServicioEstadoSri` (SRI en su rango, Datil hasta 2 años, clave desde `DatilRequests` → Datil), columna «Estado en SRI» con la misma presentación que Conciliación (`EstadoSriPresentacion`), «verificar» por fila (permiso Ver) y **«Verificar en el SRI (N)»** masivo (permiso Lote, 5 llamadas simultáneas). El cliente del SRI ahora distingue `ANULADO`/`FueraDeRango`/`Otro` y reintenta 3 veces. **Desvío:** la clave de acceso se recupera *al verificar* (perezoso) en vez de un backfill masivo previo — mismo resultado sin migrar 74 mil filas. |
-| F5 | Worker de verificación para los 4 + ajuste de la ventana de Conciliación. |
-| F6 | Seguimiento de anulaciones y discrepancias. |
+| F5 ✔ | `VerificacionComprobantesWorker` (cada 8 h, arranca 3 min después del Host; `ComprobantesElectronicos:Verificacion:{Habilitado,Intervalo,RetrasoInicial,HistoricoPorCorrida}`): verifica los 4 tipos — lo emitido dentro del rango del SRI (re-verifica cada 7 días) y completa el histórico de 2 años de a poco vía Datil (300 por corrida, lo más nuevo primero, solo lo nunca verificado). Conciliación: su ventana ya no pasa del rango del SRI (`RangoConsultaSri`) y «fuera de rango» dejó de contarse como error. |
+| F6 ✔ | Tabla `SolicitudesAnulacion` (migración `SolicitudesAnulacion`; una sola solicitud abierta por comprobante, historial de las cerradas). «Solicitar anulación» ahora la **registra** y luego manda el correo. `ServicioAnulaciones` + `MaquinaAnulacion`: el worker sigue las abiertas (`Anulada` si el SRI dice ANULADO; `SinEfecto` a los 5 días en retenciones/NC si el SRI sigue AUTORIZADO; facturas y liquidaciones no vencen solas). Quien tiene «Autorizar anulación» puede **retirar** una solicitud. Interfaz: etiqueta «Anulación solicitada · día N», **⚠ discrepancia** (SRI anulado/no autorizado pero vigente en PeachEBills, o al revés) y filtros «Con anulación solicitada» / «Discrepancias». |
 
 Cada fase se despliega por separado (redeploy completo o swap de DLL según el caso), siempre en DRY-RUN.
 
@@ -203,3 +203,12 @@ Lectura:
 - El WS del SRI podría cambiar/ limitar consultas; Datil como respaldo.
 - Sin casos reales de «pendiente de aceptación de anulación» no se puede afirmar cómo se ve; se
   guarda la respuesta cruda para no perder información desconocida.
+
+## 11. Matiz de F6 — «SinEfecto» en vez de «vigente por vencimiento»
+
+El plazo de 5 días corre desde que la **app** registra la solicitud, no desde que alguien la presenta en el
+portal del SRI (el correo llega al Supervisor y la presentación real puede demorar). Por eso a los 5 días con el
+SRI todavía `AUTORIZADO` el seguimiento se cierra como **`SinEfecto`** («la anulación no se reflejó»), no como
+«volvió a vigente»: no podemos distinguir «el receptor no aceptó» de «todavía no se presentó». Una nueva
+solicitud abre un seguimiento nuevo. Los permisos `auCance*` hoy solo habilitan **retirar** una solicitud abierta;
+la anulación misma sigue siendo manual en el SRI.

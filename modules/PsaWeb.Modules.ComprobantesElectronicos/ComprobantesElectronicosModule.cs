@@ -55,6 +55,12 @@ public static class ComprobantesElectronicosModule
         services.AddScoped<ServicioComprobantes>();
         services.AddScoped<SolicitudAnulacion>();
         services.AddScoped<Estado.ServicioEstadoSri>();
+        services.AddScoped<Estado.ServicioAnulaciones>();
+
+        // Worker: sigue las anulaciones abiertas y verifica en el SRI lo emitido (los 4 tipos).
+        services.Configure<Estado.VerificacionComprobantesOptions>(
+            configuration.GetSection(Estado.VerificacionComprobantesOptions.SectionName));
+        services.AddHostedService<Estado.VerificacionComprobantesWorker>();
 
         return services;
     }

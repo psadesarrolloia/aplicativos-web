@@ -16,7 +16,9 @@ public sealed record ComprobanteReciente(
     double Iva,
     double Total,
     string? DatilId,
-    short Ambiente)
+    short Ambiente,
+    // false si PeachEBills lo tiene marcado como anulado (IsValid = 0).
+    bool Valido = true)
 {
     public bool Emitido => !string.IsNullOrWhiteSpace(DatilId);
 }
@@ -106,7 +108,7 @@ public sealed class TableroComprobantes(IDbContextFactory<PeachEbillsContext> co
             .OrderByDescending(t => t.DateIssued)
             .ThenByDescending(t => t.Thid)
             .Take(top)
-            .Select(t => new { t.Thid, t.TransmitterRuc, t.NumberPech, t.DateIssued, t.Secuencial, t.Contact, t.DatilId, t.Ambient })
+            .Select(t => new { t.Thid, t.TransmitterRuc, t.NumberPech, t.DateIssued, t.Secuencial, t.Contact, t.DatilId, t.Ambient, t.IsValid })
             .ToListAsync(cancellationToken);
         if (filas.Count == 0) return Array.Empty<ComprobanteReciente>();
 
@@ -140,7 +142,7 @@ public sealed class TableroComprobantes(IDbContextFactory<PeachEbillsContext> co
                 f.NumberPech, f.DateIssued, f.Secuencial, f.Contact,
                 f.Contact is not null && mapaPersona.TryGetValue((f.TransmitterRuc, f.Contact), out var n) ? n : null,
                 Iva: 0, Total: mapaTotal.GetValueOrDefault(f.Thid),
-                f.DatilId, f.Ambient))
+                f.DatilId, f.Ambient, f.IsValid))
             .ToList();
     }
 
@@ -189,6 +191,7 @@ public sealed class TableroComprobantes(IDbContextFactory<PeachEbillsContext> co
                 f.TotalAmount,
                 f.DatilId,
                 f.Ambient,
+                f.IsValid,
             })
             .ToListAsync(cancellationToken);
 
@@ -233,7 +236,8 @@ public sealed class TableroComprobantes(IDbContextFactory<PeachEbillsContext> co
                     x.IVAValue,
                     x.TotalAmount,
                     x.DatilId,
-                    x.Ambient);
+                    x.Ambient,
+                    x.IsValid);
             })
             .ToList();
     }

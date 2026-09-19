@@ -130,7 +130,9 @@ public sealed class ProcesadorVerificacionEstado(
         string ruc, string nombre, SemaphoreSlim semaforo, CancellationToken cancellationToken)
     {
         var hasta = DateOnly.FromDateTime(DateTime.Today);
-        var desde = hasta.AddDays(-opciones.Value.Worker.VentanaDias);
+        // El WS del SRI solo responde por el mes en curso + el anterior: pedir más solo generaba errores.
+        var desde = DateOnly.FromDateTime(
+            new[] { hasta.AddDays(-opciones.Value.Worker.VentanaDias).ToDateTime(TimeOnly.MinValue), RangoConsultaSri.Inicio(DateTime.Today) }.Max());
 
         IReadOnlyList<FilaConciliacion> filas;
         try

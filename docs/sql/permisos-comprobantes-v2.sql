@@ -33,7 +33,10 @@ INSERT INTO @Nuevos (codigo, nombre, equivalente) VALUES
  (N'mkncBatch',  N'Procesar por Lote: Notas de cr' + NCHAR(233) + N'dito electr' + NCHAR(243) + N'nicas',   N'mksinBatch'),
  (N'qupurchliq', N'Ver Liquidaciones de compra',                                                              N'qupurchtwh'),
  (N'mkpurchliq', N'Hacer Liquidaci' + NCHAR(243) + N'n de compra electr' + NCHAR(243) + N'nica',            N'mkpurchtwh'),
- (N'mkliqBatch', N'Procesar por Lote: Liquidaciones de compra electr' + NCHAR(243) + N'nicas',              N'mkTwhBatch');
+ (N'mkliqBatch', N'Procesar por Lote: Liquidaciones de compra',              N'mkTwhBatch');
+
+-- allowAction: allowCode = nvarchar(10), allowName = nvarchar(50) (medido en PeachEBills).
+IF EXISTS (SELECT 1 FROM @Nuevos WHERE LEN(codigo) > 10 OR LEN(nombre) > 50) THROW 50001, N'Una llave nueva excede el ancho de allowAction.', 1;
 
 -- Roles que recibirían cada llave nueva (los que hoy tienen su equivalente, activo).
 SELECT DISTINCT n.codigo, r.adrRol

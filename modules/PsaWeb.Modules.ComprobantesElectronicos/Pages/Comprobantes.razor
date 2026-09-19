@@ -300,6 +300,8 @@ else
                                         <option value="aut">Autorizado</option>
                                         <option value="anul">Anulado / no autorizado</option>
                                         <option value="otro">Otros</option>
+                                        <option value="sol">Con anulación solicitada</option>
+                                        <option value="disc">⚠ Discrepancias</option>
                                     </select>
                                 </th>
                             }
@@ -354,6 +356,15 @@ else
                                                         @onclick="() => VerificarUna(r)">
                                                     @(_verificandoId == r.FacturaId ? "…" : "verificar")
                                                 </button>
+                                            }
+                                            @if (_abiertas.TryGetValue((r.Ruc, r.FacturaId), out var sol))
+                                            {
+                                                <br /><span class="psa-estado psa-estado--warn" style="font-size:.75rem"
+                                                            title="@TextoSolicitud(sol)">Anulación solicitada · día @MaquinaAnulacion.DiasAbierta(sol.FechaSolicitud, DateTime.UtcNow)</span>
+                                            }
+                                            @if (Discrepancias.Evaluar(est.Estado, r.Valido) is { } disc)
+                                            {
+                                                <br /><span class="psa-estado psa-estado--bad" style="font-size:.75rem" title="@disc">⚠ discrepancia</span>
                                             }
                                         }
                                         else
@@ -570,6 +581,12 @@ else
                 <button type="button" class="psa-btn psa-btn--secondary" @onclick="SolicitarAnulacion" disabled="@_anulando">
                     @(_anulando ? "Enviando…" : "Solicitar anulación")
                 </button>
+                @if (_puedeAnular && HaySolicitudAbiertaDelDetalle)
+                {
+                    <button type="button" class="psa-btn psa-btn--ghost" @onclick="RetirarSolicitud" disabled="@_anulando">
+                        Retirar solicitud
+                    </button>
+                }
             }
             @if (_avisoAnulacion is not null)
             {
@@ -594,6 +611,7 @@ else
     private ServicioComprobantes? _servicio;
     private TableroComprobantes? _tablero;
     private ServicioEstadoSri? _estadoSri;
+    private ServicioAnulaciones? _anulaciones;
     private EmpresaActualService? _empresaActual;
 
     private string? _ruc;
@@ -605,6 +623,7 @@ else
     private bool _puedeVer;
     private bool _puedeGenerar;
     private bool _puedeLote;
+    private bool _puedeAnular; // «Autorizar anulación»: puede retirar solicitudes abiertas
 
     // Alcance multi-empresa (como Retenciones): disponible para quien puede generar.
     private bool _verTodas;
@@ -631,6 +650,7 @@ else
 
     // Estado en el SRI (columna + verificación individual y masiva).
     private Dictionary<(string Ruc, int RefId), EstadoSri> _estados = new();
+    private Dictionary<(string Ruc, int RefId), PsaWeb.Conciliacion.Data.SolicitudAnulacionComprobante> _abiertas = new();
     private bool _verificando;
     private int _verificandoId;
     private int _progreso;
@@ -641,6 +661,7 @@ else
     private ComprobanteDetalle? _detalle;
     private RetencionDetalle? _detalleRet;
     private bool _detalleCargando;
+    private ComprobanteReciente? _detalleRef;
     private string? _detalleRuc;
     private string? _detalleNumero;
     private string? _detalleDatilId;
@@ -690,6 +711,7 @@ else
         _servicio = Sp.GetService<ServicioComprobantes>();
         _tablero = Sp.GetService<TableroComprobantes>();
         _estadoSri = Sp.GetService<ServicioEstadoSri>();
+        _anulaciones = Sp.GetService<ServicioAnulaciones>();
         _empresaActual = Sp.GetService<EmpresaActualService>();
         if (_empresaActual is not null) _empresaActual.Cambio += AlCambiar;
 
@@ -713,6 +735,7 @@ else
         _emitidos = Array.Empty<ComprobanteReciente>();
         _pendientes = Array.Empty<PendienteComprobante>();
         _estados = new();
+        _abiertas = new();
         _panorama = null;
         _empresaSel = null;
         _empresaSelNombre = null;
@@ -728,13 +751,14 @@ else
         var dir = Sp.GetService<ISecurityDirectory>();
         if (dir is null)
         {
-            _puedeVer = _puedeGenerar = _puedeLote = true;
+            _puedeVer = _puedeGenerar = _puedeLote = _puedeAnular = true;
         }
         else
         {
             var permisos = await dir.PermisosAsync(_usuario, _ruc);
             var i = Info;
             _puedeLote = permisos.Contains(i.PermisoLote);
+            _puedeAnular = permisos.Contains(i.PermisoAnular);
             _puedeVer = permisos.Contains(i.PermisoVer) || permisos.Contains(i.PermisoHacer) || _puedeLote;
             _puedeGenerar = permisos.Contains(i.PermisoHacer) || _puedeLote;
         }
@@ -837,6 +861,7 @@ else
             }
 
             await CargarEstados();
+            await CargarAnulaciones();
         }
         catch (Exception ex)
         {
@@ -867,6 +892,28 @@ else
             Logger.LogWarning(ex, "Estados SRI de {Tipo}", Tipo);
         }
     }
+
+    private async Task CargarAnulaciones()
+    {
+        if (_anulaciones is null || !_anulaciones.Disponible || _emitidos.Count == 0)
+        {
+            _abiertas = new();
+            return;
+        }
+        try
+        {
+            var abiertas = await _anulaciones.ObtenerAbiertasAsync(Tipo, _emitidos.Select(e => (e.Ruc, e.FacturaId)).ToList());
+            _abiertas = new Dictionary<(string Ruc, int RefId), PsaWeb.Conciliacion.Data.SolicitudAnulacionComprobante>(abiertas);
+        }
+        catch (Exception ex)
+        {
+            _abiertas = new();
+            Logger.LogWarning(ex, "Solicitudes de anulación de {Tipo}", Tipo);
+        }
+    }
+
+    private static string TextoSolicitud(PsaWeb.Conciliacion.Data.SolicitudAnulacionComprobante s) =>
+        $"Solicitada por {s.SolicitadaPor} el {s.FechaSolicitud.ToLocalTime():dd/MM/yyyy HH:mm}";
 
     private async Task<IReadOnlyList<PendienteComprobante>> ListarPendientesSinEmitidosAsync(
         string ruc, DateTime d, DateTime h)
@@ -1035,6 +1082,7 @@ else
         _detalle = null;
         _detalleRet = null;
         _avisoAnulacion = null;
+        _detalleRef = r;
         _detalleRuc = r.Ruc;
         _detalleNumero = r.Numero;
         _detalleDatilId = r.DatilId;
@@ -1065,9 +1113,38 @@ else
         _detalle = null;
         _detalleRet = null;
         _detalleCargando = false;
+        _detalleRef = null;
         _detalleNumero = null;
         _detalleDatilId = null;
         _avisoAnulacion = null;
+    }
+
+    private bool HaySolicitudAbiertaDelDetalle =>
+        _detalleRef is { } rf && _abiertas.ContainsKey((rf.Ruc, rf.FacturaId));
+
+    private async Task RetirarSolicitud()
+    {
+        if (_detalleRef is not { } rf || _anulaciones is null || !_puedeAnular) return;
+        if (!_abiertas.TryGetValue((rf.Ruc, rf.FacturaId), out var s)) return;
+
+        _anulando = true;
+        try
+        {
+            if (await _anulaciones.CancelarAsync(s.Id, _usuario))
+            {
+                _abiertas.Remove((rf.Ruc, rf.FacturaId));
+                _avisoAnulacion = "Solicitud de anulación retirada.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _avisoAnulacion = "No se pudo retirar la solicitud: " + ex.Message;
+            Logger.LogError(ex, "Retirar solicitud de anulación de {Tipo}", Tipo);
+        }
+        finally
+        {
+            _anulando = false;
+        }
     }
 
     private async Task SolicitarAnulacion()
@@ -1082,8 +1159,20 @@ else
         _avisoAnulacion = null;
         try
         {
+            // Primero se registra (así el seguimiento existe aunque el correo falle) y luego se avisa.
+            var seguimiento = string.Empty;
+            if (_detalleRef is { } rf && _anulaciones is not null)
+            {
+                var sol = await _anulaciones.RegistrarAsync(EnComprobante(rf), rf.Numero, _usuario);
+                if (sol is not null)
+                {
+                    _abiertas[(rf.Ruc, rf.FacturaId)] = sol;
+                    seguimiento = " Se sigue en el SRI hasta que se refleje.";
+                }
+            }
+
             var r = await svc.EnviarAsync(Tipo, ruc, _usuario, _detalleNumero, _detalleDatilId);
-            _avisoAnulacion = r.Mensaje;
+            _avisoAnulacion = r.Mensaje + seguimiento;
         }
         catch (Exception ex)
         {
@@ -1123,6 +1212,8 @@ else
                 "anul" => q.Where(r => EstadoSriPresentacion.NoVigente(EstadoDe(r).Estado)),
                 "otro" => q.Where(r => EstadoDe(r).Estado is { } e
                     && e != nameof(EstadoComprobanteSri.Autorizado) && !EstadoSriPresentacion.NoVigente(e)),
+                "sol" => q.Where(r => _abiertas.ContainsKey((r.Ruc, r.FacturaId))),
+                "disc" => q.Where(r => Discrepancias.Evaluar(EstadoDe(r).Estado, r.Valido) is not null),
                 _ => q,
             };
         }

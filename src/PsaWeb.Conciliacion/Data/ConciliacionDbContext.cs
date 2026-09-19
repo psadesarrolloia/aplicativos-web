@@ -15,6 +15,9 @@ public class ConciliacionDbContext(DbContextOptions<ConciliacionDbContext> optio
     /// <summary>Estado en el SRI de los comprobantes que emitimos (facturas, retenciones, NC, liquidaciones).</summary>
     public DbSet<EstadoSriComprobante> EstadosSriComprobantes => Set<EstadoSriComprobante>();
 
+    /// <summary>Solicitudes de anulación de comprobantes emitidos y su seguimiento.</summary>
+    public DbSet<SolicitudAnulacionComprobante> SolicitudesAnulacion => Set<SolicitudAnulacionComprobante>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -31,6 +34,16 @@ public class ConciliacionDbContext(DbContextOptions<ConciliacionDbContext> optio
             .HasIndex(e => new { e.Ruc, e.ClaveAcceso });
         builder.Entity<EstadoSriComprobante>()
             .HasIndex(e => new { e.Ruc, e.FechaEmision });
+
+        // A lo sumo UNA solicitud abierta por comprobante (las cerradas se acumulan como historial).
+        builder.Entity<SolicitudAnulacionComprobante>()
+            .HasIndex(s => new { s.Ruc, s.CodDoc, s.RefId })
+            .IsUnique()
+            .HasFilter("[Estado] = 'Solicitada'");
+        builder.Entity<SolicitudAnulacionComprobante>()
+            .HasIndex(s => new { s.Ruc, s.CodDoc, s.RefId });
+        builder.Entity<SolicitudAnulacionComprobante>()
+            .HasIndex(s => s.Estado);
     }
 }
 

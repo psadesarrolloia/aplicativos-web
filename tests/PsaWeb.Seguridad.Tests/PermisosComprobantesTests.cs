@@ -25,7 +25,7 @@ public class PermisosComprobantesTests
             .ToList();
 
         Assert.Equal(codigos.Count, codigos.Distinct().Count());
-        Assert.All(codigos, c => Assert.InRange(c.Length, 1, 20)); // allowAction.allowCode = nvarchar(20)
+        Assert.All(codigos, c => Assert.InRange(c.Length, 1, 10)); // allowAction.allowCode = nvarchar(10) (medido en PeachEBills)
     }
 
     [Fact]

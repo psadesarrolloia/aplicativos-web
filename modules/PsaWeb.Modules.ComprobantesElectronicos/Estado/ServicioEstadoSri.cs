@@ -73,9 +73,9 @@ public sealed class ServicioEstadoSri
     // ---------------------------------------------------------------- reglas puras
 
     /// <summary>Primer día del mes anterior: desde ahí el WS del SRI acepta consultas.</summary>
-    public static DateTime InicioRangoSri(DateTime hoy) => new DateTime(hoy.Year, hoy.Month, 1).AddMonths(-1);
+    public static DateTime InicioRangoSri(DateTime hoy) => RangoConsultaSri.Inicio(hoy);
 
-    public static bool EnRangoSri(DateTime fechaEmision, DateTime hoy) => fechaEmision.Date >= InicioRangoSri(hoy);
+    public static bool EnRangoSri(DateTime fechaEmision, DateTime hoy) => RangoConsultaSri.Contiene(fechaEmision, hoy);
 
     public static bool EnAlcance(DateTime fechaEmision, DateTime hoy) =>
         fechaEmision.Date >= hoy.Date.AddYears(-AlcanceAnios);
@@ -126,6 +126,31 @@ public sealed class ServicioEstadoSri
                         || ahoraUtc - g.FechaVerificacion.Value > umbral)
             .ToList();
 
+    /// <summary>
+    /// Qué verifica el worker: (1) lo emitido dentro del rango del SRI, sin verificar o con verificación
+    /// vencida (<paramref name="umbral"/>); (2) del histórico (hasta 2 años) solo lo que <em>nunca</em> se
+    /// verificó, lo más nuevo primero y a lo sumo <paramref name="maxHistorico"/> por corrida — así el
+    /// histórico se completa de a poco (vía Datil) sin martillar el API.
+    /// </summary>
+    public static List<ComprobanteAVerificar> SeleccionarParaWorker(
+        IEnumerable<ComprobanteAVerificar> comprobantes,
+        IReadOnlyDictionary<(string Ruc, int RefId), EstadoSri> guardados,
+        TimeSpan umbral, int maxHistorico, DateTime hoy, DateTime ahoraUtc)
+    {
+        var enAlcance = comprobantes.Where(c => c.Ambiente == 2 && EnAlcance(c.FechaEmision, hoy)).ToList();
+
+        var recientes = SeleccionarCandidatos(
+            enAlcance.Where(c => EnRangoSri(c.FechaEmision, hoy)), guardados, umbral, hoy, ahoraUtc);
+
+        var historico = enAlcance
+            .Where(c => !EnRangoSri(c.FechaEmision, hoy))
+            .Where(c => !guardados.TryGetValue((c.Ruc, c.RefId), out var g) || g.FechaVerificacion is null)
+            .OrderByDescending(c => c.FechaEmision)
+            .Take(Math.Max(0, maxHistorico));
+
+        return recientes.Concat(historico).ToList();
+    }
+
     // ---------------------------------------------------------------- lectura
 
     /// <summary>Estados ya guardados de una lista de comprobantes de un tipo, por (RUC, id).</summary>
@@ -140,15 +165,67 @@ public sealed class ServicioEstadoSri
         var ids = items.Select(i => i.RefId).Distinct().ToArray();
 
         await using var db = new ConciliacionDbContext(_opcionesDb!);
-        var filas = await db.EstadosSriComprobantes.AsNoTracking()
-            .Where(e => e.CodDoc == codDoc && EF.Constant(rucs).Contains(e.Ruc) && EF.Constant(ids).Contains(e.RefId))
-            .ToListAsync(ct);
-
-        foreach (var f in filas)
+        // En tandas: el histórico completo son decenas de miles de ids (IN con literales).
+        foreach (var tanda in ids.Chunk(1000))
         {
-            resultado[(f.Ruc, f.RefId)] = new EstadoSri(f.Estado, f.Fuente, f.Detalle, f.FechaVerificacion, f.ClaveAcceso);
+            var filas = await db.EstadosSriComprobantes.AsNoTracking()
+                .Where(e => e.CodDoc == codDoc && EF.Constant(rucs).Contains(e.Ruc) && EF.Constant(tanda).Contains(e.RefId))
+                .ToListAsync(ct);
+
+            foreach (var f in filas)
+            {
+                resultado[(f.Ruc, f.RefId)] = new EstadoSri(f.Estado, f.Fuente, f.Detalle, f.FechaVerificacion, f.ClaveAcceso);
+            }
         }
         return resultado;
+    }
+
+    /// <summary>Comprobantes emitidos (producción, con id de Datil) de un tipo desde <paramref name="desde"/>.</summary>
+    public async Task<List<ComprobanteAVerificar>> ListarEmitidosAsync(
+        TipoComprobante tipo, DateTime desde, CancellationToken ct = default)
+    {
+        await using var db = await _peach.CreateDbContextAsync(ct);
+        if (tipo == TipoComprobante.Retencion)
+        {
+            var ret = await db.TaxWithHoldings.AsNoTracking()
+                .Where(t => t.Ambient == 2 && t.DatilId != null && t.DateIssued >= desde)
+                .Select(t => new { t.Thid, t.TransmitterRuc, t.DateIssued, t.DatilId, t.Ambient })
+                .ToListAsync(ct);
+            return ret.Select(t => new ComprobanteAVerificar(tipo, t.TransmitterRuc, t.Thid, t.DateIssued, t.DatilId, t.Ambient)).ToList();
+        }
+
+        var codDoc = Tipos.De(tipo).CodDoc;
+        var fac = await db.Facturas.AsNoTracking()
+            .Where(f => f.CodDoc == codDoc && f.Ambient == 2 && f.DatilId != null && f.TransmitterRuc != null && f.DateIssued >= desde)
+            .Select(f => new { f.FacturaId, f.TransmitterRuc, f.DateIssued, f.DatilId, f.Ambient })
+            .ToListAsync(ct);
+        return fac.Select(f => new ComprobanteAVerificar(tipo, f.TransmitterRuc!, f.FacturaId, f.DateIssued, f.DatilId, f.Ambient)).ToList();
+    }
+
+    /// <summary>
+    /// Una corrida del worker sobre los 4 tipos: arma la lista con <see cref="SeleccionarParaWorker"/> y la
+    /// verifica con el mismo mecanismo (y el mismo candado de una masiva a la vez) que el botón manual.
+    /// </summary>
+    public async Task<ResumenVerificacionMasiva> CorrerVerificacionAsync(int maxHistorico, CancellationToken ct = default)
+    {
+        if (!Disponible)
+        {
+            return new ResumenVerificacionMasiva(0, 0, 0, 0, 0, new[] { "La verificación en el SRI no está disponible." });
+        }
+
+        var hoy = DateTime.Today;
+        var candidatos = new List<ComprobanteAVerificar>();
+        foreach (var tipo in Enum.GetValues<TipoComprobante>())
+        {
+            ct.ThrowIfCancellationRequested();
+            var docs = await ListarEmitidosAsync(tipo, hoy.AddYears(-AlcanceAnios), ct);
+            var guardados = await ObtenerAsync(tipo, docs.Select(d => (d.Ruc, d.RefId)).ToList(), ct);
+            candidatos.AddRange(SeleccionarParaWorker(docs, guardados, Umbral, maxHistorico, hoy, DateTime.UtcNow));
+        }
+
+        return candidatos.Count == 0
+            ? new ResumenVerificacionMasiva(0, 0, 0, 0, 0, Array.Empty<string>())
+            : await VerificarVariosAsync(candidatos, null, ct);
     }
 
     // ---------------------------------------------------------------- verificación

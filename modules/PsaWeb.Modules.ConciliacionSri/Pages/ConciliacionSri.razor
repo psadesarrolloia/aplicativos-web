@@ -388,8 +388,19 @@ else
         _verificandoFila = comprobanteId;
         try
         {
-            await Procesador.VerificarUnaAsync(comprobanteId, claveAcceso);
+            _avisoVerificacion = null;
+            string? aviso = null;
+            var resultado = await Procesador.VerificarUnaAsync(comprobanteId, claveAcceso);
+            if (resultado.Estado == EstadoComprobanteSri.FueraDeRango)
+            {
+                aviso = "El SRI solo permite consultar comprobantes del mes en curso y el mes anterior; este es más antiguo.";
+            }
+            else if (resultado.Estado == EstadoComprobanteSri.ErrorServicio)
+            {
+                aviso = $"El SRI no respondió: {resultado.MensajeSri}";
+            }
             await Consultar(); // vuelve a conciliar para reflejar el estado ya guardado
+            if (aviso is not null) _avisoVerificacion = aviso;
         }
         finally
         {
