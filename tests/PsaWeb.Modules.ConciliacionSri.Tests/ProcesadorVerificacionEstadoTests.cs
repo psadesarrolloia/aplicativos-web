@@ -56,6 +56,12 @@ public class ProcesadorVerificacionEstadoTests
 
         public Task ActualizarEstadoAsync(long id, string estado, DateTime fechaVerificacionUtc, CancellationToken ct = default) =>
             Task.CompletedTask;
+
+        public Task AceptarDiferenciaAsync(long id, string aceptadaPor, string? comentario, CancellationToken ct = default) =>
+            throw new NotSupportedException("No hace falta para este test.");
+
+        public Task QuitarAceptacionAsync(long id, CancellationToken ct = default) =>
+            throw new NotSupportedException("No hace falta para este test.");
     }
 
     private sealed class VerificadorFake : IVerificadorEstadoSri

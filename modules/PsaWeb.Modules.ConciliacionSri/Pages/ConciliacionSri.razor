@@ -1,10 +1,12 @@
 @page "/conciliacion-sri"
 @namespace PsaWeb.Modules.ConciliacionSri.Pages
+@using PsaWeb.Comprobantes.Compras
 @using PsaWeb.Conciliacion
 @using PsaWeb.Sage50
 @inject ProcesadorVerificacionEstado Procesador
 @inject EjecucionVerificacionGate Gate
 @inject IResolverEmpresaSage EmpresaSage
+@inject AuthenticationStateProvider AuthState
 @inject ILogger<ConciliacionSri> Logger
 @implements IDisposable
 
@@ -42,7 +44,8 @@ else
     }
     else if (_filas is not null)
     {
-        var pendientesDeVerificar = _filas.Count(f => f.Clasificacion == ClasificacionConciliacion.CoincidePendienteDeVerificar);
+        var pendientesDeVerificar = _filas.Count(f => f.Clasificacion is ClasificacionConciliacion.CoincidePendienteDeVerificar
+            or ClasificacionConciliacion.ValoresDistintos or ClasificacionConciliacion.MetadataDistinta);
 
         <PsaCard Title="Resultado">
             <Actions>
@@ -51,6 +54,13 @@ else
                 </PsaButton>
             </Actions>
             <ChildContent>
+
+            @if (_ultimaVerificacionMasiva is not null)
+            {
+                <p class="psa-muted" style="margin-top:-.6rem">
+                    Última verificación: @DateTime.SpecifyKind(_ultimaVerificacionMasiva.Value, DateTimeKind.Utc).ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                </p>
+            }
 
             @if (_avisoVerificacion is not null)
             {
@@ -71,8 +81,9 @@ else
             @if (_filtro == ClasificacionConciliacion.SoloEnSage)
             {
                 <p class="psa-notice">
-                    "Solo en Sage" puede ser por clave de acceso vacía o mal tecleada, no necesariamente porque el
-                    comprobante sea inválido — ver el detalle de cada fila.
+                    "Solo en Sage" puede ser por clave de acceso vacía o mal tecleada, o por una factura física (sin
+                    comprobante electrónico, marcada como <strong>"Documento físico"</strong> más abajo) — no
+                    necesariamente porque el comprobante sea inválido. Ver el detalle de cada fila.
                 </p>
             }
 
@@ -83,32 +94,68 @@ else
             }
             else
             {
+                <label class="psa-row" style="align-items:center;gap:.5rem;margin:0 0 .7rem;cursor:pointer;font-weight:700;color:var(--psa-magenta,#B40046)">
+                    <input type="checkbox" style="width:1.15rem;height:1.15rem;accent-color:var(--psa-magenta,#B40046)"
+                           checked="@_mostrarClave" @onchange="e => _mostrarClave = (bool)e.Value!" />
+                    Mostrar clave de acceso
+                </label>
                 <div style="overflow-x:auto">
                 <table class="psa-table">
                     <thead>
                         <tr>
-                            <th>Clave de acceso</th>
+                            <th>@(_filtro == ClasificacionConciliacion.SoloEnSri ? "Documento (SRI)" : "Documento (Sage)")</th>
                             <th>Proveedor (SRI)</th>
                             <th>Proveedor (Sage)</th>
                             <th class="num">Total (SRI)</th>
                             <th class="num">Total (Sage)</th>
-                            <th>Estado</th>
+                            <th>Estado en SRI</th>
                             <th>Diferencias</th>
                             <th></th>
+                            @if (_mostrarClave)
+                            {
+                                <th>Clave de acceso</th>
+                            }
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var fila in vista)
                         {
-                            <tr>
-                                <td>@(fila.ClaveAcceso ?? fila.Sage?.Autorizacion)</td>
+                            <tr style="@(fila.Diferencias.Count > 0 ? "cursor:pointer" : "")"
+                                @onclick="() => AbrirDetalleSiAplica(fila)">
+                                <td>
+                                    @if (_filtro == ClasificacionConciliacion.SoloEnSri)
+                                    {
+                                        @fila.Sri?.SerieComprobante
+                                    }
+                                    else
+                                    {
+                                        @fila.Sage?.Referencia
+                                        @if (_filtro == ClasificacionConciliacion.SoloEnSage && DocumentoFisico.EsProbable(fila.ClaveAcceso))
+                                        {
+                                            <br /><span class="psa-estado psa-estado--warn" style="font-size:.7rem">Documento físico</span>
+                                        }
+                                    }
+                                </td>
                                 <td>@fila.Sri?.RazonSocialEmisor</td>
                                 <td>@fila.Sage?.NombreProveedor</td>
                                 <td class="num">@(fila.Sri is not null ? fila.Sri.Total.ToString("N2") : "")</td>
                                 <td class="num">@(fila.Sage is not null ? fila.Sage.Total.ToString("N2") : "")</td>
-                                <td>@(fila.Sri?.Estado ?? "sin verificar")</td>
-                                <td>@string.Join("; ", fila.Diferencias)</td>
                                 <td>
+                                    @{ var (textoEstado, claseEstado) = EstadoVisual(fila.Sri?.Estado); }
+                                    <span class="psa-estado @claseEstado" style="font-size:.85rem">@textoEstado</span>
+                                </td>
+                                <td>
+                                    @foreach (var d in fila.Diferencias)
+                                    {
+                                        var (campo, resto) = PartirDiferencia(d);
+                                        <div><strong>@campo:</strong>@resto</div>
+                                    }
+                                    @if (fila.Sri?.DiferenciaAceptada == true)
+                                    {
+                                        <span class="psa-estado psa-estado--ok" style="font-size:.75rem">✓ diferencia aceptada</span>
+                                    }
+                                </td>
+                                <td @onclick:stopPropagation="true">
                                     @if (fila.ClaveAcceso is not null && fila.Sri is not null)
                                     {
                                         <PsaButton Variant="ghost" OnClick="@(() => VerificarUna(fila.Sri.Id, fila.ClaveAcceso))"
@@ -117,6 +164,10 @@ else
                                         </PsaButton>
                                     }
                                 </td>
+                                @if (_mostrarClave)
+                                {
+                                    <td>@fila.ClaveAcceso</td>
+                                }
                             </tr>
                         }
                     </tbody>
@@ -128,6 +179,111 @@ else
         </PsaCard>
     }
 }
+
+<PsaModal Visible="_detalle is not null" Title="@("Comprobante " + _detalle?.Sri?.SerieComprobante)" OnClose="CerrarDetalle">
+    <ChildContent>
+        @if (_detalle is not null)
+        {
+            <div class="psa-grid" style="grid-template-columns:1fr 1fr">
+                <div>
+                    <h3 style="margin:0 0 .4rem">SRI</h3>
+                    <p class="psa-muted" style="margin:.2rem 0">@_detalle.Sri?.RazonSocialEmisor (@_detalle.Sri?.RucEmisor)</p>
+                    <p class="psa-muted" style="margin:.2rem 0">Serie: @_detalle.Sri?.SerieComprobante</p>
+                    <p class="psa-muted" style="margin:.2rem 0">Fecha emisión: @_detalle.Sri?.FechaEmision.ToString("dd/MM/yyyy")</p>
+                    <p class="psa-muted" style="margin:.2rem 0">
+                        Subtotal @_detalle.Sri?.Subtotal.ToString("N2") · IVA @_detalle.Sri?.Iva.ToString("N2") ·
+                        Total @_detalle.Sri?.Total.ToString("N2")
+                    </p>
+                </div>
+                <div>
+                    <h3 style="margin:0 0 .4rem">Sage</h3>
+                    <p class="psa-muted" style="margin:.2rem 0">@_detalle.Sage?.NombreProveedor (@_detalle.Sage?.RucProveedor)</p>
+                    <p class="psa-muted" style="margin:.2rem 0">Referencia: @_detalle.Sage?.Referencia</p>
+                    <p class="psa-muted" style="margin:.2rem 0">Fecha: @_detalle.Sage?.Fecha.ToString("dd/MM/yyyy")</p>
+                    <p class="psa-muted" style="margin:.2rem 0">
+                        Subtotal @_detalle.Sage?.Subtotal.ToString("N2") · IVA @_detalle.Sage?.Iva.ToString("N2") ·
+                        Total @_detalle.Sage?.Total.ToString("N2")
+                    </p>
+                </div>
+            </div>
+
+            <h3 style="margin:1rem 0 .4rem">Líneas de la compra en Sage</h3>
+            @if (_lineasSageCargando)
+            {
+                <p class="psa-muted">Cargando…</p>
+            }
+            else if (_lineasSageError is not null)
+            {
+                <p class="psa-notice psa-notice--danger">@_lineasSageError</p>
+            }
+            else if (_lineasSage is { Count: 0 })
+            {
+                <p class="psa-muted">Sin líneas.</p>
+            }
+            else if (_lineasSage is not null)
+            {
+                <div style="overflow-x:auto">
+                <table class="psa-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Descripción</th>
+                            <th class="num">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var linea in _lineasSage)
+                        {
+                            <tr>
+                                <td>@linea.ItemId</td>
+                                <td>@linea.Descripcion</td>
+                                <td class="num">@linea.Monto.ToString("N2")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                </div>
+            }
+
+            <h3 style="margin:1rem 0 .4rem">Diferencias</h3>
+            @foreach (var d in _detalle.Diferencias)
+            {
+                var (campo, resto) = PartirDiferencia(d);
+                <p style="margin:.2rem 0"><strong>@campo:</strong>@resto</p>
+            }
+
+            @if (_detalle.Sri?.DiferenciaAceptada == true)
+            {
+                <p class="psa-notice psa-notice--ok" style="margin-top:1rem">
+                    Aceptada por @_detalle.Sri.DiferenciaAceptadaPor el
+                    @(_detalle.Sri.DiferenciaAceptadaUtc is { } f ? DateTime.SpecifyKind(f, DateTimeKind.Utc).ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "")
+                    @if (!string.IsNullOrWhiteSpace(_detalle.Sri.ComentarioAceptacion))
+                    {
+                        <text> — "@_detalle.Sri.ComentarioAceptacion"</text>
+                    }
+                </p>
+                <div class="psa-row" style="margin-top:.6rem">
+                    <PsaButton Variant="ghost" OnClick="QuitarAceptacion" Disabled="_procesandoAceptacion">Quitar aceptación</PsaButton>
+                </div>
+            }
+            else
+            {
+                <div class="psa-field" style="margin-top:1rem;max-width:100%;width:100%">
+                    <span class="psa-field__lbl">Comentario (opcional) — ej. "Corresponde a ICE"</span>
+                    <input class="psa-input" style="width:100%" @bind="_comentarioAceptacion" @bind:event="oninput" />
+                </div>
+                <div class="psa-row" style="margin-top:.6rem">
+                    <PsaButton Variant="secondary" OnClick="Aceptar" Disabled="_procesandoAceptacion">
+                        @(_procesandoAceptacion ? "Guardando…" : "Aceptar diferencia")
+                    </PsaButton>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <PsaButton Variant="ghost" OnClick="CerrarDetalle">Cerrar</PsaButton>
+    </Footer>
+</PsaModal>
 
 @code {
     private static readonly (ClasificacionConciliacion, string)[] Etiquetas =
@@ -146,10 +302,26 @@ else
     private long? _verificandoFila;
     private string? _error;
     private string? _avisoVerificacion;
+    private DateTime? _ultimaVerificacionMasiva;
     private IReadOnlyList<FilaConciliacion>? _filas;
     private ClasificacionConciliacion _filtro = ClasificacionConciliacion.SoloEnSri;
+    private string? _usuarioActual;
+    private bool _mostrarClave;
 
-    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+    // Popup de detalle / aceptación de diferencias.
+    private FilaConciliacion? _detalle;
+    private string _comentarioAceptacion = "";
+    private bool _procesandoAceptacion;
+    private IReadOnlyList<LineaCompraSage>? _lineasSage;
+    private bool _lineasSageCargando;
+    private string? _lineasSageError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        EmpresaSage.Cambio += Refrescar;
+        var estado = await AuthState.GetAuthenticationStateAsync();
+        _usuarioActual = estado.User.Identity?.Name ?? "desconocido";
+    }
 
     public void Dispose() => EmpresaSage.Cambio -= Refrescar;
 
@@ -158,12 +330,31 @@ else
         _filas = null;
         _error = null;
         _avisoVerificacion = null;
+        _ultimaVerificacionMasiva = null;
         InvokeAsync(StateHasChanged);
     }
 
     private string EstiloFiltro(ClasificacionConciliacion c) =>
         "border:none;background:none;padding:0;text-align:left;cursor:pointer;border-radius:8px;"
         + (c == _filtro ? "outline:2px solid var(--psa-magenta,#B40046)" : "outline:none");
+
+    private static (string Texto, string Clase) EstadoVisual(string? estado) => estado switch
+    {
+        null => ("Sin verificar", "psa-estado--warn"),
+        nameof(EstadoComprobanteSri.Autorizado) => ("Autorizado", "psa-estado--ok"),
+        nameof(EstadoComprobanteSri.NoAutorizado) => ("NO AUTORIZADO", "psa-estado--bad"),
+        nameof(EstadoComprobanteSri.FormatoInvalido) => ("Formato inválido", "psa-estado--warn"),
+        nameof(EstadoComprobanteSri.NoEncontrado) => ("No encontrado", "psa-estado--warn"),
+        nameof(EstadoComprobanteSri.ErrorServicio) => ("Error del servicio", "psa-estado--warn"),
+        _ => (estado, "psa-estado--warn"),
+    };
+
+    /// <summary>"Subtotal: SRI 969.47 vs Sage 974.32" → ("Subtotal", " SRI 969.47 vs Sage 974.32") para resaltar el campo.</summary>
+    private static (string Campo, string Resto) PartirDiferencia(string diferencia)
+    {
+        var i = diferencia.IndexOf(':');
+        return i < 0 ? (diferencia, "") : (diferencia[..i], diferencia[(i + 1)..]);
+    }
 
     private async Task Consultar()
     {
@@ -178,6 +369,17 @@ else
         try
         {
             _filas = await Procesador.ConciliarAsync(ruc, _desde, _hasta);
+            if (_ultimaVerificacionMasiva is null)
+            {
+                var fechas = _filas
+                    .Where(f => f.Sri?.FechaVerificacionEstado is not null)
+                    .Select(f => f.Sri!.FechaVerificacionEstado!.Value)
+                    .ToList();
+                if (fechas.Count > 0)
+                {
+                    _ultimaVerificacionMasiva = fechas.Max();
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -224,11 +426,102 @@ else
 
             var r = resultado.Resumen!.Empresas[0];
             _avisoVerificacion = $"Verificados: {r.Verificados} · Anulados: {r.Anulados} · Con error: {r.ConErrores}.";
+            _ultimaVerificacionMasiva = resultado.Resumen.Fin.UtcDateTime;
             await Consultar();
         }
         finally
         {
             _verificando = false;
+        }
+    }
+
+    private async Task AbrirDetalleSiAplica(FilaConciliacion fila)
+    {
+        if (fila.Diferencias.Count == 0)
+        {
+            return;
+        }
+
+        _detalle = fila;
+        _comentarioAceptacion = "";
+        await CargarLineasSageAsync(fila);
+    }
+
+    private async Task CargarLineasSageAsync(FilaConciliacion fila)
+    {
+        _lineasSage = null;
+        _lineasSageError = null;
+        if (fila.Sage is null || EmpresaSage.RucSesion is not { } ruc)
+        {
+            return;
+        }
+
+        _lineasSageCargando = true;
+        try
+        {
+            _lineasSage = await Procesador.LeerLineasSageAsync(ruc, fila.Sage.PostOrder);
+        }
+        catch (Exception ex)
+        {
+            _lineasSageError = $"No se pudo cargar el detalle: {ex.Message}";
+            Logger.LogError(ex, "Líneas de Sage para PostOrder {PostOrder}", fila.Sage.PostOrder);
+        }
+        finally
+        {
+            _lineasSageCargando = false;
+        }
+    }
+
+    private void CerrarDetalle()
+    {
+        _detalle = null;
+        _comentarioAceptacion = "";
+        _lineasSage = null;
+        _lineasSageError = null;
+    }
+
+    private async Task Aceptar()
+    {
+        if (_detalle?.Sri is null)
+        {
+            return;
+        }
+
+        var clave = _detalle.ClaveAcceso;
+        _procesandoAceptacion = true;
+        try
+        {
+            await Procesador.AceptarDiferenciaAsync(
+                _detalle.Sri.Id, _usuarioActual ?? "desconocido",
+                string.IsNullOrWhiteSpace(_comentarioAceptacion) ? null : _comentarioAceptacion.Trim());
+            await Consultar();
+            _detalle = _filas?.FirstOrDefault(f => f.ClaveAcceso == clave);
+            _comentarioAceptacion = "";
+        }
+        finally
+        {
+            _procesandoAceptacion = false;
+        }
+    }
+
+    private async Task QuitarAceptacion()
+    {
+        if (_detalle?.Sri is null)
+        {
+            return;
+        }
+
+        var clave = _detalle.ClaveAcceso;
+        _procesandoAceptacion = true;
+        try
+        {
+            await Procesador.QuitarAceptacionAsync(_detalle.Sri.Id);
+            await Consultar();
+            _detalle = _filas?.FirstOrDefault(f => f.ClaveAcceso == clave);
+        }
+        finally
+        {
+            _procesandoAceptacion = false;
         }
     }
 }

@@ -107,4 +107,55 @@ public class RepositorioComprobantesSriTests : IAsyncLifetime
         Assert.Equal(100m, guardado.Subtotal);
         Assert.Equal("primer-usuario", guardado.SubidoPor);
     }
+
+    [SkippableFact]
+    public async Task Aceptar_diferencia_guarda_quien_cuando_y_el_comentario()
+    {
+        Skip.IfNot(DbDisponible(), "PsaWebPlataforma local no disponible.");
+        await using var db = Db();
+        var repo = new RepositorioComprobantesSri(db);
+        await repo.GuardarReporteAsync(Ruc, Reporte(Fila1), "usuario-de-prueba");
+        var id = (await db.ComprobantesSriDescargados.SingleAsync(c => c.Ruc == Ruc)).Id;
+
+        await repo.AceptarDiferenciaAsync(id, "lparedes", "Corresponde a ICE");
+
+        // Contexto nuevo: ExecuteUpdateAsync no pasa por el change tracker, así
+        // que reconsultar con el mismo "db" devolvería la instancia ya
+        // trackeada (con los valores viejos) en vez de releer la fila.
+        await using var dbVerificacion = Db();
+        var actualizado = await dbVerificacion.ComprobantesSriDescargados.SingleAsync(c => c.Id == id);
+        Assert.True(actualizado.DiferenciaAceptada);
+        Assert.Equal("lparedes", actualizado.DiferenciaAceptadaPor);
+        Assert.Equal("Corresponde a ICE", actualizado.ComentarioAceptacion);
+        Assert.NotNull(actualizado.DiferenciaAceptadaUtc);
+    }
+
+    [SkippableFact]
+    public async Task Quitar_aceptacion_deshace_la_marca()
+    {
+        Skip.IfNot(DbDisponible(), "PsaWebPlataforma local no disponible.");
+        await using var db = Db();
+        var repo = new RepositorioComprobantesSri(db);
+        await repo.GuardarReporteAsync(Ruc, Reporte(Fila1), "usuario-de-prueba");
+        var id = (await db.ComprobantesSriDescargados.SingleAsync(c => c.Ruc == Ruc)).Id;
+        await repo.AceptarDiferenciaAsync(id, "lparedes", null);
+
+        await repo.QuitarAceptacionAsync(id);
+
+        await using var dbVerificacion = Db();
+        var actualizado = await dbVerificacion.ComprobantesSriDescargados.SingleAsync(c => c.Id == id);
+        Assert.False(actualizado.DiferenciaAceptada);
+        Assert.Null(actualizado.DiferenciaAceptadaPor);
+        Assert.Null(actualizado.ComentarioAceptacion);
+    }
+
+    [SkippableFact]
+    public async Task Aceptar_diferencia_de_un_id_inexistente_lanza()
+    {
+        Skip.IfNot(DbDisponible(), "PsaWebPlataforma local no disponible.");
+        await using var db = Db();
+        var repo = new RepositorioComprobantesSri(db);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => repo.AceptarDiferenciaAsync(-1, "lparedes", null));
+    }
 }

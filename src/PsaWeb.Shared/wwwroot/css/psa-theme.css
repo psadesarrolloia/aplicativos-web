@@ -452,6 +452,7 @@ input[type="radio"] {
 }
 
 .psa-notice--danger { border-left-color: var(--psa-danger); }
+.psa-notice--ok { border-left-color: var(--psa-ok); }
 
 .psa-details {
   margin-top: .6rem;

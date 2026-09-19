@@ -68,6 +68,25 @@ public sealed class ProcesadorVerificacionEstado(
         return new ResumenVerificacionCorrida(inicio, DateTimeOffset.Now, [resumen]);
     }
 
+    /// <summary>El revisor acepta una diferencia (§ítem 4 del feedback post-deploy) a su criterio.</summary>
+    public Task AceptarDiferenciaAsync(
+        long comprobanteId, string aceptadaPor, string? comentario, CancellationToken cancellationToken = default) =>
+        repositorioSri.AceptarDiferenciaAsync(comprobanteId, aceptadaPor, comentario, cancellationToken);
+
+    /// <summary>Deshace una aceptación marcada por error.</summary>
+    public Task QuitarAceptacionAsync(long comprobanteId, CancellationToken cancellationToken = default) =>
+        repositorioSri.QuitarAceptacionAsync(comprobanteId, cancellationToken);
+
+    /// <summary>El desglose de líneas de una compra en Sage, para el popup de detalle (§ítem 2 del feedback post-deploy).</summary>
+    public async Task<IReadOnlyList<LineaCompraSage>> LeerLineasSageAsync(
+        string ruc, long postOrder, CancellationToken cancellationToken = default)
+    {
+        var cadenaSage = await conexionesSage.ResolverCadenaOdbcAsync(ruc, cancellationToken);
+        await using var conexion = sageFactory.CreateConnection(cadenaSage);
+        await conexion.OpenAsync(cancellationToken);
+        return await LectorLineasCompraSage.LeerAsync(conexion, postOrder, cancellationToken);
+    }
+
     /// <summary>Para el botón individual "Verificar con el SRI" de una fila puntual.</summary>
     public async Task<ResultadoVerificacionEstado> VerificarUnaAsync(
         long comprobanteId, string claveAcceso, CancellationToken cancellationToken = default)
@@ -124,10 +143,7 @@ public sealed class ProcesadorVerificacionEstado(
 
         var umbral = TimeSpan.FromDays(opciones.Value.VerificacionUmbralDias);
         var ahora = DateTime.UtcNow;
-        var pendientes = filas
-            .Where(f => f.Clasificacion == ClasificacionConciliacion.CoincidePendienteDeVerificar)
-            .Where(f => f.Sri!.FechaVerificacionEstado is null || ahora - f.Sri.FechaVerificacionEstado.Value > umbral)
-            .ToList();
+        var pendientes = SeleccionarPendientesDeVerificar(filas, umbral, ahora);
 
         if (pendientes.Count == 0)
         {
@@ -180,4 +196,21 @@ public sealed class ProcesadorVerificacionEstado(
 
     private static ResumenVerificacionEmpresa Fallo(string ruc, string nombre, string mensaje) =>
         new(ruc, nombre, 0, 0, 1, [mensaje]);
+
+    /// <summary>
+    /// Candidatas a "Verificar pendientes": ya no es solo <see cref="ClasificacionConciliacion.CoincidePendienteDeVerificar"/>
+    /// — las filas con diferencias (§ítem 3 del feedback post-deploy: el revisor
+    /// quiere saber si un comprobante con diferencia sigue autorizado, no solo
+    /// los que coinciden del todo) también se re-verifican, respetando el mismo
+    /// umbral para no golpear el WS del SRI en cada corrida. Lógica pura,
+    /// separada para poder testearla sin Sage/DB.
+    /// </summary>
+    internal static List<FilaConciliacion> SeleccionarPendientesDeVerificar(
+        IReadOnlyList<FilaConciliacion> filas, TimeSpan umbral, DateTime ahora) =>
+        filas
+            .Where(f => f.Clasificacion is ClasificacionConciliacion.CoincidePendienteDeVerificar
+                or ClasificacionConciliacion.ValoresDistintos
+                or ClasificacionConciliacion.MetadataDistinta)
+            .Where(f => f.Sri!.FechaVerificacionEstado is null || ahora - f.Sri.FechaVerificacionEstado.Value > umbral)
+            .ToList();
 }

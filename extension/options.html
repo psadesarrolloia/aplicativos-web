@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>PSA - Conciliación SRI</title>
+  <style>
+    body { font-family: sans-serif; max-width: 420px; margin: 32px auto; padding: 0 16px; color: #163154; }
+    h1 { font-size: 18px; margin: 0 0 6px; }
+    p.ayuda { font-size: 13px; color: #555; margin: 0 0 20px; }
+    label { display: block; font-size: 13px; margin: 14px 0 4px; color: #333; }
+    input { width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; }
+    button {
+      margin-top: 16px; padding: 10px 18px; background: #B40046; color: #fff;
+      border: none; border-radius: 6px; cursor: pointer; font-size: 14px;
+    }
+    #estado { margin-top: 10px; font-size: 13px; color: #1b5e20; display: none; }
+  </style>
+</head>
+<body>
+  <h1>PSA - Conciliación SRI</h1>
+  <p class="ayuda">
+    Esta es una pestaña normal del navegador — podés cambiar a otra pestaña para copiar el
+    token o la dirección de PSA y volver acá sin perder lo que ya escribiste.
+  </p>
+
+  <label for="hostPsa">Sitio de PSA</label>
+  <input id="hostPsa" type="text" placeholder="http://192.168.0.11:8088" />
+
+  <label for="tokenApi">Token de API</label>
+  <input id="tokenApi" type="password" placeholder="psaext_..." />
+
+  <button id="guardar">Guardar</button>
+  <div id="estado"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>

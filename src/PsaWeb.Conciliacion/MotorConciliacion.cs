@@ -26,6 +26,24 @@ public enum ClasificacionConciliacion
     CoincidePendienteDeVerificar,
 }
 
+/// <summary>
+/// Una compra "Solo en Sage" con una autorización tecleada corta (~10 dígitos,
+/// por serie de comprobante) no es una clave de acceso del SRI mal tecleada —
+/// es una factura física (sin comprobante electrónico), que por definición
+/// nunca va a aparecer en el reporte del SRI. Heurística de longitud: la
+/// clave de acceso real siempre tiene 49 dígitos.
+/// </summary>
+public static class DocumentoFisico
+{
+    public const int LongitudClaveAcceso = 49;
+
+    public static bool EsProbable(string? autorizacion)
+    {
+        var longitud = autorizacion?.Trim().Length ?? 0;
+        return longitud > 0 && longitud != LongitudClaveAcceso;
+    }
+}
+
 public sealed record FilaConciliacion(
     string? ClaveAcceso,
     ComprobanteSriGuardado? Sri,

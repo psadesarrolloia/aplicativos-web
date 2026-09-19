@@ -13,7 +13,9 @@ sin pasar por la carpeta de Descargas.
 3. Activar **"Modo de desarrollador"** (interruptor arriba a la derecha).
 4. Click en **"Cargar descomprimida"** y elegir esta carpeta.
 5. Click en el ícono de la extensión (barra de herramientas de Chrome, puede
-   estar escondido bajo el ícono de rompecabezas) → completar:
+   estar escondido bajo el ícono de rompecabezas) — abre una **pestaña normal**
+   de configuración (no un cuadro chico que se cierra solo), así que podés ir
+   y volver de otra pestaña sin perder lo que ya escribiste → completar:
    - **Sitio de PSA**: `http://192.168.0.11:8088` (o la dirección que
      corresponda).
    - **Token de API**: generado en PSA, en `/mi-cuenta/extension` (logueada

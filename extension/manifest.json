@@ -20,8 +20,8 @@
       "run_at": "document_idle"
     }
   ],
+  "options_page": "options.html",
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "PSA - Conciliación SRI"
+    "default_title": "PSA - Conciliación SRI (click para configurar)"
   }
 }

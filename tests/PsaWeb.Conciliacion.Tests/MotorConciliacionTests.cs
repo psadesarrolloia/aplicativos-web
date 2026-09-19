@@ -127,3 +127,29 @@ public class MotorConciliacionTests
         Assert.Equal(ClasificacionConciliacion.ValoresDistintos, fila.Clasificacion);
     }
 }
+
+public class DocumentoFisicoTests
+{
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void No_es_documento_fisico_si_no_hay_autorizacion_tecleada(string? autorizacion)
+    {
+        Assert.False(DocumentoFisico.EsProbable(autorizacion));
+    }
+
+    [Fact]
+    public void No_es_documento_fisico_si_la_autorizacion_tiene_49_digitos()
+    {
+        Assert.False(DocumentoFisico.EsProbable(new string('1', 49)));
+    }
+
+    [Theory]
+    [InlineData("0012345678")]
+    [InlineData("  0012345678  ")]
+    public void Es_documento_fisico_si_la_autorizacion_es_corta(string autorizacion)
+    {
+        Assert.True(DocumentoFisico.EsProbable(autorizacion));
+    }
+}

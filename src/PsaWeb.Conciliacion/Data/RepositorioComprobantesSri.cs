@@ -13,6 +13,13 @@ public interface IRepositorioComprobantesSri
     /// <summary>Guarda el resultado de una verificación de estado contra el WS del SRI (§13.4/§14).</summary>
     Task ActualizarEstadoAsync(
         long id, string estado, DateTime fechaVerificacionUtc, CancellationToken cancellationToken = default);
+
+    /// <summary>El revisor acepta una diferencia (Subtotal/IVA/Total o metadata) a criterio propio.</summary>
+    Task AceptarDiferenciaAsync(
+        long id, string aceptadaPor, string? comentario, CancellationToken cancellationToken = default);
+
+    /// <summary>Deshace una aceptación marcada por error.</summary>
+    Task QuitarAceptacionAsync(long id, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -85,6 +92,39 @@ public sealed class RepositorioComprobantesSri(ConciliacionDbContext db) : IRepo
         if (filas == 0)
         {
             throw new InvalidOperationException($"No se encontró el comprobante {id} para actualizar su estado.");
+        }
+    }
+
+    public async Task AceptarDiferenciaAsync(
+        long id, string aceptadaPor, string? comentario, CancellationToken cancellationToken = default)
+    {
+        var filas = await db.ComprobantesSriDescargados
+            .Where(c => c.Id == id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.DiferenciaAceptada, true)
+                .SetProperty(c => c.DiferenciaAceptadaPor, aceptadaPor)
+                .SetProperty(c => c.DiferenciaAceptadaUtc, DateTime.UtcNow)
+                .SetProperty(c => c.ComentarioAceptacion, comentario), cancellationToken);
+
+        if (filas == 0)
+        {
+            throw new InvalidOperationException($"No se encontró el comprobante {id} para aceptar su diferencia.");
+        }
+    }
+
+    public async Task QuitarAceptacionAsync(long id, CancellationToken cancellationToken = default)
+    {
+        var filas = await db.ComprobantesSriDescargados
+            .Where(c => c.Id == id)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(c => c.DiferenciaAceptada, false)
+                .SetProperty(c => c.DiferenciaAceptadaPor, (string?)null)
+                .SetProperty(c => c.DiferenciaAceptadaUtc, (DateTime?)null)
+                .SetProperty(c => c.ComentarioAceptacion, (string?)null), cancellationToken);
+
+        if (filas == 0)
+        {
+            throw new InvalidOperationException($"No se encontró el comprobante {id} para quitar la aceptación.");
         }
     }
 }

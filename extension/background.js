@@ -8,6 +8,11 @@
 
 const ENDPOINT = "/conciliacion-sri/api/comprobantes";
 
+// El ícono ya no tiene un popup transitorio (se cerraba solo al cambiar de
+// pestaña para copiar el token o la URL de PSA, antes de terminar de pegar
+// las dos cosas) — abre la configuración como una pestaña normal en su lugar.
+chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+
 async function obtenerConfiguracion() {
   const { tokenApi, hostPsa } = await chrome.storage.local.get(["tokenApi", "hostPsa"]);
   return { tokenApi, hostPsa };

@@ -4,6 +4,7 @@
 @inject UserManager<UsuarioApp> Users
 @inject GestorSegundoFactor Gestor
 @inject AuthenticationStateProvider AuthState
+@inject NavigationManager Navegacion
 
 <PageTitle>Seguridad — Aplicativos web PSA</PageTitle>
 
@@ -77,7 +78,16 @@ else
     </PsaCard>
 }
 
-<p style="margin-top:1.5rem"><a href="/mi-cuenta/extension">Extensión de Chrome (Conciliación SRI) →</a></p>
+<div style="margin-top:1.5rem">
+    <PsaCard Title="Extensión de Chrome">
+        <p class="psa-muted">Token de acceso para subir reportes de Conciliación SRI desde el portal del SRI.</p>
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="secondary" OnClick="@(() => Navegacion.NavigateTo("/mi-cuenta/extension"))">
+                Administrar extensión →
+            </PsaButton>
+        </div>
+    </PsaCard>
+</div>
 
 @code {
     private UsuarioApp? _usuario;
