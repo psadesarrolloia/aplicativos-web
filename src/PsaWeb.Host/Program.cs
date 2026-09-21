@@ -421,6 +421,79 @@ app.MapGet("/cartera/pwc/export", async (
     })
     .RequireAuthorization();
 
+// Descarga del reporte de Comisiones en Excel. Re-consulta con el mismo filtro (incluidas las opciones
+// C1/C2 del reporte heredado) y usa la personalización guardada de la empresa.
+app.MapGet("/cartera/comisiones/export", async (
+        string? ruc,
+        string? reciboDesde,
+        string? reciboHasta,
+        DateOnly? fechaDesde,
+        DateOnly? fechaHasta,
+        string? cliente,
+        string? ciudad,
+        bool? rangoNumerico,
+        bool? abonoPorRecibo,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Reportes.Comisiones.IComisionesRepository repositorio,
+        PsaWeb.Modules.Reportes.Comisiones.ComisionesExcelExporter exportador,
+        PsaWeb.Modules.Reportes.Comun.IServicioConfiguracionReportes configuracion,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        var filtro = new PsaWeb.Modules.Reportes.Comisiones.FiltroComisiones(
+            reciboDesde, reciboHasta, fechaDesde, fechaHasta, cliente, ciudad,
+            rangoNumerico ?? false, abonoPorRecibo ?? false);
+        if (!filtro.RangoRecibosValido)
+        {
+            return Results.BadRequest("El rango de recibos necesita «desde» y «hasta», solo con números.");
+        }
+        if (!filtro.RangoFechasValido)
+        {
+            return Results.BadRequest("En las fechas del recibo, «Hasta» no puede ser anterior a «Desde».");
+        }
+        if (!filtro.TieneAcotador)
+        {
+            return Results.BadRequest("Indique un rango de recibos o un rango de fechas del recibo.");
+        }
+
+        var nombreEmpresa = "";
+        PsaWeb.Modules.Reportes.Comisiones.ResultadoComisiones resultado;
+        if (!string.IsNullOrWhiteSpace(ruc))
+        {
+            var nombre = usuario.Identity?.Name ?? string.Empty;
+            var empresa = seguridad is null
+                ? null
+                : (await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken)).FirstOrDefault(e => e.Ruc == ruc);
+            if (empresa is null)
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            nombreEmpresa = empresa.Nombre;
+            resultado = await repositorio.GenerarParaRucAsync(ruc, filtro, cancellationToken);
+        }
+        else
+        {
+            resultado = await repositorio.GenerarAsync(filtro, cancellationToken);
+        }
+
+        var claveConfig = string.IsNullOrWhiteSpace(ruc) ? "_sin-empresa" : ruc;
+        var cfg = await configuracion.ObtenerAsync<PsaWeb.Modules.Reportes.Comun.ConfiguracionComisiones>(
+            claveConfig, PsaWeb.Modules.Reportes.Comun.ClavesReporte.Comisiones, cancellationToken);
+        var emp = await configuracion.ObtenerAsync<PsaWeb.Modules.Reportes.Comun.ConfiguracionEmpresa>(
+            claveConfig, PsaWeb.Modules.Reportes.Comun.ClavesReporte.Empresa, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(emp.NombreEmpresa))
+        {
+            nombreEmpresa = emp.NombreEmpresa.Trim();
+        }
+
+        var bytes = exportador.Generar(resultado, cfg, filtro);
+        return Results.File(
+            bytes,
+            PsaWeb.Modules.Reportes.Comisiones.ComisionesExcelExporter.ContentType,
+            exportador.NombreArchivo(nombreEmpresa, filtro, DateOnly.FromDateTime(DateTime.Today)));
+    })
+    .RequireAuthorization();
+
 // Descarga del ATS en XML. Re-arma el `ivaType` con el mismo período para que
 // el archivo coincida con lo que se ve en pantalla; es el archivo que luego se
 // sube al DIMM real.

@@ -56,6 +56,13 @@ public static class AppCatalogo
             "📋", "/cartera/pwc", Categorias.Cartera,
             Array.Empty<string>()),
 
+        // Provisional (GateProvisional): sin código propio hasta que el área cargue quRptComis en
+        // allowAction. Revertir a new[] { Permisos.VerReporteComisiones } cuando esté el código.
+        new("reporte-comisiones", "Comisiones por recibos",
+            "Facturas cobradas por recibos de cobro, agrupadas por cliente (ex reporte de Access).",
+            "🧮", "/cartera/comisiones", Categorias.Cartera,
+            Array.Empty<string>()),
+
         // Provisional (GateProvisional): la fila quats existe en allowAction
         // pero tiene 0 filas en adrAllowRol (no está asignada a ningún rol
         // todavía — verificado 2026-09-12). Mientras tanto visible para

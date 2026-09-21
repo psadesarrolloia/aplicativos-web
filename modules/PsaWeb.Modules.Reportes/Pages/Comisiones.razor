@@ -1,0 +1,377 @@
+@page "/cartera/comisiones"
+@namespace PsaWeb.Modules.Reportes.Pages
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Modules.Reportes.Comisiones
+@using PsaWeb.Modules.Reportes.Comun
+@inject IComisionesRepository Repositorio
+@inject IServicioConfiguracionReportes Configuracion
+@inject IResolverEmpresaSage EmpresaSage
+@inject IEmpresaSesionInfo EmpresaInfo
+@inject AuthenticationStateProvider Autenticacion
+@inject ILogger<Comisiones> Logger
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Comisiones por recibos — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Comisiones por recibos de cobro"
+               Subtitle="@Subtitulo" />
+
+<PsaCard Title="Filtros">
+    <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap">
+        <label class="psa-field">
+            <span class="psa-field__label">Recibo desde</span>
+            <input class="psa-input @Activo(_reciboDesde)" @bind="_reciboDesde" @bind:event="oninput" inputmode="numeric" placeholder="5122" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Recibo hasta</span>
+            <input class="psa-input @Activo(_reciboHasta)" @bind="_reciboHasta" @bind:event="oninput" inputmode="numeric" placeholder="5146" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Fecha del recibo desde</span>
+            <input type="date" class="psa-input @Activo(_fechaDesde)" @bind="_fechaDesde" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Fecha del recibo hasta</span>
+            <input type="date" class="psa-input @Activo(_fechaHasta)" @bind="_fechaHasta" />
+        </label>
+    </div>
+
+    <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
+        <label class="psa-field" style="min-width: 18rem">
+            <span class="psa-field__label">Cliente (contiene)</span>
+            <input class="psa-input @Activo(_cliente)" @bind="_cliente" @bind:event="oninput" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Ciudad (contiene)</span>
+            <input class="psa-input @Activo(_ciudad)" @bind="_ciudad" @bind:event="oninput" />
+        </label>
+    </div>
+
+    <p class="psa-muted" style="margin-top: .8rem">
+        Indique un rango de recibos, un rango de fechas del recibo, o ambos.
+    </p>
+
+    <div class="psa-notice" style="margin-top: 1rem">
+        <strong>Comportamiento heredado del reporte de Access</strong> (posibles errores; usted decide):
+        <label style="display: flex; align-items: flex-start; gap: .5rem; margin-top: .5rem">
+            <input type="checkbox" @bind="_rangoNumerico" />
+            <span>
+                <strong>C2 — Comparar el rango de recibos como número.</strong>
+                Access lo compara como texto: con «5122–5146» entran también recibos como 513 o 514.
+            </span>
+        </label>
+        <label style="display: flex; align-items: flex-start; gap: .5rem; margin-top: .5rem">
+            <input type="checkbox" @bind="_abonoPorRecibo" />
+            <span>
+                <strong>C1 — Abono = lo que aplicó ese recibo.</strong>
+                Access lo calcula como total pagado de la factura − cruces − retención, lo que sobrestima el abono si
+                la factura tuvo otros cobros.
+            </span>
+        </label>
+    </div>
+
+    <div class="psa-row" style="margin-top: 1.1rem">
+        <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
+            @(_cargando ? "Consultando…" : "Consultar")
+        </PsaButton>
+        <PsaButton Variant="secondary" OnClick="Exportar" Disabled="@(!PuedeExportar)">
+            Exportar a Excel
+        </PsaButton>
+        <PsaButton Variant="ghost" OnClick="LimpiarFiltros" Disabled="_cargando">Limpiar filtros</PsaButton>
+    </div>
+</PsaCard>
+
+<PsaCard Title="Personalización (por empresa)">
+    <details class="psa-details">
+        <summary>Título de la hoja, columnas opcionales y valores por defecto</summary>
+
+        <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
+            <label class="psa-field" style="min-width: 20rem">
+                <span class="psa-field__label">Nombre de la hoja de Excel (vacío = «Comisiones»)</span>
+                <input class="psa-input" @bind="_cfg.Titulo" />
+            </label>
+        </div>
+
+        <div class="psa-field" style="margin-top: 1rem">
+            <span class="psa-field__label">Columnas opcionales</span>
+            <div class="psa-row" style="gap: 1.4rem; flex-wrap: wrap">
+                <label><input type="checkbox" @bind="_cfg.MostrarCiudad" /> Ciudad (de la factura)</label>
+                <label><input type="checkbox" @bind="_cfg.MostrarImporteRecibo" /> Importe aplicado por el recibo (control)</label>
+            </div>
+        </div>
+
+        <p class="psa-muted" style="margin-top: .8rem">
+            Al guardar, las dos opciones C1/C2 de arriba quedan como valores por defecto de esta empresa.
+        </p>
+
+        <div class="psa-row" style="margin-top: 1rem; align-items: center">
+            <PsaButton Variant="secondary" OnClick="GuardarPersonalizacion" Disabled="_guardando">
+                @(_guardando ? "Guardando…" : "Guardar personalización")
+            </PsaButton>
+            @if (_mensajeConfig is not null)
+            {
+                <span class="psa-muted">@_mensajeConfig</span>
+            }
+        </div>
+    </details>
+</PsaCard>
+
+@if (_error is not null)
+{
+    <PsaCard Title="Resultado">
+        <p class="psa-notice psa-notice--danger">@_error</p>
+    </PsaCard>
+}
+else if (_resultado is not null)
+{
+    <PsaCard Title="Resultado">
+        @if (_resultado.SinDatos)
+        {
+            <p class="psa-notice">No hay facturas cobradas con los filtros elegidos.</p>
+        }
+        else
+        {
+            <div class="psa-grid psa-grid--stats">
+                <PsaStat Label="Clientes" Value="@_resultado.Grupos.Count.ToString("N0", Ec)" />
+                <PsaStat Label="Facturas" Value="@_resultado.Facturas.ToString("N0", Ec)" />
+                <PsaStat Label="Total facturado" Value="@Num(_resultado.TotalFacturado)" />
+                <PsaStat Label="Abono total" Value="@Num(_resultado.TotalAbono)" State="ok" />
+            </div>
+
+            <div style="overflow-x: auto; margin-top: 1rem">
+                <table class="psa-table">
+                    <thead>
+                        <tr>
+                            <th>Cliente / factura</th>
+                            <th>Fecha</th>
+                            <th class="num">V. fact.</th>
+                            <th class="num">IVA</th>
+                            <th class="num">Total</th>
+                            <th class="num">Ret.</th>
+                            <th class="num">Cruce</th>
+                            <th class="num">Abono</th>
+                            <th class="num">Saldo</th>
+                            <th>Recibo</th>
+                            <th>Fecha rec.</th>
+                            @if (_cfg.MostrarImporteRecibo) { <th class="num">Importe recibo</th> }
+                            @if (_cfg.MostrarCiudad) { <th>Ciudad</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var g in _resultado.Grupos)
+                        {
+                            <tr class="psa-table__grupo">
+                                <td colspan="@ColumnasTotales">@g.Cliente</td>
+                            </tr>
+                            @foreach (var f in g.Filas)
+                            {
+                                <tr>
+                                    <td>@f.Factura</td>
+                                    <td>@f.Fecha.ToString("dd/MM/yyyy")</td>
+                                    <td class="num">@Num(f.Subtotal)</td>
+                                    <td class="num">@Num(f.Iva)</td>
+                                    <td class="num">@Num(f.Total)</td>
+                                    <td class="num">@Num(f.Retencion)</td>
+                                    <td class="num">@Num(f.Cruce)</td>
+                                    <td class="num"><strong>@Num(f.Abono)</strong></td>
+                                    <td class="num">@Num(f.Saldo)</td>
+                                    <td>@f.Recibo</td>
+                                    <td>@f.FechaRecibo.ToString("dd/MM/yyyy")</td>
+                                    @if (_cfg.MostrarImporteRecibo) { <td class="num">@Num(Math.Abs(f.ImporteRecibo))</td> }
+                                    @if (_cfg.MostrarCiudad) { <td>@f.Ciudad</td> }
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="2"><strong>Total general</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalSubtotal)</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalIva)</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalFacturado)</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalRetencion)</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalCruce)</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalAbono)</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalSaldo)</strong></td>
+                            <td colspan="@(2 + (_cfg.MostrarImporteRecibo ? 1 : 0) + (_cfg.MostrarCiudad ? 1 : 0))"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    </PsaCard>
+}
+
+@code {
+    private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
+
+    private string _reciboDesde = "", _reciboHasta = "", _cliente = "", _ciudad = "";
+    private DateOnly? _fechaDesde, _fechaHasta;
+    private bool _rangoNumerico, _abonoPorRecibo;
+
+    private ConfiguracionComisiones _cfg = new();
+    private bool _guardando;
+    private string? _mensajeConfig;
+
+    private bool _cargando;
+    private string? _error;
+    private ResultadoComisiones? _resultado;
+
+    private string RucClave => EmpresaSage.RucSesion ?? "_sin-empresa";
+    private string Subtitulo => EmpresaInfo.Nombre is { Length: > 0 } n
+        ? $"{n} · facturas cobradas por recibos, agrupadas por cliente. Solo lectura."
+        : "Facturas cobradas por recibos de cobro, agrupadas por cliente. Solo lectura.";
+
+    private int ColumnasTotales => 11 + (_cfg.MostrarImporteRecibo ? 1 : 0) + (_cfg.MostrarCiudad ? 1 : 0);
+
+    private bool PuedeExportar => !_cargando && _error is null && _resultado is { SinDatos: false };
+
+    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+
+    protected override async Task OnInitializedAsync() => await CargarConfiguracionAsync();
+
+    private async Task CargarConfiguracionAsync()
+    {
+        try
+        {
+            _cfg = await Configuracion.ObtenerAsync<ConfiguracionComisiones>(RucClave, ClavesReporte.Comisiones);
+            _rangoNumerico = _cfg.RangoNumerico;
+            _abonoPorRecibo = _cfg.AbonoPorRecibo;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando la configuración del reporte de comisiones");
+            _error = $"No se pudo leer la configuración: {ex.Message}";
+        }
+    }
+
+    private void Refrescar()
+    {
+        _resultado = null;
+        _error = null;
+        _mensajeConfig = null;
+        LimpiarCampos();
+        InvokeAsync(async () =>
+        {
+            await CargarConfiguracionAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+
+    private static string Activo(object? valor) =>
+        valor switch { null => "", string s when string.IsNullOrWhiteSpace(s) => "", _ => "psa-input--activo" };
+
+    private void LimpiarCampos()
+    {
+        _reciboDesde = _reciboHasta = _cliente = _ciudad = "";
+        _fechaDesde = _fechaHasta = null;
+    }
+
+    private void LimpiarFiltros()
+    {
+        LimpiarCampos();
+        _resultado = null;
+        _error = null;
+    }
+
+    private FiltroComisiones ArmarFiltro() => new(
+        string.IsNullOrWhiteSpace(_reciboDesde) ? null : _reciboDesde.Trim(),
+        string.IsNullOrWhiteSpace(_reciboHasta) ? null : _reciboHasta.Trim(),
+        _fechaDesde, _fechaHasta,
+        string.IsNullOrWhiteSpace(_cliente) ? null : _cliente.Trim(),
+        string.IsNullOrWhiteSpace(_ciudad) ? null : _ciudad.Trim(),
+        _rangoNumerico, _abonoPorRecibo);
+
+    private string? Validar(FiltroComisiones f)
+    {
+        if (!f.RangoRecibosValido)
+        {
+            return "El rango de recibos necesita «desde» y «hasta», solo con números.";
+        }
+        if (!f.RangoFechasValido)
+        {
+            return "En las fechas del recibo, «Hasta» no puede ser anterior a «Desde».";
+        }
+        if (!f.TieneAcotador)
+        {
+            return "Indique un rango de recibos o un rango de fechas del recibo.";
+        }
+        return null;
+    }
+
+    private async Task Consultar()
+    {
+        _error = null;
+        _resultado = null;
+
+        var filtro = ArmarFiltro();
+        if (Validar(filtro) is { } problema)
+        {
+            _error = problema;
+            return;
+        }
+
+        _cargando = true;
+        try
+        {
+            _resultado = await Repositorio.GenerarAsync(filtro);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error generando el reporte de comisiones");
+            _error = $"No se pudo generar el reporte: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task GuardarPersonalizacion()
+    {
+        _guardando = true;
+        _mensajeConfig = null;
+        try
+        {
+            _cfg.RangoNumerico = _rangoNumerico;
+            _cfg.AbonoPorRecibo = _abonoPorRecibo;
+            var estado = await Autenticacion.GetAuthenticationStateAsync();
+            await Configuracion.GuardarAsync(RucClave, ClavesReporte.Comisiones, _cfg, estado.User.Identity?.Name);
+            _mensajeConfig = "Guardado. Se usa en pantalla y en el Excel.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error guardando la personalización del reporte de comisiones");
+            _mensajeConfig = $"No se pudo guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task Exportar()
+    {
+        // El Excel se arma en el servidor con la configuración guardada: se guarda antes de descargar.
+        await GuardarPersonalizacion();
+
+        var f = ArmarFiltro();
+        var qs = new List<string>();
+        if (EmpresaSage.RucSesion is { } ruc) qs.Add($"ruc={Uri.EscapeDataString(ruc)}");
+        if (f.ReciboDesde is { } rd) qs.Add($"reciboDesde={Uri.EscapeDataString(rd)}");
+        if (f.ReciboHasta is { } rh) qs.Add($"reciboHasta={Uri.EscapeDataString(rh)}");
+        if (f.FechaReciboDesde is { } fd) qs.Add($"fechaDesde={fd:yyyy-MM-dd}");
+        if (f.FechaReciboHasta is { } fh) qs.Add($"fechaHasta={fh:yyyy-MM-dd}");
+        if (f.Cliente is { } cl) qs.Add($"cliente={Uri.EscapeDataString(cl)}");
+        if (f.Ciudad is { } ci) qs.Add($"ciudad={Uri.EscapeDataString(ci)}");
+        qs.Add($"rangoNumerico={(f.RangoNumerico ? "true" : "false")}");
+        qs.Add($"abonoPorRecibo={(f.AbonoPorRecibo ? "true" : "false")}");
+        Nav.NavigateTo($"cartera/comisiones/export?{string.Join("&", qs)}", forceLoad: true);
+    }
+
+    private static string Num(decimal? value) => value is null ? "" : value.Value.ToString("N2", Ec);
+}
