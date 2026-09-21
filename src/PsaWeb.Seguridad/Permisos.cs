@@ -39,6 +39,12 @@ public static class Permisos
     // Requiere 1 fila nueva en allowAction de PeachEBills asignada a los roles.
     public const string VerKardex = "quKardex";
 
+    // Reportes migrados de Access (Cartera / Bancos) — códigos nuevos (el .mdb no los gateaba).
+    // Requieren 3 filas nuevas en allowAction (docs/sql/permisos-reportes-access.sql).
+    public const string VerReportePwc = "quRptPwc";
+    public const string VerReporteComisiones = "quRptComis";
+    public const string VerReporteCheques = "quRptChq";
+
     // Conciliación SRI — módulo sin equivalente de escritorio, código nuevo.
     // Requiere 1 fila nueva en allowAction de PeachEBills asignada a los roles.
     public const string VerConciliacionSri = "quconcsri";

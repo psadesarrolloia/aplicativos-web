@@ -8,13 +8,15 @@ namespace PsaWeb.Seguridad;
 public static class Categorias
 {
     public const string Caja = "Caja";
+    public const string Cartera = "Cartera";
+    public const string Bancos = "Bancos";
     public const string Impuestos = "Impuestos";
     public const string ComprobantesElectronicos = "Comprobantes Electrónicos";
     public const string Inventario = "Inventario";
 
     public static readonly IReadOnlyList<string> Orden = new[]
     {
-        Caja, Impuestos, ComprobantesElectronicos, Inventario,
+        Caja, Cartera, Bancos, Impuestos, ComprobantesElectronicos, Inventario,
     };
 }
 
