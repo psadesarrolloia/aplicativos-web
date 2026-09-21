@@ -1,7 +1,7 @@
 @using PsaWeb.Modules.CierreDeCaja
 
 <Router AppAssembly="typeof(Program).Assembly"
-        AdditionalAssemblies="new[] { typeof(ModuleInfo).Assembly, typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly, typeof(PsaWeb.Modules.ComprobantesElectronicos.ComprobantesElectronicosModule).Assembly, typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly, typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly }">
+        AdditionalAssemblies="new[] { typeof(ModuleInfo).Assembly, typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly, typeof(PsaWeb.Modules.Reportes.ModuleInfo).Assembly, typeof(PsaWeb.Modules.ComprobantesElectronicos.ComprobantesElectronicosModule).Assembly, typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly, typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly }">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

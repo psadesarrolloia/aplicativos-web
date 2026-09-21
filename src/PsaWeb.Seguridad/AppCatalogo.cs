@@ -48,6 +48,14 @@ public static class AppCatalogo
             "💵", "/cierre-de-caja", Categorias.Caja,
             Array.Empty<string>()), // sin código propio todavía: visible para cualquier empresa
 
+        // Provisional (GateProvisional): sin código propio hasta que el área cargue quRptPwc en
+        // allowAction (docs/sql/permisos-reportes-access.sql). Mientras tanto visible para cualquier
+        // empresa. Revertir a new[] { Permisos.VerReportePwc } cuando esté el código.
+        new("reporte-pwc", "PWC — Cuentas por cobrar",
+            "Facturas de venta con saldo, retenciones y monto a cobrar (ex reporte de Access).",
+            "📋", "/cartera/pwc", Categorias.Cartera,
+            Array.Empty<string>()),
+
         // Provisional (GateProvisional): la fila quats existe en allowAction
         // pero tiene 0 filas en adrAllowRol (no está asignada a ningún rol
         // todavía — verificado 2026-09-12). Mientras tanto visible para

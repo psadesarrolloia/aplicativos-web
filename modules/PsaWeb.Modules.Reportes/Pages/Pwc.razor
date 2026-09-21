@@ -1,0 +1,440 @@
+@page "/cartera/pwc"
+@namespace PsaWeb.Modules.Reportes.Pages
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Modules.Reportes.Comun
+@using PsaWeb.Modules.Reportes.Pwc
+@inject IPwcRepository Repositorio
+@inject IServicioConfiguracionReportes Configuracion
+@inject IResolverEmpresaSage EmpresaSage
+@inject IEmpresaSesionInfo EmpresaInfo
+@inject AuthenticationStateProvider Autenticacion
+@inject ILogger<Pwc> Logger
+@inject NavigationManager Nav
+@implements IDisposable
+
+<PageTitle>Cuentas por cobrar (PWC) — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Cuentas por cobrar (PWC)"
+               Subtitle="@Subtitulo" />
+
+<PsaCard Title="Filtros">
+    <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap">
+        <label class="psa-field">
+            <span class="psa-field__label">Emisión desde</span>
+            <input type="date" class="psa-input @Activo(_emisionDesde)" @bind="_emisionDesde" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Emisión hasta</span>
+            <input type="date" class="psa-input @Activo(_emisionHasta)" @bind="_emisionHasta" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Cobranza desde</span>
+            <input type="date" class="psa-input @Activo(_venceDesde)" @bind="_venceDesde" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Cobranza hasta</span>
+            <input type="date" class="psa-input @Activo(_venceHasta)" @bind="_venceHasta" />
+        </label>
+    </div>
+
+    <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
+        <label class="psa-field" style="min-width: 18rem">
+            <span class="psa-field__label">Cliente / agencia (contiene)</span>
+            <input class="psa-input @Activo(_cliente)" list="pwc-clientes" @bind="_cliente" @bind:event="oninput"
+                   placeholder="Escriba o elija de la lista…" />
+            <datalist id="pwc-clientes">
+                @foreach (var c in _opciones.Clientes)
+                {
+                    <option value="@c"></option>
+                }
+            </datalist>
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Factura (contiene)</span>
+            <input class="psa-input @Activo(_factura)" @bind="_factura" @bind:event="oninput" placeholder="001-001-…" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Anunciante (contiene)</span>
+            <input class="psa-input @Activo(_anunciante)" @bind="_anunciante" @bind:event="oninput" />
+        </label>
+    </div>
+
+    @if (_opciones.Ciudades.Count > 0)
+    {
+        <div class="psa-field" style="margin-top: 1rem">
+            <span class="psa-field__label">Ciudad de cobro</span>
+            <div class="psa-row" style="gap: 1.2rem; flex-wrap: wrap">
+                @foreach (var c in _opciones.Ciudades)
+                {
+                    var ciudad = c;
+                    <label style="display: flex; align-items: center; gap: .35rem">
+                        <input type="checkbox" checked="@_ciudades.Contains(ciudad)"
+                               @onchange="e => AlternarCiudad(ciudad, e.Value is true)" />
+                        <span>@(ciudad.Length == 0 ? "(sin ciudad)" : ciudad)</span>
+                    </label>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="psa-row" style="margin-top: 1.1rem">
+        <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
+            @(_cargando ? "Consultando…" : "Consultar")
+        </PsaButton>
+        <PsaButton Variant="secondary" OnClick="Exportar" Disabled="@(!PuedeExportar)">
+            Exportar a Excel
+        </PsaButton>
+        <PsaButton Variant="ghost" OnClick="LimpiarFiltros" Disabled="_cargando">Limpiar filtros</PsaButton>
+    </div>
+</PsaCard>
+
+<PsaCard Title="Personalización (por empresa)">
+    <details class="psa-details">
+        <summary>Encabezado, nombre de la empresa y columnas del Excel</summary>
+
+        <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
+            <label class="psa-field" style="min-width: 20rem">
+                <span class="psa-field__label">Nombre de la empresa (vacío = @NombreEmpresaSesion)</span>
+                <input class="psa-input" @bind="_empresa.NombreEmpresa" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Encabezado de la columna A</span>
+                <input class="psa-input" @bind="_cfg.EncabezadoRazonSocial" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Cobrador («MONTO A COBRAR POR …»)</span>
+                <input class="psa-input" @bind="_cfg.Cobrador" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Título del archivo (vacío = CXC + cobrador)</span>
+                <input class="psa-input" @bind="_cfg.Titulo" />
+            </label>
+        </div>
+
+        <div class="psa-field" style="margin-top: 1rem">
+            <span class="psa-field__label">Columnas a mostrar (factura, fechas, cliente, subtotal, IVA, total y monto a cobrar siempre salen)</span>
+            <div class="psa-row" style="gap: 1.4rem; flex-wrap: wrap">
+                <label><input type="checkbox" @bind="_cfg.MostrarEmpresa" /> Razón social</label>
+                <label><input type="checkbox" @bind="_cfg.MostrarOrden" /> Orden</label>
+                <label><input type="checkbox" @bind="_cfg.MostrarCiudad" /> Ciudad de cobro</label>
+                <label><input type="checkbox" @bind="_cfg.MostrarAnunciante" /> Anunciante</label>
+                <label><input type="checkbox" @bind="_cfg.MostrarRetenciones" /> Retenciones y descuentos</label>
+                <label><input type="checkbox" @bind="_cfg.MostrarDireccion" /> Dirección</label>
+            </div>
+        </div>
+
+        <div class="psa-row" style="margin-top: 1rem; align-items: center">
+            <PsaButton Variant="secondary" OnClick="GuardarPersonalizacion" Disabled="_guardando">
+                @(_guardando ? "Guardando…" : "Guardar personalización")
+            </PsaButton>
+            @if (_mensajeConfig is not null)
+            {
+                <span class="psa-muted">@_mensajeConfig</span>
+            }
+        </div>
+    </details>
+</PsaCard>
+
+@if (_error is not null)
+{
+    <PsaCard Title="Resultado">
+        <p class="psa-notice psa-notice--danger">@_error</p>
+    </PsaCard>
+}
+else if (_resultado is not null)
+{
+    <PsaCard Title="Resultado">
+        @if (_resultado.SinDatos)
+        {
+            <p class="psa-notice">No hay facturas con saldo para los filtros elegidos.</p>
+        }
+        else
+        {
+            <div class="psa-grid psa-grid--stats">
+                <PsaStat Label="Facturas" Value="@_resultado.Filas.Count.ToString("N0", Ec)" />
+                <PsaStat Label="Total facturado" Value="@Num(_resultado.TotalFacturado)" />
+                <PsaStat Label="Retenciones" Value="@Num(_resultado.TotalRetRenta + _resultado.TotalRetIva)" />
+                <PsaStat Label="@($"Monto a cobrar por {_cfg.Cobrador}")" Value="@Num(_resultado.TotalMontoCobrar)" State="ok" />
+            </div>
+
+            <div class="psa-row" style="gap: 2rem; align-items: flex-start; flex-wrap: wrap; margin-top: 1rem">
+                @if (_cfg.MostrarRetenciones && _resultado.ResumenRetenciones() is { Count: > 0 } retenciones)
+                {
+                    <div style="min-width: 18rem">
+                        <p class="psa-muted"><strong>Resumen de retenciones</strong> — por tipo y porcentaje leído de la descripción.</p>
+                        <table class="psa-table">
+                            <thead><tr><th>Retención</th><th class="num">Facturas</th><th class="num">Total</th></tr></thead>
+                            <tbody>
+                                @foreach (var r in retenciones)
+                                {
+                                    <tr><td>@r.Etiqueta</td><td class="num">@r.Facturas</td><td class="num">@Num(r.Total)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                <div style="min-width: 18rem">
+                    <p class="psa-muted"><strong>Resumen por ciudad de cobro</strong></p>
+                    <table class="psa-table">
+                        <thead><tr><th>Ciudad</th><th class="num">Facturas</th><th class="num">A cobrar</th></tr></thead>
+                        <tbody>
+                            @foreach (var c in _resultado.ResumenPorCiudad())
+                            {
+                                <tr><td>@c.Etiqueta</td><td class="num">@c.Facturas</td><td class="num">@Num(c.MontoCobrar)</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="overflow-x: auto; margin-top: 1rem">
+                <table class="psa-table">
+                    <thead>
+                        <tr>
+                            @if (_cfg.MostrarEmpresa) { <th>@_cfg.EncabezadoRazonSocial</th> }
+                            <th>Factura</th>
+                            <th>Emisión</th>
+                            <th>Cobranza</th>
+                            <th>Agencia / cliente</th>
+                            @if (_cfg.MostrarOrden) { <th>Orden</th> }
+                            @if (_cfg.MostrarCiudad) { <th>Ciudad</th> }
+                            @if (_cfg.MostrarAnunciante) { <th>Anunciante</th> }
+                            <th class="num">Subtotal</th>
+                            <th class="num">IVA</th>
+                            <th class="num">Total</th>
+                            @if (_cfg.MostrarRetenciones)
+                            {
+                                <th class="num">Ret. IR</th>
+                                <th class="num">Ret. IVA</th>
+                                <th class="num">Descuentos</th>
+                            }
+                            <th class="num">A cobrar</th>
+                            @if (_cfg.MostrarDireccion) { <th>Dirección</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in _resultado.Filas)
+                        {
+                            <tr>
+                                @if (_cfg.MostrarEmpresa) { <td>@NombreEmpresaEfectivo</td> }
+                                <td>@f.Factura</td>
+                                <td>@f.Emision.ToString("dd/MM/yyyy")</td>
+                                <td>@(f.Vence?.ToString("dd/MM/yyyy"))</td>
+                                <td>@f.Cliente</td>
+                                @if (_cfg.MostrarOrden) { <td>@f.Orden</td> }
+                                @if (_cfg.MostrarCiudad) { <td>@f.Ciudad</td> }
+                                @if (_cfg.MostrarAnunciante) { <td>@f.Anunciante</td> }
+                                <td class="num">@Num(f.Subtotal)</td>
+                                <td class="num">@Num(f.Iva)</td>
+                                <td class="num">@Num(f.Total)</td>
+                                @if (_cfg.MostrarRetenciones)
+                                {
+                                    <td class="num" title="@f.RetencionRentaGanadora?.Descripcion">@Num(f.RetRenta)</td>
+                                    <td class="num" title="@f.RetencionIvaGanadora?.Descripcion">@Num(f.RetIva)</td>
+                                    <td class="num">@Num(f.Descuentos)</td>
+                                }
+                                <td class="num"><strong>@Num(f.MontoCobrar)</strong></td>
+                                @if (_cfg.MostrarDireccion) { <td>@f.Direccion</td> }
+                            </tr>
+                        }
+                    </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="@ColumnasAntesDeImportes"><strong>Totales</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalSubtotal)</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalIva)</strong></td>
+                            <td class="num"><strong>@Num(_resultado.TotalFacturado)</strong></td>
+                            @if (_cfg.MostrarRetenciones)
+                            {
+                                <td class="num"><strong>@Num(_resultado.TotalRetRenta)</strong></td>
+                                <td class="num"><strong>@Num(_resultado.TotalRetIva)</strong></td>
+                                <td class="num"><strong>@Num(_resultado.TotalDescuentos)</strong></td>
+                            }
+                            <td class="num"><strong>@Num(_resultado.TotalMontoCobrar)</strong></td>
+                            @if (_cfg.MostrarDireccion) { <td></td> }
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        }
+    </PsaCard>
+}
+
+@code {
+    private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
+
+    private DateOnly? _emisionDesde, _emisionHasta, _venceDesde, _venceHasta;
+    private string _cliente = "", _factura = "", _anunciante = "";
+    private readonly HashSet<string> _ciudades = new(StringComparer.OrdinalIgnoreCase);
+
+    private OpcionesPwc _opciones = OpcionesPwc.Vacias;
+    private ConfiguracionPwc _cfg = new();
+    private ConfiguracionEmpresa _empresa = new();
+    private bool _guardando;
+    private string? _mensajeConfig;
+
+    private bool _cargando;
+    private string? _error;
+    private ResultadoPwc? _resultado;
+
+    private string RucClave => EmpresaSage.RucSesion ?? "_sin-empresa";
+    private string NombreEmpresaSesion => EmpresaInfo.Nombre ?? "la empresa de sesión";
+    private string NombreEmpresaEfectivo => string.IsNullOrWhiteSpace(_empresa.NombreEmpresa)
+        ? (EmpresaInfo.Nombre ?? "")
+        : _empresa.NombreEmpresa.Trim();
+
+    private string Subtitulo => EmpresaSage.RucSesion is null
+        ? "Facturas de venta con saldo, con retenciones y monto a cobrar. Solo lectura."
+        : $"{NombreEmpresaEfectivo} · facturas de venta con saldo, con retenciones y monto a cobrar. Solo lectura.";
+
+    private int ColumnasAntesDeImportes =>
+        4 + (_cfg.MostrarEmpresa ? 1 : 0) + (_cfg.MostrarOrden ? 1 : 0) + (_cfg.MostrarCiudad ? 1 : 0) + (_cfg.MostrarAnunciante ? 1 : 0);
+
+    private bool PuedeExportar => !_cargando && _error is null && _resultado is { SinDatos: false };
+
+    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+
+    protected override async Task OnInitializedAsync() => await CargarContextoAsync();
+
+    private async Task CargarContextoAsync()
+    {
+        try
+        {
+            _cfg = await Configuracion.ObtenerAsync<ConfiguracionPwc>(RucClave, ClavesReporte.Pwc);
+            _empresa = await Configuracion.ObtenerAsync<ConfiguracionEmpresa>(RucClave, ClavesReporte.Empresa);
+            _opciones = await Repositorio.OpcionesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando el contexto del reporte PWC");
+            _error = $"No se pudo leer Sage 50: {ex.Message}";
+        }
+    }
+
+    private void Refrescar()
+    {
+        // Cambió la empresa de sesión: filtros, opciones y resultado ya no aplican.
+        _resultado = null;
+        _error = null;
+        _mensajeConfig = null;
+        LimpiarCampos();
+        InvokeAsync(async () =>
+        {
+            await CargarContextoAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+
+    private static string Activo(object? valor) =>
+        valor switch { null => "", string s when string.IsNullOrWhiteSpace(s) => "", _ => "psa-input--activo" };
+
+    private void AlternarCiudad(string ciudad, bool marcada)
+    {
+        if (marcada) _ciudades.Add(ciudad);
+        else _ciudades.Remove(ciudad);
+    }
+
+    private void LimpiarCampos()
+    {
+        _emisionDesde = _emisionHasta = _venceDesde = _venceHasta = null;
+        _cliente = _factura = _anunciante = "";
+        _ciudades.Clear();
+    }
+
+    private void LimpiarFiltros()
+    {
+        LimpiarCampos();
+        _resultado = null;
+        _error = null;
+    }
+
+    private FiltroPwc ArmarFiltro() => new(
+        _emisionDesde, _emisionHasta, _venceDesde, _venceHasta,
+        string.IsNullOrWhiteSpace(_cliente) ? null : _cliente,
+        string.IsNullOrWhiteSpace(_factura) ? null : _factura,
+        string.IsNullOrWhiteSpace(_anunciante) ? null : _anunciante,
+        _ciudades.Count == 0 ? null : _ciudades.ToList());
+
+    private async Task Consultar()
+    {
+        _error = null;
+        _resultado = null;
+
+        var filtro = ArmarFiltro();
+        if (!filtro.RangoEmisionValido || !filtro.RangoVenceValido)
+        {
+            _error = "En los rangos de fechas, «Hasta» no puede ser anterior a «Desde».";
+            return;
+        }
+
+        _cargando = true;
+        try
+        {
+            _resultado = await Repositorio.GenerarAsync(filtro);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error generando el reporte PWC");
+            _error = $"No se pudo generar el reporte: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private async Task<string?> UsuarioAsync()
+    {
+        var estado = await Autenticacion.GetAuthenticationStateAsync();
+        return estado.User.Identity?.Name;
+    }
+
+    private async Task GuardarPersonalizacion()
+    {
+        _guardando = true;
+        _mensajeConfig = null;
+        try
+        {
+            var usuario = await UsuarioAsync();
+            await Configuracion.GuardarAsync(RucClave, ClavesReporte.Pwc, _cfg, usuario);
+            await Configuracion.GuardarAsync(RucClave, ClavesReporte.Empresa, _empresa, usuario);
+            _mensajeConfig = "Guardado. Se usa en pantalla y en el Excel.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error guardando la personalización del reporte PWC");
+            _mensajeConfig = $"No se pudo guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task Exportar()
+    {
+        // El Excel se arma en el servidor con la configuración guardada: se guarda antes de descargar.
+        await GuardarPersonalizacion();
+
+        var f = ArmarFiltro();
+        var qs = new List<string>();
+        if (EmpresaSage.RucSesion is { } ruc) qs.Add($"ruc={Uri.EscapeDataString(ruc)}");
+        if (f.EmisionDesde is { } a) qs.Add($"emisionDesde={a:yyyy-MM-dd}");
+        if (f.EmisionHasta is { } b) qs.Add($"emisionHasta={b:yyyy-MM-dd}");
+        if (f.VenceDesde is { } c) qs.Add($"venceDesde={c:yyyy-MM-dd}");
+        if (f.VenceHasta is { } d) qs.Add($"venceHasta={d:yyyy-MM-dd}");
+        if (f.Cliente is { } cl) qs.Add($"cliente={Uri.EscapeDataString(cl)}");
+        if (f.Factura is { } fa) qs.Add($"factura={Uri.EscapeDataString(fa)}");
+        if (f.Anunciante is { } an) qs.Add($"anunciante={Uri.EscapeDataString(an)}");
+        if (f.Ciudades is { } ciudades)
+        {
+            foreach (var ciu in ciudades) qs.Add($"ciudad={Uri.EscapeDataString(ciu)}");
+        }
+        Nav.NavigateTo($"cartera/pwc/export?{string.Join("&", qs)}", forceLoad: true);
+    }
+
+    private static string Num(decimal value) => value.ToString("N2", Ec);
+}

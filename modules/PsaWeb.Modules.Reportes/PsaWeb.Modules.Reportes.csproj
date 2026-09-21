@@ -12,6 +12,7 @@
     <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="QuestPDF" Version="2026.8.0" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.18" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="9.0.18" />
     <!-- Configuración por empresa: tabla en PsaWebPlataforma (mismo patrón que Conciliación SRI). -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">

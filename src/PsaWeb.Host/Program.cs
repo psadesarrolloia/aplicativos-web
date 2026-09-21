@@ -8,6 +8,8 @@ using PsaWeb.Modules.CierreDeCaja;
 using PsaWeb.Modules.CierreDeCaja.Data;
 using PsaWeb.Modules.CierreDeCaja.Export;
 using PsaWeb.Modules.Kardex;
+using PsaWeb.Modules.Reportes;
+using PsaWeb.Modules.Reportes.Pwc;
 using PsaWeb.Modules.Ats;
 using PsaWeb.Datil;
 using PsaWeb.Notificaciones;
@@ -31,6 +33,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddSage50(builder.Configuration);
 builder.Services.AddCierreDeCaja(builder.Configuration);
 builder.Services.AddKardex(builder.Configuration); // Kardex de inventarios (solo lectura, empresa de sesión)
+builder.Services.AddReportes(builder.Configuration); // Reportes de Access: PWC, Comisiones (Cartera) y Cheques (Bancos)
 
 // Módulo Retenciones (Ola 1). Solo se registra si hay cadena a PeachEBills; sin
 // ella las páginas de Comprobantes electrónicos (/fe/*) muestran un aviso de "no configurado" y el resto del
@@ -54,6 +57,9 @@ if (peachEbillsConfigurado)
     builder.Services.AddScoped<
         PsaWeb.Sage50.IResolverEmpresaSage,
         PsaWeb.Host.Cierre.HostResolverEmpresaSage>();
+    builder.Services.AddScoped<
+        PsaWeb.Modules.Reportes.Comun.IEmpresaSesionInfo,
+        PsaWeb.Host.Cierre.HostEmpresaSesionInfo>();
 }
 
 // Shell F-Shell-0: identidad local (ASP.NET Core Identity) + rate-limiting del
@@ -144,6 +150,10 @@ app.Logger.LogInformation(
     "Kardex: repositorio {Repo}.",
     PsaWeb.Modules.Kardex.KardexModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50");
 app.Logger.LogInformation(
+    "Reportes (PWC, Comisiones, Cheques): repositorio {Repo}; configuracion {Config}.",
+    PsaWeb.Modules.Reportes.ReportesModule.UsaDatosDeMuestra(app.Configuration) ? "DE MUESTRA" : "ODBC / Sage 50",
+    PsaWeb.Modules.Reportes.ReportesModule.UsaPlataforma(app.Configuration) ? "en PsaWebPlataforma" : "en memoria");
+app.Logger.LogInformation(
     "ATS: módulo {Estado}{Repo}.",
     peachEbillsConfigurado ? "ACTIVO" : "INACTIVO (sin PeachEbills:ConnectionString)",
     peachEbillsConfigurado
@@ -178,6 +188,10 @@ if (plataformaConfigurada)
         var conciliacionDb = scope.ServiceProvider.GetRequiredService<ConciliacionDbContext>();
         await conciliacionDb.Database.MigrateAsync();
         app.Logger.LogInformation("Conciliación SRI: migraciones aplicadas.");
+
+        var reportesDb = scope.ServiceProvider.GetRequiredService<PsaWeb.Modules.Reportes.Comun.ReportesDbContext>();
+        await reportesDb.Database.MigrateAsync();
+        app.Logger.LogInformation("Reportes (Cartera / Bancos): migraciones aplicadas.");
     }
 
     if (app.Environment.IsDevelopment())
@@ -241,6 +255,7 @@ app.MapRazorComponents<App>()
     .AddAdditionalAssemblies(
         typeof(PsaWeb.Modules.CierreDeCaja.ModuleInfo).Assembly,
         typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly,
+        typeof(PsaWeb.Modules.Reportes.ModuleInfo).Assembly,
         typeof(PsaWeb.Modules.ComprobantesElectronicos.ComprobantesElectronicosModule).Assembly,
         typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly,
         typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly);
@@ -340,6 +355,69 @@ app.MapGet("/kardex/export", async (
             bytes,
             PsaWeb.Modules.Kardex.Export.KardexExcelExporter.ContentType,
             exportador.NombreArchivo(desde, hasta));
+    })
+    .RequireAuthorization();
+
+// Descarga del reporte PWC (cuentas por cobrar) en Excel. Re-consulta con el mismo filtro y usa la
+// personalización guardada de la empresa (encabezado, cobrador, columnas).
+app.MapGet("/cartera/pwc/export", async (
+        string? ruc,
+        DateOnly? emisionDesde,
+        DateOnly? emisionHasta,
+        DateOnly? venceDesde,
+        DateOnly? venceHasta,
+        string? cliente,
+        string? factura,
+        string? anunciante,
+        string[]? ciudad,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Reportes.Pwc.IPwcRepository repositorio,
+        PsaWeb.Modules.Reportes.Pwc.PwcExcelExporter exportador,
+        PsaWeb.Modules.Reportes.Comun.IServicioConfiguracionReportes configuracion,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        var filtro = new PsaWeb.Modules.Reportes.Pwc.FiltroPwc(
+            emisionDesde, emisionHasta, venceDesde, venceHasta, cliente, factura, anunciante,
+            ciudad is { Length: > 0 } ? ciudad : null);
+        if (!filtro.RangoEmisionValido || !filtro.RangoVenceValido)
+        {
+            return Results.BadRequest("En los rangos de fechas, «Hasta» no puede ser anterior a «Desde».");
+        }
+
+        var nombreSesion = "";
+        PsaWeb.Modules.Reportes.Pwc.ResultadoPwc resultado;
+        if (!string.IsNullOrWhiteSpace(ruc))
+        {
+            var nombre = usuario.Identity?.Name ?? string.Empty;
+            var empresa = seguridad is null
+                ? null
+                : (await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken)).FirstOrDefault(e => e.Ruc == ruc);
+            if (empresa is null)
+            {
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            nombreSesion = empresa.Nombre;
+            resultado = await repositorio.GenerarParaRucAsync(ruc, filtro, cancellationToken);
+        }
+        else
+        {
+            resultado = await repositorio.GenerarAsync(filtro, cancellationToken);
+        }
+
+        var claveConfig = string.IsNullOrWhiteSpace(ruc) ? "_sin-empresa" : ruc;
+        var cfg = await configuracion.ObtenerAsync<PsaWeb.Modules.Reportes.Comun.ConfiguracionPwc>(
+            claveConfig, PsaWeb.Modules.Reportes.Comun.ClavesReporte.Pwc, cancellationToken);
+        var emp = await configuracion.ObtenerAsync<PsaWeb.Modules.Reportes.Comun.ConfiguracionEmpresa>(
+            claveConfig, PsaWeb.Modules.Reportes.Comun.ClavesReporte.Empresa, cancellationToken);
+        var nombreEmpresa = string.IsNullOrWhiteSpace(emp.NombreEmpresa) ? nombreSesion : emp.NombreEmpresa.Trim();
+        var corte = DateOnly.FromDateTime(DateTime.Today);
+
+        var bytes = exportador.Generar(resultado, cfg, nombreEmpresa, corte, filtro.Describir());
+        return Results.File(
+            bytes,
+            PsaWeb.Modules.Reportes.Pwc.PwcExcelExporter.ContentType,
+            exportador.NombreArchivo(cfg, nombreEmpresa, corte));
     })
     .RequireAuthorization();
 
