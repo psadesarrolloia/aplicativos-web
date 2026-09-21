@@ -6,9 +6,10 @@ empresa de sesión. Mismo molde que Kardex (`docs/PLAN-KARDEX-INVENTARIOS.md`): 
 `SELECT` + repo de muestra + ClosedXML + página acotada a la empresa de sesión.
 **No usa el SDK ni el Sage Bridge** (`docs/APPS-SDK-VS-SOLO-LECTURA.md`): no se escribe nada en Sage.
 
-Estado: **F0 (plan) hecho; implementación en curso en `main`, sin push ni deploy** (decisión del usuario).
-Las decisiones abiertas están en §8; cada una se implementa con el valor por defecto
-recomendado y se cambia con un ajuste de configuración, no reescribiendo código.
+Estado: **F0–F5 hechas en `main`, sin push ni deploy** (decisión del usuario). El módulo está completo y validado
+contra Sage local y los Excel del usuario (§9.1); falta la **prueba de impresión real** (D3/D4) y el deploy.
+Las decisiones abiertas están en §8; cada una está implementada con el valor por defecto recomendado y se
+cambia con un ajuste de configuración, no reescribiendo código.
 
 ## 1. Fuentes leídas
 
@@ -180,13 +181,18 @@ del **margen**, no de la hoja. Si esos márgenes se usaron al imprimir, el n.º 
 El modelo de página se guarda como **lista de campos con (x, y, ancho, alineación) en mm**, independiente del
 formato: hoy lo consume el renderizador PDF; el de ESC/P sería un segundo consumidor de la misma lista.
 
-Fuente: **monoespaciada** (Courier) por defecto — con 100 mm por línea caben 47 caracteres y el texto en letras
-(90 caracteres con relleno `xxxxx`) llena exactamente las 2 líneas — o Arial, configurable.
+Fuente: **monoespaciada** (Courier New) por defecto, o la que se configure. Con una fuente monoespaciada cada
+carácter mide `0,6 × tamaño`, así que el texto se parte y se achica **de forma determinista** (sin depender del motor de
+PDF): en Courier 10 pt caben 47 caracteres en 100 mm. El monto en letras con relleno mide ≈ 104 caracteres (los 90 de
+`TamNumLetters` más un espacio cada 5 «x»), o sea que **a 10 pt no cabe en las 2 líneas**: el diseño de Access contaba con
+el ancho de Arial. El modelo achica sólo ese texto (≈ 8 pt) hasta que quepa en 2 líneas de 100 mm (mínimo 5 pt), y
+lo mismo hace con un beneficiario, una cuenta o una factura demasiado largos, para que nada se salga de su caja.
 
-**Hoja de prueba** (`/bancos/cheques/prueba`): marcas de esquina, regla en milímetros en los 4 bordes, una línea de
-100,0 mm (para comprobar que el 100 % se respetó), marcas en (10,0; 13,0) por si rige el margen del reporte, y un cheque
-de ejemplo con cada campo enmarcado y rotulado con su (x, y). Se pega el cheque, se imprime, se mide y se
-carga la corrección X/Y en la página.
+**Hoja de prueba** (`/bancos/cheques/prueba`): marcas cada 10 mm en los bordes superior e izquierdo, una regla rotulada
+bajo el cheque (y = 62 mm), una línea de 100,0 mm (para comprobar que se imprimió al 100 %), una cruz en (0; 0) y otra en
+(10,0; 13,0) por si rige el margen del reporte, y un cheque de ejemplo con cada campo enmarcado; abajo, la lista de
+coordenadas y la corrección vigente. Se pega el cheque, se imprime, se mide y se carga la corrección X/Y en la página
+(la corrección se suma a todo, pero **no** a las reglas: son la referencia de la hoja).
 
 ### 5.5 Monto en letras
 
@@ -209,23 +215,28 @@ Efemedio, «ELABORADO POR» en Demoradio), rótulo «CH.No.», fuente, tamaño, 
 | ID | Dónde | Qué pasa | Evidencia | Por defecto |
 |---|---|---|---|---|
 | **C1** | Comisiones | `ABONO = PAID − CRUCE − RET` usa el **total pagado de la factura**, no lo aplicado por *ese* recibo. Una factura con 2 recibos aparecería 2 veces con el mismo abono | Sin facturas repetidas en el Excel, pero `…13912` (recibo 5132) muestra abono **129,80** cuando ese recibo aplicó **1,32**; `…15422` (5143): 1.570,48 vs 317,65 | **Fiel** (opción «abono = lo aplicado por el recibo») |
-| **C2** | Comisiones | El filtro compara **texto**: `'513' >= '5122'` es verdadero | El Excel del usuario incluye los recibos **513 y 514 (de 2013)** en el rango 5122–5146 | **Fiel** (opción «comparar como número») |
+| **C2** | Comisiones | El filtro compara **texto**: `'513' >= '5122'` es verdadero | El Excel del usuario incluye los recibos **513 y 514 (de 2013)** en el rango 5122–5146 | **Fiel** (opción «comparar como número»; el filtro trae además `Format(desde,"000")`: «12» → «012») |
 | **C3** | Comisiones | Sin desempate: facturas del mismo día salen en orden físico de Pervasive | Excel: `15463, 15461, 15462, 15465, 15464` | Se agrega `PostOrder` como último criterio (no cambia valores) |
 | **P1** | PWC | Rótulos del resumen cruzados: `M3` (junto a «RET. IVA 70 %») suma la columna de **20 %** y `M4` (junto a «RET. IVA 20 %») la de **70 %** | Excel: `M3 = 0`, `M4 = 6.184,05` (≈ 5.659,05 del 70 % + 525 de una retención posterior al corte) | **Corregido por construcción** (resumen dinámico, D9) |
 | **P2** | PWC | Los resúmenes sólo cubren 1 %/2 % (IR) y 20 %/70 % (IVA); el resto de porcentajes (3 %, 1,75 %, IVA 100 %) queda fuera | 76 de 85 filas tienen IR ≠ 1 %/2 % | Resumen dinámico |
 | **P3** | PWC/Comisiones | Subtotal e IVA: **el último grupo no cero gana**, no se suman los grupos | En Efemedio los grupos extra son de monto 0 → sin efecto | **Fiel** (sin diferencia observada) |
 | **P4** | PWC | La ciudad («CIUDAD COBROS») sale de `ShipToZIP` y «ORDEN» de `ShipToCity` | Excel | Fiel |
 | **P5** | PWC | Sin `ORDER BY`: el orden es el físico | Excel: `15613` antes de `15612` | `ORDER BY PostOrder` (orden de captura) |
+| **P6** | PWC | Retenciones: cada línea `IRF`/`IVA` sobrescribe la celda; con 2 retenciones de renta en una factura sólo cuenta la última | Código (en Efemedio hay a lo sumo una de cada tipo por factura) | **Fiel**; el resumen dinámico cuenta sólo la retención «ganadora» para que cuadre con `L` + `M` |
 | **Q1** | Cheques | Montos < $2,00 sin «CON xx/100» ni relleno | Código | **Fiel** + advertencia en pantalla (D7) |
 | **Q2** | Cheques | Doble espacio entre bloques; `UN MIL` | Código | Fiel |
 | **Q3** | Cheques | `CityAndDate` fija «Quito» | Código | Configurable |
 | **Q4** | Cheques | Un pago anulado (`ANULADO`, monto 0) sale igual en la lista | Efemedio ref. `6615` | Fiel; el monto sale «CERO DOLARES» |
+| **Q5** | Cheques | `NumberReference` revienta (`Mid` con largo negativo) con referencias como `PI-ABC` o `PI-`, y aborta toda la carga de la lista | Código de `ReportesEgresosDemoR` | Esas referencias se descartan (no hay n.º de cheque); el resto sigue |
+| **Q6** | Cheques | `IsNumeric` de VB acepta «1e3», «$5», «1,5» o «&H10» como número de cheque | Código | El número es de sólo dígitos |
 | **X1** | Comisiones/Excel | En la fila del cliente, la columna «FECHA» trae el n.º de recibo | Excel | Fiel en el Excel |
 
 ## 7. Diseño técnico
 
 **Módulo** `modules/PsaWeb.Modules.Reportes` (RCL). Rutas: `/cartera/pwc`, `/cartera/comisiones`, `/bancos/cheques`
-(+ `/bancos/cheques/pdf`, `/bancos/cheques/prueba`, `/cartera/*/export`). Categorías nuevas del menú:
+(+ `/bancos/cheques/pdf`, `/bancos/cheques/vista`, `/bancos/cheques/prueba`, `/cartera/pwc/export`,
+`/cartera/comisiones/export`; todos con `ruc` y **403** si el usuario no tiene esa empresa; el PDF sólo imprime pagos
+reales —diario 2 / tipo 5— aunque se manipule la URL, y hasta 200 por vez). Categorías nuevas del menú:
 **Cartera** (PWC, Comisiones) y **Bancos** (Cheques), en `Categorias.Orden` tras «Caja».
 
 **Permisos** (`allowAction`, `allowCode` ≤ 10, `allowName` ≤ 50, `GateProvisional` = visibles a todas las empresas hasta que el área
@@ -240,11 +251,12 @@ logo, quién y cuándo). Migración EF que se aplica sola al arrancar (como Conc
 + `Sample…Repository` + lógica pura (`Armador…`) + exportador/renderizador. `CultureInfo.InvariantCulture` en toda
 conversión número↔texto de datos de Sage. Sage siempre a 32 bits; en PREDATOR `PeachEbills:SageServerNameOverride=localhost`.
 
-**Tests** (`tests/PsaWeb.Reportes.Tests`): `NumeroALetras` (tabla de casos, Q1/Q2), parser de referencia y de porcentajes,
-armadores de PWC y Comisiones (bugs C1/C2 con y sin corrección), exportadores (reabrir el `.xlsx`: fechas reales,
-fórmula `N`, resúmenes), renderizador PDF (posiciones en mm extraídas del PDF), y **validación contra los dos Excel del usuario**
-(pruebas opcionales: se saltan si no está el Sage local de Efemedio o los archivos; los archivos con datos de un cliente
-**no se commitean**).
+**Tests** (`tests/PsaWeb.Reportes.Tests`, 158): `NumeroALetras` (tabla de casos, Q1/Q2), parser de referencia y de
+porcentajes, armadores de PWC y Comisiones (bugs C1/C2 con y sin corrección), exportadores (reabrir el `.xlsx`: fechas
+reales, fórmula `N`, resúmenes con fórmulas evaluadas), modelo de página y **PDF real** (posiciones en mm leídas del PDF con
+PdfPig, correcciones X/Y, logo, fuente monoespaciada, hoja de prueba), **render real de las 3 páginas Razor** con
+`HtmlRenderer` (filtros, consultas, avisos, URLs de exportación e impresión) y **validación contra Sage local y los Excel del
+usuario** (10 pruebas opcionales, ver §9.1). El proyecto de pruebas compila a **x86** por el driver ODBC de 32 bits.
 
 **Fixture:** Radio FM Efemedio (`EFEMEDIO20252026`, RUC 1792187796001) está en el Sage local. **Demoradio no** (Btrieve 2301) — sus
 variantes (rótulo «ELABORADO POR», `DEMORADIO`) se cubren con la configuración, sin datos propios.
@@ -277,21 +289,65 @@ variantes (rótulo «ELABORADO POR», `DEMORADIO`) se cubren con la configuraci�
 
 ## 9. Fases y commits (todo en `main`, sin push)
 
-| Fase | Contenido |
-|---|---|
-| **F0** | Este plan. |
-| **F1** | Módulo `PsaWeb.Modules.Reportes`: scaffold, categorías y `AppCatalogo`, permisos + SQL, configuración por empresa (tabla + migración + servicio), `NumeroALetras`. |
-| **F2** | PWC: repo ODBC/muestra, armador, página, Excel, endpoint, tests. |
-| **F3** | Comisiones: ídem, con las opciones C1/C2. |
-| **F4** | Cheques: repo, parser de referencia, modelo de página en mm, PDF, hoja de prueba, página, tests con posiciones en mm. |
-| **F5** | Validación contra Sage local y los dos Excel; actualizar `ESTADO-MIGRACION-WEB.md`. |
+| Fase | Commit | Contenido |
+|---|---|---|
+| **F0** | `b720035` | Este plan. |
+| **F1** | `26eef44` | Módulo `PsaWeb.Modules.Reportes`: scaffold, categorías, constantes de permiso + SQL, configuración por empresa (tabla + migración + servicio), `NumeroALetras`. |
+| **F2** | `00c2f85` | PWC: repo ODBC/muestra, armador, página, Excel, endpoint, tests; entrada en `AppCatalogo`. |
+| **F3** | `ed029d2` | Comisiones: ídem, con las opciones C1/C2. |
+| **F4** | `c08f5ef` | Cheques: repo, parser de referencia, modelo de página en mm, PDF, hoja de prueba, página, endpoints, tests. |
+| **F5** | (este) | Validación contra Sage local y los dos Excel, `ESTADO-MIGRACION-WEB.md`, notas finales. |
 
-**Deploy:** no se prepara hasta que lo pidas (zip + un script, estilo ya conocido). Antes del deploy: correr
-`permisos-reportes-access.sql` y confirmar D3/D4 con una impresión real.
+**Deploy:** no se preparó (pedido del usuario). Cuando se pida: zip + un script; antes, correr
+`permisos-reportes-access.sql` y confirmar D3/D4 con una impresión real. Al primer arranque en el servidor el Host aplica
+solo la migración de `ConfiguracionesReporte` en `PsaWebPlataforma` (no hace falta ninguna variable de entorno nueva).
+
+### 9.1 Resultados de la validación (Sage local de Efemedio + Excel del usuario)
+
+| Qué | Resultado |
+|---|---|
+| PWC vs `CXC PWC EFEMEDIO.xlsx` | 82 facturas del Sage local = 80 idénticas en todas las columnas + 2 que sólo difieren en retenciones cargadas después de la copia local; las 3 facturas restantes del Excel son posteriores al corte (`…15614`, `…15615`, `…15618`). Fechas, cliente, orden, ciudad y anunciante idénticos. |
+| Resumen de retenciones PWC | RF 1 % = **17,60** (igual que `L3` del Excel); IVA 70 % «por descripción» = **5.659,05** (`M4` = 6.184,05 = 5.659,05 + 525,00 de la retención de `…15611` cargada después del corte); RF 2 % y IVA 20 % = 0; suma del resumen = `L` + `M`. |
+| Comisiones vs `COMISIONES EFEMEDIO.xlsx` (5122–5146) | **41 de 41** filas idénticas (10 columnas), mismos 22 clientes en el mismo orden y mismo n.º de recibo en cada cabecera. |
+| Bug C2 con datos reales | Con texto entran los recibos 513 y 514 (2 facturas de 2012); con `RangoNumerico` salen (39 filas). |
+| Bug C1 con datos reales | `…13912`: heredado 129,80 vs 1,32 aplicado por el recibo; `…15509`: ambos 1.306,30. |
+| Cheques (1/8–30/9/2026) | La lista de pagos (con prefijo/tipo, número y monto) coincide con la consulta de Access + un port literal de `NumberReference` (`InStr`/`Mid`) escrito aparte en el test; el detalle de 25 pagos coincide línea a línea con la consulta por pago de Access; en pagos con monto, Σ PAGOS = Σ CHEQUE = monto. Sólo se devuelven pagos reales aunque se pidan otros `PostOrder`. |
+| Toda la solución | `dotnet test PsaWeb.sln`: **todos los proyectos en verde**. |
+
+**Cómo repetirlo** (PowerShell; las pruebas de Sage corren a 32 bits y se saltan solas si falta algo):
+
+```powershell
+$env:PSAWEB_TEST_SAGE_EFEMEDIO = "Driver={Pervasive ODBC Client Interface};servername=localhost;uid=Peachtree;dbq=EFEMEDIO20252026;pwd=<clave>;"
+$env:PSAWEB_TEST_PWC_XLSX = "C:\ruta\CXC PWC EFEMEDIO.xlsx"              # opcional (por defecto en Descargas)
+$env:PSAWEB_TEST_COMISIONES_XLSX = "C:\ruta\COMISIONES EFEMEDIO.xlsx"     # opcional
+dotnet test tests\PsaWeb.Reportes.Tests --filter "FullyQualifiedName~Validacion"
+```
+
+La clave y los Excel del cliente **no** están en el repo.
+
+### 9.2 Cómo hacer la prueba de impresión (D3 / D4)
+
+1. Entrar a **Bancos → Cheques y comprobantes de egreso**, abrir «Personalización» y pulsar **Hoja de prueba de impresión (PDF)**.
+2. Imprimirla en la matricial **al 100 % / «tamaño real»** (sin «ajustar a página», sin márgenes), con el cheque pegado con
+   cinta en la esquina superior izquierda. Comprobar que la línea de 100 mm mide 100 mm.
+3. Comparar cada recuadro del cheque de ejemplo con el campo real del cheque. Si todo cae corrido lo mismo, cargar esa
+   diferencia en **Corrección X / Y (mm)** (positivo = derecha / abajo), guardar y reimprimir la hoja de prueba.
+4. Si hay que subir ≈ 10 / 13 mm es la señal de que rige el margen del reporte de Access (D3): la corrección lo resuelve.
+5. Con el cheque alineado: buscar un pago real, **Vista previa** y luego **Imprimir seleccionados**.
+
+Si el PDF sale muy lento o de baja calidad en la matricial, o el controlador de Windows lo deforma, pasar a la opción C
+(ESC/P) — el modelo de página en mm ya está separado del formato de salida; falta el modelo de impresora y cómo llega el
+flujo crudo (D4).
 
 ## 10. Lo que no pude verificar
 
-- La impresión real (D3, D4): sin la matricial no hay forma de saber el origen ni la escala.
+- **La impresión real** (D3, D4): sin la matricial no hay forma de saber el origen, la escala ni la velocidad. Lo que sí
+  está comprobado es el PDF: A4 exacto y cada texto en su (x, y) en mm, leído del propio PDF.
+- **Las páginas en un navegador con sesión iniciada.** El Host completo sólo arranca con la plataforma (login local) y yo no
+  ingreso contraseñas; por eso las 3 páginas se validaron renderizándolas de verdad con `HtmlRenderer` (filtros, consultas,
+  avisos, URLs). Falta un vistazo visual de estilos/espaciado en el navegador (`/cartera/pwc`, `/cartera/comisiones`, `/bancos/cheques`).
+- **Los Excel abiertos en Excel.** Se reabren y se evalúan con ClosedXML (fórmulas `SUM`, `SUMIF`, `COUNTIF` incluidas);
+  el criterio «(sin ciudad)» usa `"="` sobre celdas realmente vacías, que es el comportamiento documentado de Excel.
 - El logo de Efemedio: `logoExa.png` está dentro del `.mdb` (binario), no en el volcado; se sube por la página.
 - Demoradio no está en el Sage local: sólo se probó con Efemedio.
-- El Sage local es una copia anterior a los Excel del usuario (3 facturas y 2 retenciones posteriores), de ahí la lectura «80 de 82».
+- El Sage local es una copia anterior a los Excel del usuario, de ahí la lectura «80 de 82» del PWC.

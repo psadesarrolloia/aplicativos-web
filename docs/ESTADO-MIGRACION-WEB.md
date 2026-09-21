@@ -1,4 +1,4 @@
-# Estado de la migración web PSA (al 2026-09-15)
+# Estado de la migración web PSA (al 2026-09-15; §5.6 y §9 al 2026-09-21)
 
 Documento de referencia único para arrancar cualquier trabajo nuevo sobre este
 repo sin tener que releer todo el historial. Complementa (no reemplaza) a
@@ -126,7 +126,7 @@ pantallas en `src/PsaWeb.Host`.
   fila a `AppCatalogo.Todas` (`Id`/`Nombre`/`Descripcion`/`Icono`/`Ruta`/
   **`Categoria`**/`Permisos`), sin tocar `NavMenu.razor` ni `Home.razor`.
   `Categorias.Orden` fija las categorías y su orden en la barra — hoy
-  `Caja` → `Impuestos` → `Comprobantes Electrónicos` → `Inventario`; agregar
+  `Caja` → `Cartera` → `Bancos` → `Impuestos` → `Comprobantes Electrónicos` → `Inventario`; agregar
   una categoría nueva es agregarla ahí, en la posición donde deba aparecer.
   Una categoría con un solo módulo sigue rindiéndose como grupo desplegable
   (no como link directo) — así no hay que tocar nada cuando un segundo módulo
@@ -231,6 +231,34 @@ tablas**: no reusar estos mismos campos para otra cosa sin coordinarlo.
   cuando se evaluó (y se descartó) esa alternativa — corromper ese campo
   rompe la identificación del cliente en el ATS. Limpiarlo si no se hizo.
 
+### 5.6 Reportes de Access: PWC, Comisiones y Cheques — categorías **Cartera** y **Bancos** (agregado 2026-09-21)
+Tres reportes hechos en Microsoft Access (`ReportesEmpresas.mdb` / `ReportesEgresosDemoR.mdb`), migrados como **un
+módulo con 3 páginas** (`modules/PsaWeb.Modules.Reportes`), solo lectura, sobre la empresa de sesión. Plan, hallazgos,
+catálogo de bugs heredados y decisiones: `docs/PLAN-REPORTES-ACCESS.md`. **En `main`, sin push ni deploy.**
+
+- **`/cartera/pwc` — PWC (cuentas por cobrar).** Facturas de venta con saldo + subtotal, IVA, retenciones IR/IVA
+  (porcentaje leído de la descripción) y monto a cobrar. Filtros (emisión, cobranza, cliente, factura, anunciante, ciudad),
+  encabezado / cobrador / columnas configurables por empresa, resumen de retenciones dinámico y por ciudad. Excel ClosedXML
+  con fechas reales.
+- **`/cartera/comisiones` — Comisiones por recibos.** Facturas cobradas por recibos, agrupadas por cliente, filtro por
+  rango de recibos o de fechas del recibo. **Port fiel con dos bugs heredados marcados en pantalla y con opción de
+  corrección:** C1 (abono = total pagado de la factura, no lo aplicado por el recibo) y C2 (rango de recibos comparado
+  como texto: entran el 513 y el 514 en «5122–5146»).
+- **`/bancos/cheques` — Cheques y comprobantes de egreso.** Lista de pagos (prefijo de la referencia = tipo de pago),
+  vista previa y **PDF A4 con coordenadas en mm** (medidas del reporte, fuente monoespaciada, corrección X/Y de
+  calibración) + hoja de prueba de impresión. Monto en letras con relleno a 90 (bug Q1 con opción de corrección).
+  Empresa, logo, ciudad y firmas configurables (nada fijo a Efemedio). **Falta la prueba con la matricial real** (D3/D4).
+- **Configuración por empresa** en la tabla `ConfiguracionesReporte` de `PsaWebPlataforma` (migración automática al arrancar).
+- **Permisos** `quRptPwc` / `quRptComis` / `quRptChq` con `GateProvisional`; SQL en `docs/sql/permisos-reportes-access.sql`
+  (no ejecutado).
+- **Validado** contra el Sage local de Efemedio y los Excel del usuario (PWC 80/82, Comisiones 41/41, Cheques contra las
+  consultas verbatim de Access). Ver `docs/PLAN-REPORTES-ACCESS.md` §9.1 para repetirlo.
+- **Convenciones nuevas que sirven a otros módulos:** el proyecto de tests puede correr a **x86** con pruebas opcionales contra
+  Sage local (`PSAWEB_TEST_SAGE_EFEMEDIO`); las páginas se prueban con `HtmlRenderer` sin login; el PDF se verifica con
+  PdfPig (posiciones en mm).
+- **Ojo:** el Host completo ya no arranca sin `Plataforma:ConnectionString` (los endpoints de Conciliación SRI y Cierre de
+  Caja piden servicios que sólo existen con shell; verificado el 2026-09-21): el modo «standalone» sin plataforma ya no arranca.
+
 ## 6. Doctrina "port fiel"
 
 Regla central de todo el proyecto, repetida en cada plan: **replicar lo que
@@ -330,6 +358,8 @@ público, sin tocar nada de esto) — decisión explícita, no pendiente urgente
   viejo (pre-shell), solo como referencia histórica.
 - `docs/VALIDAR-CONTRA-SAGE50.md` — cómo apuntar el dev en PREDATOR contra
   una Sage real en vez de datos de muestra.
+- `docs/PLAN-REPORTES-ACCESS.md` — plan, validación y decisiones de los reportes de Access (PWC, Comisiones, Cheques);
+  `docs/sql/permisos-reportes-access.sql` — permisos `quRpt*` (pendiente de aplicar).
 
 ## 9. Pendiente / backlog global
 
@@ -340,11 +370,13 @@ público, sin tocar nada de esto) — decisión explícita, no pendiente urgente
   absorben, no se portan aparte). Falta relevar qué sigue.
 - **Permisos `GateProvisional` pendientes de asignar a roles reales** (el
   área tiene que cargar filas en `adrAllowRol`): `quKardex`, `qupurchliq`/
-  `mkpurchliq`, `quats`.
+  `mkpurchliq`, `quats`, `quconcsri` y los 3 de los reportes de Access (`quRptPwc`, `quRptComis`, `quRptChq`).
 - **SMTP real** para "Solicitar anulación de retención" (`Correo:*`) — hoy
   sin configurar en el server, el botón avisa "correo no configurado".
 - **Emisión real** (`Datil:DryRun=false`) — decisión explícita: no antes de
   terminar de migrar los 26 aplicativos.
+- **Reportes de Access — pendientes**: prueba de impresión real de los cheques (D3/D4; si el PDF no sirve en la matricial,
+  fase 2 con ESC/P), decisiones sobre los bugs C1/C2/Q1 y aplicar `permisos-reportes-access.sql` antes del deploy.
 - **Formularios 103/104 del ATS** — descartados de este corte (F7 del plan
   ATS), quedan si se decide retomarlos.
 - **Backlog del ATS para módulos de escritura futuros**: si un cliente recibe
