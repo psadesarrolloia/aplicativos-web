@@ -1,0 +1,487 @@
+@page "/bancos/cheques"
+@namespace PsaWeb.Modules.Reportes.Pages
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using PsaWeb.Modules.Reportes.Cheques
+@using PsaWeb.Modules.Reportes.Comun
+@inject IChequesRepository Repositorio
+@inject IServicioConfiguracionReportes Configuracion
+@inject IResolverEmpresaSage EmpresaSage
+@inject IEmpresaSesionInfo EmpresaInfo
+@inject AuthenticationStateProvider Autenticacion
+@inject ILogger<Cheques> Logger
+@implements IDisposable
+
+<PageTitle>Cheques y comprobantes de egreso — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Cheques y comprobantes de egreso"
+               Subtitle="@Subtitulo" />
+
+<PsaCard Title="Buscar pagos">
+    <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap">
+        <label class="psa-field">
+            <span class="psa-field__label">Fecha desde</span>
+            <input type="date" class="psa-input" @bind="_desde" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Fecha hasta</span>
+            <input type="date" class="psa-input" @bind="_hasta" />
+        </label>
+        <PsaButton Variant="primary" OnClick="Buscar" Disabled="_cargando">
+            @(_cargando ? "Buscando…" : "Buscar")
+        </PsaButton>
+    </div>
+
+    @if (_todos is not null)
+    {
+        <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
+            <label class="psa-field">
+                <span class="psa-field__label">Tipo de pago (prefijo)</span>
+                <select class="psa-input @Activo(_tipo)" @bind="_tipo">
+                    <option value="">Todos</option>
+                    @foreach (var t in _tipos)
+                    {
+                        <option value="@t.Tipo">@t.Tipo (@t.Cantidad)</option>
+                    }
+                </select>
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">N.º desde</span>
+                <input class="psa-input @Activo(_numDesde)" @bind="_numDesde" inputmode="numeric" style="max-width: 8rem" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">N.º hasta</span>
+                <input class="psa-input @Activo(_numHasta)" @bind="_numHasta" inputmode="numeric" style="max-width: 8rem" />
+            </label>
+            <label class="psa-field" style="min-width: 16rem">
+                <span class="psa-field__label">Beneficiario (contiene)</span>
+                <input class="psa-input @Activo(_beneficiario)" @bind="_beneficiario" />
+            </label>
+            <PsaButton Variant="secondary" OnClick="Filtrar">Filtrar</PsaButton>
+        </div>
+    }
+</PsaCard>
+
+<PsaCard Title="Personalización (por empresa)">
+    <details class="psa-details">
+        <summary>Empresa, logo, ciudad, fuente, calibración de impresión y firmas</summary>
+
+        <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
+            <label class="psa-field" style="min-width: 20rem">
+                <span class="psa-field__label">Nombre de la empresa (vacío = @NombreEmpresaSesion)</span>
+                <input class="psa-input" @bind="_empresa.NombreEmpresa" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Ciudad del «ciudad, fecha»</span>
+                <input class="psa-input" @bind="_empresa.Ciudad" placeholder="p. ej. Guayaquil" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Formato del monto</span>
+                <select class="psa-input" @bind="_cheque.FormatoMonto">
+                    <option value="es">1.234,56 (como Windows es-EC)</option>
+                    <option value="en">1,234.56</option>
+                </select>
+            </label>
+        </div>
+
+        <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
+            <label class="psa-field">
+                <span class="psa-field__label">Fuente (monoespaciada)</span>
+                <input class="psa-input" list="cheques-fuentes" @bind="_cheque.Fuente" />
+                <datalist id="cheques-fuentes">
+                    <option value="Courier New"></option>
+                    <option value="Lucida Console"></option>
+                    <option value="Consolas"></option>
+                </datalist>
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Tamaño (pt)</span>
+                <input type="number" step="0.5" min="6" max="14" class="psa-input" style="max-width: 6rem" @bind="_cheque.Tamano" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Corrección X (mm)</span>
+                <input type="number" step="0.1" class="psa-input" style="max-width: 7rem" @bind="_cheque.CorreccionX" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Corrección Y (mm)</span>
+                <input type="number" step="0.1" class="psa-input" style="max-width: 7rem" @bind="_cheque.CorreccionY" />
+            </label>
+            <a class="psa-btn psa-btn--ghost" href="@UrlPrueba" target="_blank" rel="noopener">Hoja de prueba de impresión (PDF)</a>
+        </div>
+        <p class="psa-muted" style="margin-top: .5rem">
+            La corrección X/Y se suma a todas las medidas: positivo mueve hacia la derecha (X) o hacia abajo (Y).
+            Imprima siempre al 100 % («tamaño real», sin «ajustar a página»).
+        </p>
+
+        <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
+            <label class="psa-field">
+                <span class="psa-field__label">Rótulo del número</span>
+                <input class="psa-input" style="max-width: 9rem" @bind="_cheque.RotuloNumero" />
+            </label>
+            <label style="display: flex; align-items: center; gap: .4rem; padding-bottom: .5rem">
+                <input type="checkbox" @bind="_cheque.ImprimirRotuloNumero" /> Imprimir el rótulo
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Firma 1</span>
+                <input class="psa-input" style="max-width: 12rem" @bind="_cheque.Firma1" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Firma 2</span>
+                <input class="psa-input" style="max-width: 12rem" @bind="_cheque.Firma2" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Firma 3</span>
+                <input class="psa-input" style="max-width: 12rem" @bind="_cheque.Firma3" />
+            </label>
+        </div>
+
+        <div class="psa-notice" style="margin-top: 1rem">
+            <label style="display: flex; align-items: flex-start; gap: .5rem">
+                <input type="checkbox" @bind="_cheque.CorregirMontosMenoresA2" />
+                <span>
+                    <strong>Q1 — Corregir el monto en letras de los montos menores a $2,00.</strong>
+                    El reporte de Access no agrega «CON xx/100» (ni el relleno) por debajo de $2,00: $1,50 sale «UN».
+                </span>
+            </label>
+        </div>
+
+        <div class="psa-row" style="margin-top: 1rem; align-items: center; gap: 1rem; flex-wrap: wrap">
+            <div>
+                <span class="psa-field__label">Logo del comprobante (PNG o JPG, hasta 300 KB)</span>
+                <InputFile OnChange="SubirLogo" accept="image/png,image/jpeg" />
+            </div>
+            @if (_logo is not null)
+            {
+                <img alt="Logo actual" style="height: 3.2rem; border: 1px solid var(--psa-border, #ccc); padding: .2rem"
+                     src="data:@(_logo.TipoMime);base64,@Convert.ToBase64String(_logo.Contenido)" />
+                <PsaButton Variant="ghost" OnClick="QuitarLogo">Quitar logo</PsaButton>
+            }
+        </div>
+
+        <div class="psa-row" style="margin-top: 1rem; align-items: center">
+            <PsaButton Variant="secondary" OnClick="GuardarPersonalizacion" Disabled="_guardando">
+                @(_guardando ? "Guardando…" : "Guardar personalización")
+            </PsaButton>
+            @if (_mensajeConfig is not null)
+            {
+                <span class="psa-muted">@_mensajeConfig</span>
+            }
+        </div>
+    </details>
+</PsaCard>
+
+@if (_error is not null)
+{
+    <PsaCard Title="Pagos">
+        <p class="psa-notice psa-notice--danger">@_error</p>
+    </PsaCard>
+}
+else if (_todos is not null)
+{
+    <PsaCard Title="Pagos">
+        @if (_visibles.Count == 0)
+        {
+            <p class="psa-notice">No hay pagos con número de cheque para los filtros elegidos.</p>
+        }
+        else
+        {
+            <div class="psa-row" style="align-items: center; gap: 1.4rem; flex-wrap: wrap">
+                <span class="psa-muted">@_visibles.Count pago(s); @_seleccion.Count seleccionado(s).</span>
+                <label><input type="checkbox" @bind="_imprimirCheque" /> Imprimir el cheque</label>
+                <label><input type="checkbox" @bind="_imprimirComprobante" /> Imprimir el comprobante de egreso</label>
+                @if (PuedeImprimir)
+                {
+                    <a class="psa-btn psa-btn--primary" href="@UrlPdf" target="_blank" rel="noopener">
+                        Imprimir seleccionados (@_seleccion.Count)
+                    </a>
+                    <a class="psa-btn psa-btn--secondary" href="@UrlVista" target="_blank" rel="noopener">Vista previa (1.er pago)</a>
+                }
+                else
+                {
+                    <PsaButton Variant="primary" Disabled="true">Imprimir seleccionados (@_seleccion.Count)</PsaButton>
+                }
+            </div>
+
+            @if (HayMontosMenoresA2 && !_cheque.CorregirMontosMenoresA2)
+            {
+                <p class="psa-notice" style="margin-top: .8rem">
+                    ⚠ Hay pagos menores a $2,00 seleccionados: el texto en letras heredado de Access omite los centavos
+                    (bug Q1). Puede corregirlo en «Personalización».
+                </p>
+            }
+
+            <div style="overflow-x: auto; margin-top: 1rem">
+                <table class="psa-table">
+                    <thead>
+                        <tr>
+                            <th><input type="checkbox" checked="@TodosSeleccionados" @onchange="e => SeleccionarTodos(e.Value is true)" /></th>
+                            <th>Fecha</th>
+                            <th>Tipo</th>
+                            <th class="num">N.º</th>
+                            <th>Referencia</th>
+                            <th>Beneficiario</th>
+                            <th class="num">Monto</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _visibles)
+                        {
+                            var pago = p;
+                            <tr>
+                                <td><input type="checkbox" checked="@_seleccion.Contains(pago.PostOrder)"
+                                           @onchange="e => Alternar(pago.PostOrder, e.Value is true)" /></td>
+                                <td>@pago.Fecha.ToString("dd/MM/yyyy")</td>
+                                <td>@pago.Referencia.Tipo</td>
+                                <td class="num">@pago.Referencia.Numero</td>
+                                <td>@pago.Referencia.Principal</td>
+                                <td>@pago.Beneficiario</td>
+                                <td class="num">
+                                    @if (pago.PierdeCentavosPorBugQ1 && !_cheque.CorregirMontosMenoresA2)
+                                    {
+                                        <span title="El texto en letras omite los centavos (bug Q1 de Access)">⚠ </span>
+                                    }
+                                    @ConstructorPaginaCheque.FormatearMonto(pago.Monto, _cheque.FormatoMonto)
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </PsaCard>
+}
+
+@code {
+    private const long MaximoLogoBytes = 300 * 1024;
+
+    private DateOnly _desde = DateOnly.FromDateTime(DateTime.Today.AddDays(-7));
+    private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
+    private string _tipo = "", _numDesde = "", _numHasta = "", _beneficiario = "";
+
+    private IReadOnlyList<PagoCheque>? _todos;
+    private IReadOnlyList<PagoCheque> _visibles = Array.Empty<PagoCheque>();
+    private IReadOnlyList<(string Tipo, int Cantidad)> _tipos = Array.Empty<(string, int)>();
+    private readonly HashSet<long> _seleccion = new();
+    private bool _imprimirCheque = true, _imprimirComprobante = true;
+
+    private ConfiguracionCheque _cheque = new();
+    private ConfiguracionEmpresa _empresa = new();
+    private LogoEmpresa? _logo;
+    private bool _guardando;
+    private string? _mensajeConfig;
+
+    private bool _cargando;
+    private string? _error;
+
+    private string RucClave => EmpresaSage.RucSesion ?? "_sin-empresa";
+    private string NombreEmpresaSesion => EmpresaInfo.Nombre ?? "la empresa de sesión";
+    private string Subtitulo => EmpresaInfo.Nombre is { Length: > 0 } n
+        ? $"{n} · impresión del cheque (matricial) y del comprobante de egreso. Solo lectura de Sage 50."
+        : "Impresión del cheque (matricial) y del comprobante de egreso. Solo lectura de Sage 50.";
+
+    private bool PuedeImprimir => _seleccion.Count > 0 && (_imprimirCheque || _imprimirComprobante)
+                                  && _seleccion.Count <= ServicioImpresionCheques.MaximoPagos;
+    private bool TodosSeleccionados => _visibles.Count > 0 && _visibles.All(p => _seleccion.Contains(p.PostOrder));
+    private bool HayMontosMenoresA2 => _visibles.Any(p => _seleccion.Contains(p.PostOrder) && p.PierdeCentavosPorBugQ1);
+
+    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+
+    protected override async Task OnInitializedAsync() => await CargarConfiguracionAsync();
+
+    private async Task CargarConfiguracionAsync()
+    {
+        try
+        {
+            _cheque = await Configuracion.ObtenerAsync<ConfiguracionCheque>(RucClave, ClavesReporte.Cheques);
+            _empresa = await Configuracion.ObtenerAsync<ConfiguracionEmpresa>(RucClave, ClavesReporte.Empresa);
+            _logo = await Configuracion.LogoAsync(RucClave);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error cargando la configuración de cheques");
+            _error = $"No se pudo leer la configuración: {ex.Message}";
+        }
+    }
+
+    private void Refrescar()
+    {
+        _todos = null;
+        _visibles = Array.Empty<PagoCheque>();
+        _seleccion.Clear();
+        _error = null;
+        _mensajeConfig = null;
+        _tipo = _numDesde = _numHasta = _beneficiario = "";
+        InvokeAsync(async () =>
+        {
+            await CargarConfiguracionAsync();
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+
+    private static string Activo(string? valor) => string.IsNullOrWhiteSpace(valor) ? "" : "psa-input--activo";
+
+    private string ParametrosBase()
+    {
+        var qs = new List<string>();
+        if (EmpresaSage.RucSesion is { } ruc) qs.Add($"ruc={Uri.EscapeDataString(ruc)}");
+        return string.Join("&", qs);
+    }
+
+    private string UrlPrueba => $"bancos/cheques/prueba?{ParametrosBase()}";
+
+    private string ParametrosImpresion(bool soloPrimero)
+    {
+        var qs = new List<string>();
+        var b = ParametrosBase();
+        if (b.Length > 0) qs.Add(b);
+        var orden = _visibles.Where(p => _seleccion.Contains(p.PostOrder)).Select(p => p.PostOrder);
+        foreach (var po in soloPrimero ? orden.Take(1) : orden) qs.Add($"po={po}");
+        qs.Add($"cheque={(_imprimirCheque ? "true" : "false")}");
+        qs.Add($"comprobante={(_imprimirComprobante ? "true" : "false")}");
+        return string.Join("&", qs);
+    }
+
+    private string UrlPdf => $"bancos/cheques/pdf?{ParametrosImpresion(false)}";
+    private string UrlVista => $"bancos/cheques/vista?{ParametrosImpresion(true)}";
+
+    private async Task Buscar()
+    {
+        _error = null;
+        _todos = null;
+        _seleccion.Clear();
+
+        var filtro = new FiltroCheques(_desde, _hasta);
+        if (!filtro.RangoFechasValido)
+        {
+            _error = "La fecha «Hasta» no puede ser anterior a «Desde».";
+            return;
+        }
+
+        _cargando = true;
+        try
+        {
+            _todos = await Repositorio.ListarAsync(filtro);
+            _tipos = _todos.GroupBy(p => p.Referencia.Tipo).OrderBy(g => g.Key == ReferenciaPago.TipoPorDefecto ? 0 : 1).ThenBy(g => g.Key)
+                .Select(g => (g.Key, g.Count())).ToList();
+            _tipo = _tipos.Any(t => t.Tipo == ReferenciaPago.TipoPorDefecto) ? ReferenciaPago.TipoPorDefecto : "";
+            _numDesde = _numHasta = _beneficiario = "";
+            Filtrar();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error listando los pagos");
+            _error = $"No se pudo leer Sage 50: {ex.Message}";
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Filtrar()
+    {
+        if (_todos is null) return;
+
+        var filtro = new FiltroCheques(
+            _desde, _hasta,
+            long.TryParse(_numDesde, NumberStyles.None, CultureInfo.InvariantCulture, out var d) ? d : null,
+            long.TryParse(_numHasta, NumberStyles.None, CultureInfo.InvariantCulture, out var h) ? h : null,
+            string.IsNullOrEmpty(_tipo) ? null : _tipo,
+            string.IsNullOrWhiteSpace(_beneficiario) ? null : _beneficiario);
+
+        _visibles = _todos.Where(filtro.Coincide).ToList();
+        // Como en Access, se imprime lo que quedó filtrado: por defecto todo seleccionado.
+        _seleccion.Clear();
+        foreach (var p in _visibles) _seleccion.Add(p.PostOrder);
+    }
+
+    private void Alternar(long postOrder, bool marcado)
+    {
+        if (marcado) _seleccion.Add(postOrder);
+        else _seleccion.Remove(postOrder);
+    }
+
+    private void SeleccionarTodos(bool marcado)
+    {
+        _seleccion.Clear();
+        if (marcado)
+        {
+            foreach (var p in _visibles) _seleccion.Add(p.PostOrder);
+        }
+    }
+
+    private async Task<string?> UsuarioAsync()
+        => (await Autenticacion.GetAuthenticationStateAsync()).User.Identity?.Name;
+
+    private async Task GuardarPersonalizacion()
+    {
+        _guardando = true;
+        _mensajeConfig = null;
+        try
+        {
+            var usuario = await UsuarioAsync();
+            await Configuracion.GuardarAsync(RucClave, ClavesReporte.Cheques, _cheque, usuario);
+            await Configuracion.GuardarAsync(RucClave, ClavesReporte.Empresa, _empresa, usuario);
+            _mensajeConfig = "Guardado. Se usa en la impresión y en la hoja de prueba.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error guardando la personalización de cheques");
+            _mensajeConfig = $"No se pudo guardar: {ex.Message}";
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private async Task SubirLogo(InputFileChangeEventArgs e)
+    {
+        _mensajeConfig = null;
+        try
+        {
+            await using var flujo = e.File.OpenReadStream(MaximoLogoBytes);
+            using var ms = new MemoryStream();
+            await flujo.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var tipo = TipoImagen(bytes);
+            if (tipo is null)
+            {
+                _mensajeConfig = "El archivo no es un PNG ni un JPG válido.";
+                return;
+            }
+
+            await Configuracion.GuardarLogoAsync(RucClave, new LogoEmpresa(bytes, tipo), await UsuarioAsync());
+            _logo = new LogoEmpresa(bytes, tipo);
+            _mensajeConfig = "Logo guardado.";
+        }
+        catch (IOException)
+        {
+            _mensajeConfig = $"El logo es demasiado grande (máximo {MaximoLogoBytes / 1024} KB).";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error guardando el logo");
+            _mensajeConfig = $"No se pudo guardar el logo: {ex.Message}";
+        }
+    }
+
+    private async Task QuitarLogo()
+    {
+        await Configuracion.GuardarLogoAsync(RucClave, null, await UsuarioAsync());
+        _logo = null;
+        _mensajeConfig = "Logo quitado.";
+    }
+
+    /// <summary>Valida por los primeros bytes (no por la extensión que dice el navegador).</summary>
+    internal static string? TipoImagen(byte[] b)
+    {
+        if (b.Length > 8 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) return "image/png";
+        if (b.Length > 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return "image/jpeg";
+        return null;
+    }
+}

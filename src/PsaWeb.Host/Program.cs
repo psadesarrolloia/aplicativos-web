@@ -494,6 +494,108 @@ app.MapGet("/cartera/comisiones/export", async (
     })
     .RequireAuthorization();
 
+// Cheques y comprobantes de egreso: PDF A4 con medidas en mm (imprimir al 100 %), vista previa PNG y hoja
+// de prueba de calibración. Sólo se imprimen pagos reales (diario 2 / tipo 5) de una empresa a la que el
+// usuario tiene acceso; el repositorio vuelve a exigirlo aunque se manipule la URL.
+static async Task<(bool Ok, string Nombre)> AccesoEmpresaAsync(
+    string? ruc,
+    System.Security.Claims.ClaimsPrincipal usuario,
+    PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(ruc))
+    {
+        return (true, "");
+    }
+    var nombre = usuario.Identity?.Name ?? string.Empty;
+    var empresa = seguridad is null
+        ? null
+        : (await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken)).FirstOrDefault(e => e.Ruc == ruc);
+    return empresa is null ? (false, "") : (true, empresa.Nombre);
+}
+
+app.MapGet("/bancos/cheques/pdf", async (
+        string? ruc,
+        long[]? po,
+        bool? cheque,
+        bool? comprobante,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Reportes.Cheques.ServicioImpresionCheques servicio,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        var opciones = new PsaWeb.Modules.Reportes.Cheques.OpcionesImpresion(cheque ?? true, comprobante ?? true);
+        if (po is not { Length: > 0 })
+        {
+            return Results.BadRequest("Elija al menos un pago.");
+        }
+        if (!opciones.Valida)
+        {
+            return Results.BadRequest("Elija al menos «cheque» o «comprobante de egreso».");
+        }
+        if (po.Length > PsaWeb.Modules.Reportes.Cheques.ServicioImpresionCheques.MaximoPagos)
+        {
+            return Results.BadRequest($"Se pueden imprimir hasta {PsaWeb.Modules.Reportes.Cheques.ServicioImpresionCheques.MaximoPagos} pagos por vez.");
+        }
+
+        var (ok, nombre) = await AccesoEmpresaAsync(ruc, usuario, seguridad, cancellationToken);
+        if (!ok)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var pdf = await servicio.GenerarPdfAsync(ruc, nombre, po, opciones, cancellationToken);
+        return pdf is null
+            ? Results.NotFound("No se encontraron esos pagos.")
+            : Results.File(pdf, PsaWeb.Modules.Reportes.Cheques.ChequePdfRenderer.ContentType); // inline: se abre en el visor
+    })
+    .RequireAuthorization();
+
+app.MapGet("/bancos/cheques/vista", async (
+        string? ruc,
+        long[]? po,
+        bool? cheque,
+        bool? comprobante,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Reportes.Cheques.ServicioImpresionCheques servicio,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        var opciones = new PsaWeb.Modules.Reportes.Cheques.OpcionesImpresion(cheque ?? true, comprobante ?? true);
+        if (po is not { Length: > 0 } || !opciones.Valida)
+        {
+            return Results.BadRequest("Elija un pago y qué imprimir.");
+        }
+
+        var (ok, nombre) = await AccesoEmpresaAsync(ruc, usuario, seguridad, cancellationToken);
+        if (!ok)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var png = await servicio.GenerarVistaPreviaAsync(ruc, nombre, po, opciones, cancellationToken);
+        return png is null ? Results.NotFound("No se encontró ese pago.") : Results.File(png, "image/png");
+    })
+    .RequireAuthorization();
+
+app.MapGet("/bancos/cheques/prueba", async (
+        string? ruc,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Reportes.Cheques.ServicioImpresionCheques servicio,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        var (ok, nombre) = await AccesoEmpresaAsync(ruc, usuario, seguridad, cancellationToken);
+        if (!ok)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var pdf = await servicio.GenerarHojaPruebaAsync(ruc, nombre, cancellationToken);
+        return Results.File(pdf, PsaWeb.Modules.Reportes.Cheques.ChequePdfRenderer.ContentType);
+    })
+    .RequireAuthorization();
+
 // Descarga del ATS en XML. Re-arma el `ivaType` con el mismo período para que
 // el archivo coincida con lo que se ve en pantalla; es el archivo que luego se
 // sube al DIMM real.

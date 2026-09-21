@@ -63,6 +63,13 @@ public static class AppCatalogo
             "🧮", "/cartera/comisiones", Categorias.Cartera,
             Array.Empty<string>()),
 
+        // Provisional (GateProvisional): sin código propio hasta que el área cargue quRptChq en
+        // allowAction. Revertir a new[] { Permisos.VerReporteCheques } cuando esté el código.
+        new("cheques", "Cheques y comprobantes de egreso",
+            "Imprime el cheque (matricial) y el comprobante de egreso de los pagos de Sage 50.",
+            "🖨️", "/bancos/cheques", Categorias.Bancos,
+            Array.Empty<string>()),
+
         // Provisional (GateProvisional): la fila quats existe en allowAction
         // pero tiene 0 filas en adrAllowRol (no está asignada a ningún rol
         // todavía — verificado 2026-09-12). Mientras tanto visible para
