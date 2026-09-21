@@ -241,13 +241,14 @@ catálogo de bugs heredados y decisiones: `docs/PLAN-REPORTES-ACCESS.md`. **En `
   encabezado / cobrador / columnas configurables por empresa, resumen de retenciones dinámico y por ciudad. Excel ClosedXML
   con fechas reales.
 - **`/cartera/comisiones` — Comisiones por recibos.** Facturas cobradas por recibos, agrupadas por cliente, filtro por
-  rango de recibos o de fechas del recibo. **Port fiel con dos bugs heredados marcados en pantalla y con opción de
-  corrección:** C1 (abono = total pagado de la factura, no lo aplicado por el recibo) y C2 (rango de recibos comparado
+  rango de recibos o de fechas del recibo. **Bugs heredados C1/C2 corregidos por defecto (decisión del usuario
+  2026-09-21), con casillas para reproducir Access:** C1 (abono = total pagado de la factura, no lo aplicado por el recibo) y C2 (rango de recibos comparado
   como texto: entran el 513 y el 514 en «5122–5146»).
 - **`/bancos/cheques` — Cheques y comprobantes de egreso.** Lista de pagos (prefijo de la referencia = tipo de pago),
-  vista previa y **PDF A4 con coordenadas en mm** (medidas del reporte, fuente monoespaciada, corrección X/Y de
-  calibración) + hoja de prueba de impresión. Monto en letras con relleno a 90 (bug Q1 con opción de corrección).
-  Empresa, logo, ciudad y firmas configurables (nada fijo a Efemedio). **Falta la prueba con la matricial real** (D3/D4).
+  vista previa y **PDF A4 con coordenadas en mm** (medidas del reporte, Arial medida con métricas reales, desplazamiento X/Y por
+  empresa: por defecto el **margen de Access 10,0 / 13,0**, confirmado midiendo un cheque impreso) + hoja de prueba de impresión.
+  Monto en letras con relleno a 90 (Q1 corregido por defecto). Empresa, logo, ciudad, firmas y encabezados DEBITO/CREDITO
+  configurables (nada fijo a Efemedio). Impresora: **Epson LX-350**. **Falta imprimir la hoja de prueba en la LX-350** (plan §9.2).
 - **Configuración por empresa** en la tabla `ConfiguracionesReporte` de `PsaWebPlataforma` (migración automática al arrancar).
 - **Permisos** `quRptPwc` / `quRptComis` / `quRptChq` con `GateProvisional`; SQL en `docs/sql/permisos-reportes-access.sql`
   (no ejecutado).
@@ -375,8 +376,8 @@ público, sin tocar nada de esto) — decisión explícita, no pendiente urgente
   sin configurar en el server, el botón avisa "correo no configurado".
 - **Emisión real** (`Datil:DryRun=false`) — decisión explícita: no antes de
   terminar de migrar los 26 aplicativos.
-- **Reportes de Access — pendientes**: prueba de impresión real de los cheques (D3/D4; si el PDF no sirve en la matricial,
-  fase 2 con ESC/P), decisiones sobre los bugs C1/C2/Q1 y aplicar `permisos-reportes-access.sql` antes del deploy.
+- **Reportes de Access — pendientes**: hoja de prueba de impresión en la Epson LX-350 (si el PDF no sirve,
+  fase 2 con ESC/P) y aplicar `permisos-reportes-access.sql` antes del deploy.
 - **Formularios 103/104 del ATS** — descartados de este corte (F7 del plan
   ATS), quedan si se decide retomarlos.
 - **Backlog del ATS para módulos de escritura futuros**: si un cliente recibe

@@ -54,34 +54,35 @@ public static class Medidas
 }
 
 /// <summary>
-/// Ajuste de texto para fuente monoespaciada: cada carácter mide <c>0,6 × tamaño</c>. Con esa hipótesis el texto se
-/// parte y se achica de forma determinista, sin depender del motor de PDF, para que nunca se salga de su caja
-/// (el reporte de Access dependía de que Arial 10 cupiera: 90 caracteres en 2 líneas de 100 mm).
+/// Ajuste de texto: parte y achica un texto de forma determinista (sin depender del motor de PDF) para que nunca se salga
+/// de su caja. El reporte de Access dependía de que Arial 10 cupiera (90 caracteres en 2 líneas de 100 mm); aquí se mide de
+/// verdad con <see cref="IMedidorTexto"/> (métricas reales de la fuente, o 0,6 em por carácter si es monoespaciada).
 /// </summary>
 public static class AjusteTexto
 {
     /// <summary>Ancho de un carácter de una fuente monoespaciada (Courier), en em.</summary>
-    public const double AnchoEmMonoespaciada = 0.6;
+    public const double AnchoEmMonoespaciada = MedidorMonoespaciado.AnchoEm;
 
     public const double TamanoMinimo = 5.0;
 
-    public static double AnchoCaracterMm(double tamanoPt) => Medidas.PuntosAMm(tamanoPt * AnchoEmMonoespaciada);
+    private static readonly IMedidorTexto Mono = new MedidorMonoespaciado();
 
+    public static double AnchoCaracterMm(double tamanoPt) => Mono.AnchoMm("x", tamanoPt);
+
+    /// <summary>Caracteres por línea con fuente monoespaciada.</summary>
     public static int CaracteresPorLinea(double anchoMm, double tamanoPt)
         => Math.Max(1, (int)Math.Floor((anchoMm + 1e-6) / AnchoCaracterMm(tamanoPt)));
 
-    /// <summary>
-    /// Tamaño (≤ <paramref name="tamanoPt"/>) con el que <paramref name="texto"/> cabe en UNA línea de
-    /// <paramref name="anchoMm"/>.
-    /// </summary>
-    public static double TamanoParaUnaLinea(string texto, double anchoMm, double tamanoPt)
+    /// <summary>Tamaño (≤ <paramref name="tamanoPt"/>) con el que <paramref name="texto"/> cabe en UNA línea de <paramref name="anchoMm"/>.</summary>
+    public static double TamanoParaUnaLinea(string texto, double anchoMm, double tamanoPt, IMedidorTexto? medidor = null)
     {
-        if (texto.Length == 0 || CaracteresPorLinea(anchoMm, tamanoPt) >= texto.Length)
+        medidor ??= Mono;
+        if (texto.Length == 0 || medidor.AnchoMm(texto, tamanoPt) <= anchoMm + 1e-6)
         {
             return tamanoPt;
         }
         var t = tamanoPt;
-        while (t > TamanoMinimo && CaracteresPorLinea(anchoMm, t) < texto.Length)
+        while (t > TamanoMinimo && medidor.AnchoMm(texto, t) > anchoMm + 1e-6)
         {
             t -= 0.25;
         }
@@ -89,16 +90,17 @@ public static class AjusteTexto
     }
 
     /// <summary>
-    /// Parte <paramref name="texto"/> en a lo sumo <paramref name="maxLineas"/> líneas de <paramref name="anchoMm"/>,
-    /// cortando en espacios (o en seco si una palabra no cabe) y achicando la fuente hasta que quepa.
+    /// Parte <paramref name="texto"/> en a lo sumo <paramref name="maxLineas"/> líneas de <paramref name="anchoMm"/>, cortando en
+    /// espacios (o en seco si una palabra no cabe) y achicando la fuente hasta que quepa.
     /// </summary>
     public static (IReadOnlyList<string> Lineas, double Tamano) PartirEnLineas(
-        string texto, double anchoMm, double tamanoPt, int maxLineas)
+        string texto, double anchoMm, double tamanoPt, int maxLineas, IMedidorTexto? medidor = null)
     {
+        medidor ??= Mono;
         var t = tamanoPt;
         while (true)
         {
-            var lineas = Partir(texto, CaracteresPorLinea(anchoMm, t));
+            var lineas = Partir(texto, anchoMm, t, medidor);
             if (lineas.Count <= maxLineas || t <= TamanoMinimo)
             {
                 return (lineas.Take(maxLineas).ToList(), t);
@@ -107,30 +109,37 @@ public static class AjusteTexto
         }
     }
 
-    private static List<string> Partir(string texto, int porLinea)
+    private static List<string> Partir(string texto, double anchoMm, double tamanoPt, IMedidorTexto m)
     {
+        bool Cabe(string s) => m.AnchoMm(s, tamanoPt) <= anchoMm + 1e-6;
+
         var lineas = new List<string>();
         var actual = "";
         foreach (var palabra in texto.Split(' ', StringSplitOptions.None))
         {
             var p = palabra;
             // Palabra más larga que la línea: se corta en seco.
-            while (p.Length > porLinea)
+            while (p.Length > 1 && !Cabe(p))
             {
                 if (actual.Length > 0)
                 {
                     lineas.Add(actual);
                     actual = "";
                 }
-                lineas.Add(p[..porLinea]);
-                p = p[porLinea..];
+                var n = p.Length - 1;
+                while (n > 1 && !Cabe(p[..n]))
+                {
+                    n--;
+                }
+                lineas.Add(p[..n]);
+                p = p[n..];
             }
 
             if (actual.Length == 0)
             {
                 actual = p;
             }
-            else if (actual.Length + 1 + p.Length <= porLinea)
+            else if (Cabe(actual + " " + p))
             {
                 actual += " " + p;
             }

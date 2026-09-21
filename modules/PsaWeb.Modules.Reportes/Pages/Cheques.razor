@@ -79,17 +79,18 @@
             <label class="psa-field">
                 <span class="psa-field__label">Formato del monto</span>
                 <select class="psa-input" @bind="_cheque.FormatoMonto">
-                    <option value="es">1.234,56 (como Windows es-EC)</option>
-                    <option value="en">1,234.56</option>
+                    <option value="en">1,234.56 (como imprime hoy Access)</option>
+                    <option value="es">1.234,56</option>
                 </select>
             </label>
         </div>
 
         <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
             <label class="psa-field">
-                <span class="psa-field__label">Fuente (monoespaciada)</span>
+                <span class="psa-field__label">Fuente</span>
                 <input class="psa-input" list="cheques-fuentes" @bind="_cheque.Fuente" />
                 <datalist id="cheques-fuentes">
+                    <option value="Arial"></option>
                     <option value="Courier New"></option>
                     <option value="Lucida Console"></option>
                     <option value="Consolas"></option>
@@ -100,18 +101,22 @@
                 <input type="number" step="0.5" min="6" max="14" class="psa-input" style="max-width: 6rem" @bind="_cheque.Tamano" />
             </label>
             <label class="psa-field">
-                <span class="psa-field__label">Corrección X (mm)</span>
+                <span class="psa-field__label">Desplazamiento X (mm)</span>
                 <input type="number" step="0.1" class="psa-input" style="max-width: 7rem" @bind="_cheque.CorreccionX" />
             </label>
             <label class="psa-field">
-                <span class="psa-field__label">Corrección Y (mm)</span>
+                <span class="psa-field__label">Desplazamiento Y (mm)</span>
                 <input type="number" step="0.1" class="psa-input" style="max-width: 7rem" @bind="_cheque.CorreccionY" />
             </label>
+            <PsaButton Variant="ghost" OnClick="UsarMargenAccess">Margen de Access (10,0 ; 13,0)</PsaButton>
+            <PsaButton Variant="ghost" OnClick="UsarEsquinaHoja">Esquina de la hoja (0 ; 0)</PsaButton>
             <a class="psa-btn psa-btn--ghost" href="@UrlPrueba" target="_blank" rel="noopener">Hoja de prueba de impresión (PDF)</a>
         </div>
         <p class="psa-muted" style="margin-top: .5rem">
-            La corrección X/Y se suma a todas las medidas: positivo mueve hacia la derecha (X) o hacia abajo (Y).
-            Imprima siempre al 100 % («tamaño real», sin «ajustar a página»).
+            El desplazamiento se suma a todas las medidas: positivo mueve hacia la derecha (X) o hacia abajo (Y). Las medidas del
+            reporte de Access se cuentan desde su margen (10,0 mm izquierdo, 13,0 mm superior; confirmado midiendo un cheque
+            impreso), por eso ese es el valor por defecto. Si un cliente imprime corrido, ajuste estos dos números y guarde:
+            es por empresa. Imprima siempre al 100 % («tamaño real», sin «ajustar a página»).
         </p>
 
         <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap; margin-top: 1rem">
@@ -121,6 +126,14 @@
             </label>
             <label style="display: flex; align-items: center; gap: .4rem; padding-bottom: .5rem">
                 <input type="checkbox" @bind="_cheque.ImprimirRotuloNumero" /> Imprimir el rótulo
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Encabezado columna 1</span>
+                <input class="psa-input" style="max-width: 8rem" @bind="_cheque.EncabezadoDebito" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Encabezado columna 2</span>
+                <input class="psa-input" style="max-width: 8rem" @bind="_cheque.EncabezadoCredito" />
             </label>
             <label class="psa-field">
                 <span class="psa-field__label">Firma 1</span>
@@ -140,8 +153,8 @@
             <label style="display: flex; align-items: flex-start; gap: .5rem">
                 <input type="checkbox" @bind="_cheque.CorregirMontosMenoresA2" />
                 <span>
-                    <strong>Q1 — Corregir el monto en letras de los montos menores a $2,00.</strong>
-                    El reporte de Access no agrega «CON xx/100» (ni el relleno) por debajo de $2,00: $1,50 sale «UN».
+                    <strong>Q1 — Corregir el monto en letras de los montos menores a $2,00</strong> (activado por defecto).
+                    El reporte de Access no agrega «CON xx/100» ni el relleno por debajo de $2,00: $1,50 salía «UN». Desmarcar lo reproduce.
                 </span>
             </label>
         </div>
@@ -468,6 +481,18 @@ else if (_todos is not null)
             Logger.LogError(ex, "Error guardando el logo");
             _mensajeConfig = $"No se pudo guardar el logo: {ex.Message}";
         }
+    }
+
+    private void UsarMargenAccess()
+    {
+        _cheque.CorreccionX = ConfiguracionCheque.MargenAccessX;
+        _cheque.CorreccionY = ConfiguracionCheque.MargenAccessY;
+    }
+
+    private void UsarEsquinaHoja()
+    {
+        _cheque.CorreccionX = 0;
+        _cheque.CorreccionY = 0;
     }
 
     private async Task QuitarLogo()

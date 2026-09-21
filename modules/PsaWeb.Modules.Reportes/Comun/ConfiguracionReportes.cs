@@ -50,29 +50,43 @@ public sealed class ConfiguracionComisiones
     /// <summary>Columna de control: importe que aplicó ese recibo a la factura (según Sage).</summary>
     public bool MostrarImporteRecibo { get; set; }
 
-    /// <summary>Bug C1: abono = importe aplicado por el recibo (no el total pagado de la factura).</summary>
-    public bool AbonoPorRecibo { get; set; }
+    /// <summary>
+    /// Bug C1 corregido (decisión del usuario, 2026-09-21): abono = importe aplicado por el recibo, no el total pagado de la
+    /// factura. Desmarcar reproduce el cálculo del reporte de Access.
+    /// </summary>
+    public bool AbonoPorRecibo { get; set; } = true;
 
-    /// <summary>Bug C2: comparar el rango de recibos como número (no como texto).</summary>
-    public bool RangoNumerico { get; set; }
+    /// <summary>Bug C2 corregido (decisión del usuario, 2026-09-21): rango de recibos comparado como número, no como texto.</summary>
+    public bool RangoNumerico { get; set; } = true;
 }
 
 /// <summary>Personalización del cheque + comprobante de egreso.</summary>
 public sealed class ConfiguracionCheque
 {
-    /// <summary>Fuente de los campos; monoespaciada por defecto (Courier).</summary>
-    public string Fuente { get; set; } = "Courier New";
+    /// <summary>Fuente de los campos. Arial como el reporte de Access (el texto se mide con las métricas reales de la fuente).</summary>
+    public string Fuente { get; set; } = "Arial";
     public double Tamano { get; set; } = 10;
 
-    /// <summary>«es» = 1.234,56 (Windows es-EC) · «en» = 1,234.56.</summary>
-    public string FormatoMonto { get; set; } = "es";
+    /// <summary>«en» = 1,234.56 (como imprime hoy el reporte de Access en las PC de PSA, verificado en un escaneo) · «es» = 1.234,56.</summary>
+    public string FormatoMonto { get; set; } = "en";
 
-    /// <summary>Corrección X/Y en mm sumada a todas las coordenadas (calibración de impresión).</summary>
-    public double CorreccionX { get; set; }
-    public double CorreccionY { get; set; }
+    /// <summary>
+    /// Desplazamiento X/Y en mm sumado a TODAS las medidas (ajuste por empresa/impresora/cheque). Las medidas del reporte de
+    /// Access se cuentan desde el MARGEN del reporte, no desde la esquina de la hoja: 10,0 mm a la izquierda y 13,0 mm arriba
+    /// (confirmado midiendo un cheque impreso). Poner 0 / 0 para contarlas desde la esquina de la hoja.
+    /// </summary>
+    public double CorreccionX { get; set; } = MargenAccessX;
+    public double CorreccionY { get; set; } = MargenAccessY;
 
-    /// <summary>Bug Q1: agregar «CON xx/100» también a los montos menores a $2,00.</summary>
-    public bool CorregirMontosMenoresA2 { get; set; }
+    public const double MargenAccessX = 10.0;
+    public const double MargenAccessY = 13.0;
+
+    /// <summary>Bug Q1 corregido (decisión del usuario, 2026-09-21): «CON xx/100» y relleno también por debajo de $2,00.</summary>
+    public bool CorregirMontosMenoresA2 { get; set; } = true;
+
+    /// <summary>Encabezados de las 2 columnas de importes del comprobante (el escaneo de Demoradio dice DEBITO/CREDITO; el reporte de Efemedio, PAGOS/CHEQUE).</summary>
+    public string EncabezadoDebito { get; set; } = "DEBITO";
+    public string EncabezadoCredito { get; set; } = "CREDITO";
 
     public bool ImprimirRotuloNumero { get; set; } = true;
     public string RotuloNumero { get; set; } = "CH.No.:";

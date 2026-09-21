@@ -57,7 +57,7 @@ public static class HojaPruebaCheque
         Cruz(lineas, 0.0, 0.0, 4.0);
         Cruz(lineas, MargenAccessX, MargenAccessY, 4.0);
         campos.Add(new CampoPagina("marca-margen", MargenAccessX + 4.5, MargenAccessY - 1.0, 110.0,
-            $"(+{MargenAccessX:0.0}; +{MargenAccessY:0.0}) = margen izq./sup. del reporte de Access", Alineacion.Izquierda, 5.5));
+            $"({MargenAccessX:0.0}; {MargenAccessY:0.0}) = margen del reporte de Access (origen de las medidas)", Alineacion.Izquierda, 5.5));
 
         // --- regla de 100 mm para comprobar la escala ---------------------------------------------------------
         lineas.Add(new LineaPagina(10, 46, 110, 46, 0.5));
@@ -103,12 +103,12 @@ public static class HojaPruebaCheque
             i++;
         }
         campos.Add(new CampoPagina("leyenda-correccion", 15, ly + 6 + i * 4.5 + 2, 180.0,
-            $"Corrección vigente: X = {cfg.CorreccionX.ToString("0.0", Es)} mm · Y = {cfg.CorreccionY.ToString("0.0", Es)} mm (ya sumada arriba).",
+            $"Desplazamiento vigente: X = {cfg.CorreccionX.ToString("0.0", Es)} mm · Y = {cfg.CorreccionY.ToString("0.0", Es)} mm (ya sumado arriba; por defecto = margen de Access).",
             Alineacion.Izquierda, 7, true));
         campos.Add(new CampoPagina("leyenda-pasos", 15, ly + 6 + i * 4.5 + 8, 185.0,
             "1) Pegue el cheque con cinta en la esquina superior izquierda.  2) Imprima al 100 %.", Alineacion.Izquierda, 6.5));
         campos.Add(new CampoPagina("leyenda-pasos-2", 15, ly + 6 + i * 4.5 + 12, 185.0,
-            "3) Mida cuánto se corrió cada campo.  4) Cargue la corrección X/Y (mm) en la página.", Alineacion.Izquierda, 6.5));
+            "3) Mida cuánto se corrió cada campo.  4) Cargue el desplazamiento X/Y (mm) en la página.", Alineacion.Izquierda, 6.5));
 
         return new PaginaCheque(campos, lineas, rectangulos);
     }

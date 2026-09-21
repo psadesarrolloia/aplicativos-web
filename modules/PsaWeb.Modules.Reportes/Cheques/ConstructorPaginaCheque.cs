@@ -32,7 +32,9 @@ public static class ConstructorPaginaCheque
     internal const double TablaX1 = 7.9, TablaX2 = 177.9;
     internal const double FilasInicioY = 120.5, FilaAlto = 6.47, FilaTextoDy = 0.5;
     internal const double PieLineaDy = 2.1, PieTotalDy = 2.9;
-    internal const double FirmaY = 253.7, FirmaAncho = 40.0;
+    // Pie de hoja anclado al margen INFERIOR: 253,7 mm desde el borde superior de la hoja = 240,7 desde el margen superior de 13,0
+    // (así, con el desplazamiento por defecto, cae en 253,7 y no se corre con el margen superior).
+    internal const double FirmaY = 240.7, FirmaAncho = 40.0;
     internal static readonly double[] FirmaX = { 23.0, 80.0, 136.0 };
 
     // Columnas de la tabla (X, ancho).
@@ -58,8 +60,10 @@ public static class ConstructorPaginaCheque
         string nombreEmpresa,
         string ciudad,
         bool hayLogo,
-        OpcionesImpresion opciones)
+        OpcionesImpresion opciones,
+        IMedidorTexto? medidor = null)
     {
+        medidor ??= MedidorTexto.Para(cfg.Fuente);
         var paginas = new List<PaginaCheque>();
         var total = pago.Lineas.Count;
         var hojas = Math.Max(1, (int)Math.Ceiling(total / (double)FilasPorHoja));
@@ -73,14 +77,14 @@ public static class ConstructorPaginaCheque
 
             if (opciones.Cheque && h == 0)
             {
-                AgregarCheque(campos, pago.Pago, cfg, ciudad);
+                AgregarCheque(campos, pago.Pago, cfg, ciudad, medidor);
             }
 
             if (opciones.Comprobante)
             {
                 var filas = pago.Lineas.Skip(h * FilasPorHoja).Take(FilasPorHoja).ToList();
                 var ultima = h == hojas - 1;
-                logo = AgregarComprobante(campos, lineas, rectangulos, pago.Pago, filas, cfg, nombreEmpresa, hayLogo, ultima, h > 0);
+                logo = AgregarComprobante(campos, lineas, rectangulos, pago.Pago, filas, cfg, nombreEmpresa, hayLogo, ultima, h > 0, medidor);
             }
 
             paginas.Add(Desplazar(new PaginaCheque(campos, lineas, rectangulos, logo), cfg.CorreccionX, cfg.CorreccionY));
@@ -105,20 +109,20 @@ public static class ConstructorPaginaCheque
 
     // ------------------------------------------------------------------------------------------------
 
-    private static void AgregarCheque(List<CampoPagina> campos, PagoCheque pago, ConfiguracionCheque cfg, string ciudad)
+    private static void AgregarCheque(List<CampoPagina> campos, PagoCheque pago, ConfiguracionCheque cfg, string ciudad, IMedidorTexto medidor)
     {
         var t = cfg.Tamano;
 
         if (cfg.ImprimirRotuloNumero && cfg.RotuloNumero.Length > 0)
         {
-            campos.Add(Campo("rotulo-numero", RotuloNumero, cfg.RotuloNumero, t));
+            campos.Add(Campo("rotulo-numero", RotuloNumero, cfg.RotuloNumero, t, medidor));
         }
-        campos.Add(Campo("numero", Numero, pago.Referencia.Numero, t));
-        campos.Add(Campo("beneficiario", Beneficiario, pago.Beneficiario, t));
-        campos.Add(Campo("monto", Monto, FormatearMonto(pago.Monto, cfg.FormatoMonto), t, Alineacion.Derecha));
+        campos.Add(Campo("numero", Numero, pago.Referencia.Numero, t, medidor));
+        campos.Add(Campo("beneficiario", Beneficiario, pago.Beneficiario, t, medidor));
+        campos.Add(Campo("monto", Monto, FormatearMonto(pago.Monto, cfg.FormatoMonto), t, medidor, Alineacion.Derecha));
 
         var letras = NumeroALetras.ValorLetras(pago.Monto, cfg.CorregirMontosMenoresA2);
-        var (lineas, tam) = AjusteTexto.PartirEnLineas(letras, Letras.Ancho, t, LineasLetras);
+        var (lineas, tam) = AjusteTexto.PartirEnLineas(letras, Letras.Ancho, t, LineasLetras, medidor);
         for (var i = 0; i < lineas.Count; i++)
         {
             campos.Add(new CampoPagina($"letras-{i + 1}", Letras.X, Letras.Y + i * InterlineaLetras, Letras.Ancho, lineas[i],
@@ -127,26 +131,26 @@ public static class ConstructorPaginaCheque
 
         var fechaTexto = pago.Fecha.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture);
         var ciudadFecha = string.IsNullOrWhiteSpace(ciudad) ? fechaTexto : $"{ciudad.Trim()}, {fechaTexto}";
-        campos.Add(Campo("ciudad-fecha", CiudadFecha, ciudadFecha, t));
+        campos.Add(Campo("ciudad-fecha", CiudadFecha, ciudadFecha, t, medidor));
     }
 
     private static ImagenPagina? AgregarComprobante(
         List<CampoPagina> campos, List<LineaPagina> lineas, List<RectanguloPagina> rectangulos,
         PagoCheque pago, IReadOnlyList<LineaPago> filas, ConfiguracionCheque cfg,
-        string nombreEmpresa, bool hayLogo, bool ultimaHoja, bool continuacion)
+        string nombreEmpresa, bool hayLogo, bool ultimaHoja, bool continuacion, IMedidorTexto medidor)
     {
         var t = cfg.Tamano;
         rectangulos.Add(Recuadro);
 
         campos.Add(new CampoPagina("empresa", TituloX, EmpresaY, TituloAncho, nombreEmpresa,
-            Alineacion.Izquierda, AjusteTexto.TamanoParaUnaLinea(nombreEmpresa, TituloAncho, t), Negrita: true));
+            Alineacion.Izquierda, AjusteTexto.TamanoParaUnaLinea(nombreEmpresa, TituloAncho, t, medidor), Negrita: true));
         var titulo = continuacion ? "COMPROBANTE DE EGRESO (continuación)" : "COMPROBANTE DE EGRESO";
         campos.Add(new CampoPagina("titulo", TituloX + 0.1, TituloY, TituloAncho, titulo,
-            Alineacion.Izquierda, AjusteTexto.TamanoParaUnaLinea(titulo, TituloAncho, t)));
+            Alineacion.Izquierda, AjusteTexto.TamanoParaUnaLinea(titulo, TituloAncho, t, medidor)));
 
         campos.Add(new CampoPagina("nombre-etiqueta", NombreEtiquetaX, NombreY, 21.0, "NOMBRE:", Alineacion.Izquierda, t));
         campos.Add(new CampoPagina("nombre", NombreX, NombreY, NombreAncho, pago.Beneficiario,
-            Alineacion.Izquierda, AjusteTexto.TamanoParaUnaLinea(pago.Beneficiario, NombreAncho, t)));
+            Alineacion.Izquierda, AjusteTexto.TamanoParaUnaLinea(pago.Beneficiario, NombreAncho, t, medidor)));
         campos.Add(new CampoPagina("fecha-etiqueta", FechaEtiquetaX, FechaY, 13.0, "FECHA:", Alineacion.Izquierda, t));
         campos.Add(new CampoPagina("fecha", FechaX, FechaY, FechaAncho,
             pago.Fecha.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture), Alineacion.Izquierda, t));
@@ -155,20 +159,20 @@ public static class ConstructorPaginaCheque
         lineas.Add(new LineaPagina(TablaX1, LineaTablaY, TablaX2, LineaTablaY, 0.35));
         campos.Add(new CampoPagina("th-codigo", ColCodigo.X, EncabezadoTablaY, ColCodigo.Ancho, "CODIGO", Alineacion.Izquierda, t));
         campos.Add(new CampoPagina("th-factura", ColFactura.X, EncabezadoTablaY, ColFactura.Ancho, "REFER./FACTURA", Alineacion.Izquierda,
-            AjusteTexto.TamanoParaUnaLinea("REFER./FACTURA", ColFactura.Ancho, t)));
+            AjusteTexto.TamanoParaUnaLinea("REFER./FACTURA", ColFactura.Ancho, t, medidor)));
         campos.Add(new CampoPagina("th-descripcion", ColDescripcion.X, EncabezadoTablaY, ColDescripcion.Ancho, "DESCRIPCION", Alineacion.Izquierda, t));
-        campos.Add(new CampoPagina("th-pagos", ColPagos.X, EncabezadoTablaY, ColPagos.Ancho, "PAGOS", Alineacion.Izquierda, t));
-        campos.Add(new CampoPagina("th-cheque", ColCheque.X, EncabezadoTablaY, ColCheque.Ancho, "CHEQUE", Alineacion.Derecha, t));
+        campos.Add(new CampoPagina("th-pagos", ColPagos.X, EncabezadoTablaY, ColPagos.Ancho, cfg.EncabezadoDebito, Alineacion.Izquierda, t));
+        campos.Add(new CampoPagina("th-cheque", ColCheque.X, EncabezadoTablaY, ColCheque.Ancho, cfg.EncabezadoCredito, Alineacion.Derecha, t));
 
         for (var i = 0; i < filas.Count; i++)
         {
             var l = filas[i];
             var y = FilasInicioY + i * FilaAlto + FilaTextoDy;
-            campos.Add(Celda($"fila{i + 1}-codigo", ColCodigo, y, l.CuentaId, Alineacion.Izquierda, t));
-            campos.Add(Celda($"fila{i + 1}-factura", ColFactura, y, l.Factura, Alineacion.Izquierda, t));
-            campos.Add(Celda($"fila{i + 1}-descripcion", ColDescripcion, y, l.Descripcion, Alineacion.Izquierda, t));
-            campos.Add(Celda($"fila{i + 1}-pagos", ColPagos, y, FormatearMonto(l.Pagos, cfg.FormatoMonto), Alineacion.Derecha, t));
-            campos.Add(Celda($"fila{i + 1}-cheque", ColCheque, y, FormatearMonto(l.Cheque, cfg.FormatoMonto), Alineacion.Derecha, t));
+            campos.Add(Celda($"fila{i + 1}-codigo", ColCodigo, y, l.CuentaId, Alineacion.Izquierda, t, medidor));
+            campos.Add(Celda($"fila{i + 1}-factura", ColFactura, y, l.Factura, Alineacion.Izquierda, t, medidor));
+            campos.Add(Celda($"fila{i + 1}-descripcion", ColDescripcion, y, l.Descripcion, Alineacion.Izquierda, t, medidor));
+            campos.Add(Celda($"fila{i + 1}-pagos", ColPagos, y, FormatearMonto(l.Pagos, cfg.FormatoMonto), Alineacion.Derecha, t, medidor));
+            campos.Add(Celda($"fila{i + 1}-cheque", ColCheque, y, FormatearMonto(l.Cheque, cfg.FormatoMonto), Alineacion.Derecha, t, medidor));
         }
 
         if (ultimaHoja)
@@ -176,8 +180,8 @@ public static class ConstructorPaginaCheque
             var yFin = FilasInicioY + filas.Count * FilaAlto;
             lineas.Add(new LineaPagina(TablaX1, yFin + PieLineaDy, TablaX2, yFin + PieLineaDy, 0.35));
             var total = FormatearMonto(pago.Monto, cfg.FormatoMonto);
-            campos.Add(Celda("total-pagos", (139.7, 18.7), yFin + PieTotalDy, total, Alineacion.Derecha, t));
-            campos.Add(Celda("total-cheque", (159.4, 18.7), yFin + PieTotalDy, total, Alineacion.Derecha, t));
+            campos.Add(Celda("total-pagos", (139.7, 18.7), yFin + PieTotalDy, total, Alineacion.Derecha, t, medidor));
+            campos.Add(Celda("total-cheque", (159.4, 18.7), yFin + PieTotalDy, total, Alineacion.Derecha, t, medidor));
         }
 
         // Pie de hoja (en cada hoja): 3 firmas con su línea.
@@ -188,7 +192,7 @@ public static class ConstructorPaginaCheque
             if (rotulos[i].Length > 0)
             {
                 campos.Add(new CampoPagina($"firma{i + 1}", FirmaX[i], FirmaY + 0.3, FirmaAncho, rotulos[i], Alineacion.Centro,
-                    AjusteTexto.TamanoParaUnaLinea(rotulos[i], FirmaAncho, t)));
+                    AjusteTexto.TamanoParaUnaLinea(rotulos[i], FirmaAncho, t, medidor)));
             }
         }
 
@@ -196,9 +200,9 @@ public static class ConstructorPaginaCheque
     }
 
     private static CampoPagina Campo(string id, (double X, double Y, double Ancho) pos, string texto, double tamano,
-        Alineacion alineacion = Alineacion.Izquierda)
-        => new(id, pos.X, pos.Y, pos.Ancho, texto, alineacion, AjusteTexto.TamanoParaUnaLinea(texto, pos.Ancho, tamano));
+        IMedidorTexto medidor, Alineacion alineacion = Alineacion.Izquierda)
+        => new(id, pos.X, pos.Y, pos.Ancho, texto, alineacion, AjusteTexto.TamanoParaUnaLinea(texto, pos.Ancho, tamano, medidor));
 
-    private static CampoPagina Celda(string id, (double X, double Ancho) col, double y, string texto, Alineacion a, double tamano)
-        => new(id, col.X, y, col.Ancho, texto, a, AjusteTexto.TamanoParaUnaLinea(texto, col.Ancho, tamano));
+    private static CampoPagina Celda(string id, (double X, double Ancho) col, double y, string texto, Alineacion a, double tamano, IMedidorTexto medidor)
+        => new(id, col.X, y, col.Ancho, texto, a, AjusteTexto.TamanoParaUnaLinea(texto, col.Ancho, tamano, medidor));
 }

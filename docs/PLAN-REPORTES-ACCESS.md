@@ -7,7 +7,7 @@ empresa de sesión. Mismo molde que Kardex (`docs/PLAN-KARDEX-INVENTARIOS.md`): 
 **No usa el SDK ni el Sage Bridge** (`docs/APPS-SDK-VS-SOLO-LECTURA.md`): no se escribe nada en Sage.
 
 Estado: **F0–F5 hechas en `main`, sin push ni deploy** (decisión del usuario). El módulo está completo y validado
-contra Sage local y los Excel del usuario (§9.1); falta la **prueba de impresión real** (D3/D4) y el deploy.
+contra Sage local y los Excel del usuario (§9.1); decisiones D3–D9 resueltas el 2026-09-21 (§8); falta la **prueba de impresión en la LX-350** y el deploy.
 Las decisiones abiertas están en §8; cada una está implementada con el valor por defecto recomendado y se
 cambia con un ajuste de configuración, no reescribiendo código.
 
@@ -135,7 +135,7 @@ nombre de empresa y título del archivo. Excel con fechas reales y una fila de t
 ### 5.2 Página impresa — medidas
 
 Cada pago = **una hoja A4 vertical**. Las medidas del reporte están en twips (1 twip = 0,017639 mm) y
-coinciden con las que diste (verificado): 
+coinciden con las que diste (verificado). **Todas se cuentan desde el margen del reporte** (10,0 · 13,0 mm), no desde la esquina de la hoja (§5.3): la web suma ese desplazamiento por defecto.
 
 | Elemento | X (mm) | Y (mm) | Ancho | Alto/otros |
 |---|---|---|---|---|
@@ -165,10 +165,27 @@ Me dijiste que el tamaño de papel y los márgenes no se pudieron leer. Están e
 - Ancho útil 189 mm (10.716 twips) → 10,0 + 189 + 7,0 = 206 mm ≤ 210.
 - La impresora guardada en ese momento fue «Microsoft Print to PDF» → no revela el modelo de la matricial.
 
-⚠️ **Esto puede cambiar tu lectura de las coordenadas.** En Access el (0,0) de un reporte es la esquina
-del **margen**, no de la hoja. Si esos márgenes se usaron al imprimir, el n.º de cheque no cae en
-(170,1; 5,0) sino en (180,1; 18,0) desde la esquina de la hoja. No lo puedo saber sin una impresión real →
-**D3**: la página trae corrección X/Y configurable (por defecto 0/0, tu lectura) y una hoja de prueba.
+⚠️ **Esto cambiaba la lectura de las coordenadas — y se confirmó con una impresión real (2026-09-21).** En Access el (0,0) de
+un reporte es la esquina del **margen**, no de la hoja. El usuario pasó un escaneo (200 ppp) de la impresión de Access sobre la
+copia de un cheque anulado; medido sobre la hoja:
+
+| Campo | Medido desde la esquina de la hoja | Medida del reporte | Diferencia |
+|---|---|---|---|
+| Beneficiario / monto en letras, inicio X | 24,8 mm | 15,0 / 15,1 | **+9,8** |
+| N.º de cheque, inicio X | 180,1 mm | 170,1 | **+10,0** |
+| Beneficiario / monto en letras / «ciudad, fecha», tope de letra Y | 21,0 · 29,2 · 40,0 mm | 7,0 · 15,0 · 26,0 | +14,0 · +14,2 · +14,0 (≈ 13 + margen del glifo) |
+| Recuadro del comprobante, Y | 89,9 mm | 77,0 | **+12,9** |
+
+O sea: **origen = margen del reporte (10,0 mm izquierdo · 13,0 mm superior)**. Por eso ese es ahora el valor por defecto del
+**desplazamiento X/Y** (configurable por empresa, con botones «Margen de Access» y «Esquina de la hoja»). Superponiendo la
+salida de la web (a 200 ppp, con los datos del escaneo) sobre el escaneo, beneficiario, monto en letras, «Quito, fecha»,
+monto, n.º de cheque y recuadro caen a ≈ 1 mm de lo que imprimió Access. El pie de firmas se ancla al margen inferior
+(253,7 mm de la hoja), no al superior. (El escaneo tiene datos de un cliente: no se guarda en el repo.)
+
+**Otras diferencias que muestra el escaneo (Demoradio):** el comprobante rotula las columnas **DEBITO / CREDITO** (el volcado de
+Efemedio decía PAGOS / CHEQUE; ahora son 2 encabezados configurables, por defecto DEBITO / CREDITO), los importes salen con **punto
+decimal** (`94.63`; por defecto `1,234.56`), la fecha del comprobante sale `9/9/2026`, el nombre de la empresa se corta
+(«DEMORADIO CIA. LT»: la web lo achica para que quepa) y no se ven las líneas de firma en esa impresión.
 
 ### 5.4 Cómo se imprime — evaluación
 
@@ -181,12 +198,12 @@ del **margen**, no de la hoja. Si esos márgenes se usaron al imprimir, el n.º 
 El modelo de página se guarda como **lista de campos con (x, y, ancho, alineación) en mm**, independiente del
 formato: hoy lo consume el renderizador PDF; el de ESC/P sería un segundo consumidor de la misma lista.
 
-Fuente: **monoespaciada** (Courier New) por defecto, o la que se configure. Con una fuente monoespaciada cada
-carácter mide `0,6 × tamaño`, así que el texto se parte y se achica **de forma determinista** (sin depender del motor de
-PDF): en Courier 10 pt caben 47 caracteres en 100 mm. El monto en letras con relleno mide ≈ 104 caracteres (los 90 de
-`TamNumLetters` más un espacio cada 5 «x»), o sea que **a 10 pt no cabe en las 2 líneas**: el diseño de Access contaba con
-el ancho de Arial. El modelo achica sólo ese texto (≈ 8 pt) hasta que quepa en 2 líneas de 100 mm (mínimo 5 pt), y
-lo mismo hace con un beneficiario, una cuenta o una factura demasiado largos, para que nada se salga de su caja.
+Fuente: **Arial** por defecto (la del reporte de Access; el escaneo muestra que imprime bien por el controlador de Windows), o la
+que se configure. El texto se **mide con las métricas reales de la fuente** (SixLabors.Fonts, la misma librería de ClosedXML) y se
+parte / achica de forma determinista, sin depender del motor de PDF: el monto en letras con relleno (≈ 104 caracteres) cabe en
+las 2 líneas de 100 mm a ~10 pt con Arial, como en el escaneo; con una monoespaciada (Courier, 0,6 em por carácter) baja a ≈ 8 pt.
+Lo mismo se hace con un beneficiario, una cuenta o el nombre de la empresa demasiado largos, para que nada se salga de su caja
+(mínimo 5 pt).
 
 **Hoja de prueba** (`/bancos/cheques/prueba`): marcas cada 10 mm en los bordes superior e izquierdo, una regla rotulada
 bajo el cheque (y = 62 mm), una línea de 100,0 mm (para comprobar que se imprimió al 100 %), una cruz en (0; 0) y otra en
@@ -214,8 +231,8 @@ Efemedio, «ELABORADO POR» en Demoradio), rótulo «CH.No.», fuente, tamaño, 
 
 | ID | Dónde | Qué pasa | Evidencia | Por defecto |
 |---|---|---|---|---|
-| **C1** | Comisiones | `ABONO = PAID − CRUCE − RET` usa el **total pagado de la factura**, no lo aplicado por *ese* recibo. Una factura con 2 recibos aparecería 2 veces con el mismo abono | Sin facturas repetidas en el Excel, pero `…13912` (recibo 5132) muestra abono **129,80** cuando ese recibo aplicó **1,32**; `…15422` (5143): 1.570,48 vs 317,65 | **Fiel** (opción «abono = lo aplicado por el recibo») |
-| **C2** | Comisiones | El filtro compara **texto**: `'513' >= '5122'` es verdadero | El Excel del usuario incluye los recibos **513 y 514 (de 2013)** en el rango 5122–5146 | **Fiel** (opción «comparar como número»; el filtro trae además `Format(desde,"000")`: «12» → «012») |
+| **C1** | Comisiones | `ABONO = PAID − CRUCE − RET` usa el **total pagado de la factura**, no lo aplicado por *ese* recibo. Una factura con 2 recibos aparecería 2 veces con el mismo abono | Sin facturas repetidas en el Excel, pero `…13912` (recibo 5132) muestra abono **129,80** cuando ese recibo aplicó **1,32**; `…15422` (5143): 1.570,48 vs 317,65 | **Corregido por defecto** (D8): abono = importe aplicado por el recibo; desmarcar reproduce Access |
+| **C2** | Comisiones | El filtro compara **texto**: `'513' >= '5122'` es verdadero | El Excel del usuario incluye los recibos **513 y 514 (de 2013)** en el rango 5122–5146 | **Corregido por defecto** (D8): rango numérico; desmarcar reproduce Access (con `Format(desde,"000")`: «12» → «012») |
 | **C3** | Comisiones | Sin desempate: facturas del mismo día salen en orden físico de Pervasive | Excel: `15463, 15461, 15462, 15465, 15464` | Se agrega `PostOrder` como último criterio (no cambia valores) |
 | **P1** | PWC | Rótulos del resumen cruzados: `M3` (junto a «RET. IVA 70 %») suma la columna de **20 %** y `M4` (junto a «RET. IVA 20 %») la de **70 %** | Excel: `M3 = 0`, `M4 = 6.184,05` (≈ 5.659,05 del 70 % + 525 de una retención posterior al corte) | **Corregido por construcción** (resumen dinámico, D9) |
 | **P2** | PWC | Los resúmenes sólo cubren 1 %/2 % (IR) y 20 %/70 % (IVA); el resto de porcentajes (3 %, 1,75 %, IVA 100 %) queda fuera | 76 de 85 filas tienen IR ≠ 1 %/2 % | Resumen dinámico |
@@ -223,7 +240,7 @@ Efemedio, «ELABORADO POR» en Demoradio), rótulo «CH.No.», fuente, tamaño, 
 | **P4** | PWC | La ciudad («CIUDAD COBROS») sale de `ShipToZIP` y «ORDEN» de `ShipToCity` | Excel | Fiel |
 | **P5** | PWC | Sin `ORDER BY`: el orden es el físico | Excel: `15613` antes de `15612` | `ORDER BY PostOrder` (orden de captura) |
 | **P6** | PWC | Retenciones: cada línea `IRF`/`IVA` sobrescribe la celda; con 2 retenciones de renta en una factura sólo cuenta la última | Código (en Efemedio hay a lo sumo una de cada tipo por factura) | **Fiel**; el resumen dinámico cuenta sólo la retención «ganadora» para que cuadre con `L` + `M` |
-| **Q1** | Cheques | Montos < $2,00 sin «CON xx/100» ni relleno | Código | **Fiel** + advertencia en pantalla (D7) |
+| **Q1** | Cheques | Montos < $2,00 sin «CON xx/100» ni relleno | Código | **Corregido por defecto** (D7); desmarcar reproduce Access y avisa en pantalla |
 | **Q2** | Cheques | Doble espacio entre bloques; `UN MIL` | Código | Fiel |
 | **Q3** | Cheques | `CityAndDate` fija «Quito» | Código | Configurable |
 | **Q4** | Cheques | Un pago anulado (`ANULADO`, monto 0) sale igual en la lista | Efemedio ref. `6615` | Fiel; el monto sale «CERO DOLARES» |
@@ -263,16 +280,18 @@ variantes (rótulo «ELABORADO POR», `DEMORADIO`) se cubren con la configuraci�
 
 ## 8. Decisiones
 
-### 8.1 Necesito tu respuesta (la implementación ya usa el valor recomendado)
+### 8.1 Decisiones del usuario (2026-09-21)
 
-| # | Pregunta | Recomendado / implementado |
+| # | Decisión | Cómo quedó |
 |---|---|---|
-| **D3** | ¿El (0,0) de las medidas es la **esquina de la hoja** o el **margen del reporte** (10,0 / 13,0 mm, ver §5.3)? | Esquina de la hoja (tu lectura), con corrección X/Y y hoja de prueba; se resuelve con la primera impresión |
-| **D4** | ¿Qué **matricial** (modelo), cómo está conectada (USB/paralelo/red, en qué PC) y con qué controlador? ¿Aceptas empezar por PDF-en-mm (A)? | PDF en mm; ESC/P (C) sólo si A falla |
-| **D7** | Bug **Q1**: un cheque de $1,50 imprime «UN» sin centavos. ¿Corrijo (siempre «CON xx/100» y relleno)? | Recomiendo **corregir**; hoy se conserva (fiel) y avisa en pantalla. Cambio: `ConfiguracionCheque.CorregirMontosMenoresA2` |
-| **D8a** | Bug **C1** (abono con el total pagado de la factura). ¿Abono = lo aplicado por el recibo? | Fiel por defecto; la página permite ver ambos y exportar con el corregido |
-| **D8b** | Bug **C2** (rango de recibos comparado como texto; entran 513 y 514 en 5122–5146). ¿Comparar como número? | Fiel por defecto (opción en la página) |
-| **D9** | Resumen de retenciones del PWC: ¿dinámico con rótulos correctos (recomendado) o las 4 columnas fijas 1 %/2 %/20 %/70 % con el rótulo de IVA cruzado como hoy? | Dinámico |
+| **D3** | «No estamos seguros pero asumimos que es de la hoja; debe haber una opción de configuración para ajustar a cada cliente; adjunto un escaneo de una copia de un cheque anulado real». | El escaneo demuestra que **el origen es el margen de Access (10,0 · 13,0 mm)**, no la hoja (§5.3). Por defecto el desplazamiento X/Y es **10,0 / 13,0**; se ajusta **por empresa** (Personalización → Desplazamiento X/Y, con botones «Margen de Access» y «Esquina de la hoja (0;0)», y la hoja de prueba). |
+| **D4** | Epson **LX-350** (matricial de 9 agujas, ESC/P). | Se sigue con la opción A (PDF en mm por el controlador de Windows): es el mismo camino con el que Access ya imprime bien en esa impresora. Guía en §9.2. ESC/P crudo (C) sólo si el PDF resulta lento o de baja calidad. |
+| **D7** | Sí, corregir Q1. | `CorregirMontosMenoresA2 = true` por defecto. |
+| **D8** | Corregir C1 y C2. | `AbonoPorRecibo = true` y `RangoNumerico = true` por defecto (Comisiones). Se pueden desmarcar para reproducir Access. |
+| **D9** | Resumen dinámico. | Como estaba. |
+
+Ajustes derivados de las respuestas: fuente por defecto **Arial** (medida con métricas reales), importes con **punto decimal** (`94.63`,
+como en el escaneo; alternativa `1.234,56`) y encabezados **DEBITO / CREDITO** configurables.
 
 ### 8.2 Decidido por defecto (se cambia sin dolor)
 
@@ -280,8 +299,8 @@ variantes (rótulo «ELABORADO POR», `DEMORADIO`) se cubren con la configuraci�
 |---|---|
 | D1 | Menú: **Cartera** (PWC, Comisiones) y **Bancos** (Cheques), no «Ventas»/«Egresos». |
 | D2 | Permisos `quRptPwc` / `quRptComis` / `quRptChq` con `GateProvisional`. |
-| D5 | Fuente del cheque: monoespaciada 10 pt (configurable a Arial). |
-| D6 | Monto del cheque con formato `1.234,56` (lo que hacía «Standard» con Windows es-EC); alternativa `1,234.56`. |
+| D5 | Fuente del cheque: Arial 10 pt (la de Access), configurable; con monoespaciada el texto se achica más. |
+| D6 | Monto del cheque con formato `1,234.56` (punto decimal, como imprime hoy Access según el escaneo); alternativa `1.234,56`. |
 | D10 | El orden de PWC es `PostOrder`; el de Comisiones el del `.mdb` + desempate. |
 | D11 | Quien puede ver un reporte puede editar su configuración (cosmética; se guarda quién y cuándo). Restringir a admins es una línea. |
 | D12 | Totales en el Excel de PWC (`I:O`) y total general en Comisiones, más el resumen por ciudad de PWC: **adiciones**, no cambian ninguna cifra del original. |
@@ -325,24 +344,27 @@ dotnet test tests\PsaWeb.Reportes.Tests --filter "FullyQualifiedName~Validacion"
 
 La clave y los Excel del cliente **no** están en el repo.
 
-### 9.2 Cómo hacer la prueba de impresión (D3 / D4)
+### 9.2 Cómo hacer la prueba de impresión en la Epson LX-350
 
 1. Entrar a **Bancos → Cheques y comprobantes de egreso**, abrir «Personalización» y pulsar **Hoja de prueba de impresión (PDF)**.
-2. Imprimirla en la matricial **al 100 % / «tamaño real»** (sin «ajustar a página», sin márgenes), con el cheque pegado con
-   cinta en la esquina superior izquierda. Comprobar que la línea de 100 mm mide 100 mm.
-3. Comparar cada recuadro del cheque de ejemplo con el campo real del cheque. Si todo cae corrido lo mismo, cargar esa
-   diferencia en **Corrección X / Y (mm)** (positivo = derecha / abajo), guardar y reimprimir la hoja de prueba.
-4. Si hay que subir ≈ 10 / 13 mm es la señal de que rige el margen del reporte de Access (D3): la corrección lo resuelve.
-5. Con el cheque alineado: buscar un pago real, **Vista previa** y luego **Imprimir seleccionados**.
+2. En el visor de PDF, imprimir en la **EPSON LX-350** con **tamaño A4, escala 100 % / «tamaño real»** (sin «ajustar a página», sin «reducir
+   páginas grandes», sin márgenes propios) y **una sola cara**; cargar la hoja con el cheque pegado con cinta en la esquina superior
+   izquierda, igual que con Access. Comprobar que la línea de 100 mm mide 100 mm.
+3. La hoja trae ya el desplazamiento por defecto (10,0 / 13,0). Comparar cada recuadro del cheque de ejemplo con el campo real. Si todo
+   cae corrido lo mismo (p. ej. 1 mm a la izquierda y 0,5 mm arriba), sumarlo en **Desplazamiento X / Y (mm)** (positivo = derecha /
+   abajo), **guardar** y reimprimir la hoja de prueba. Es **por empresa**: cada cliente conserva su ajuste.
+4. Con el cheque alineado: buscar un pago real, **Vista previa** y luego **Imprimir seleccionados**.
 
-Si el PDF sale muy lento o de baja calidad en la matricial, o el controlador de Windows lo deforma, pasar a la opción C
-(ESC/P) — el modelo de página en mm ya está separado del formato de salida; falta el modelo de impresora y cómo llega el
-flujo crudo (D4).
+Notas de la LX-350: el PDF sale como gráfico por el controlador (más lento que el texto nativo, pero es lo que ya hace Access). Si la
+calidad es baja, probar en el controlador la resolución/calidad de impresión más alta y desactivar la impresión bidireccional; si el
+papel se corre siempre igual, ajustar el desplazamiento y no el borde del papel. Si aun así no sirve, la fase 2 (ESC/P crudo, que en
+la LX-350 da posicionamiento de 1/216″ en vertical y 1/60″ en horizontal) reutiliza el mismo modelo de página en mm.
 
 ## 10. Lo que no pude verificar
 
-- **La impresión real** (D3, D4): sin la matricial no hay forma de saber el origen, la escala ni la velocidad. Lo que sí
-  está comprobado es el PDF: A4 exacto y cada texto en su (x, y) en mm, leído del propio PDF.
+- **La impresión en la LX-350 con la web.** El origen y las medidas están comprobados con el escaneo de la impresión de Access
+  (§5.3) y con una superposición de la salida de la web a 200 ppp sobre ese escaneo (≈ 1 mm); falta imprimir la hoja de prueba en la
+  matricial para confirmar escala y velocidad. El PDF está comprobado: A4 exacto y cada texto en su (x, y) en mm, leído del propio PDF.
 - **Las páginas en un navegador con sesión iniciada.** El Host completo sólo arranca con la plataforma (login local) y yo no
   ingreso contraseñas; por eso las 3 páginas se validaron renderizándolas de verdad con `HtmlRenderer` (filtros, consultas,
   avisos, URLs). Falta un vistazo visual de estilos/espaciado en el navegador (`/cartera/pwc`, `/cartera/comisiones`, `/bancos/cheques`).

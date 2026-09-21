@@ -229,7 +229,7 @@ public class PaginasRenderTests
     }
 
     [Fact]
-    public async Task Comisiones_consultar_agrupa_por_cliente_y_totaliza()
+    public async Task Comisiones_consultar_agrupa_por_cliente_y_totaliza_con_C1_y_C2_corregidos_por_defecto()
     {
         var (html, _) = await Renderizar<Comisiones>(async p =>
         {
@@ -239,33 +239,27 @@ public class PaginasRenderTests
         });
 
         Assert.Contains("AGENCIA DEMO UNO S.A.", html);
-        Assert.Contains("CYEDE CIA. LTDA.", html);            // el 513 entra por la comparación de texto (C2)
-        Assert.Contains("001-001-003661", html);
+        Assert.DoesNotContain("CYEDE CIA. LTDA.", html);       // C2 corregido: el 513 ya no entra en 5122â5146
         Assert.Contains("Total general", html);
-        Assert.Contains("3.571,60", html);                    // abono total heredado
+        Assert.Contains("2.226,00", html);                     // C1 corregido: 1.026 + 1.200 aplicados por los recibos
     }
 
     [Fact]
-    public async Task Comisiones_con_C2_numerico_el_513_desaparece_y_con_C1_cambia_el_abono()
+    public async Task Comisiones_desmarcando_C1_y_C2_se_reproduce_el_calculo_de_Access()
     {
-        var (numerico, _) = await Renderizar<Comisiones>(async p =>
+        var (html, _) = await Renderizar<Comisiones>(async p =>
         {
             Poner(p, "_reciboDesde", "5122");
             Poner(p, "_reciboHasta", "5146");
-            Poner(p, "_rangoNumerico", true);
+            Poner(p, "_rangoNumerico", false);
+            Poner(p, "_abonoPorRecibo", false);
             await LlamarAsync<object>(p, "Consultar");
         });
-        Assert.DoesNotContain("CYEDE CIA. LTDA.", numerico);
 
-        var (porRecibo, _) = await Renderizar<Comisiones>(async p =>
-        {
-            Poner(p, "_reciboDesde", "5122");
-            Poner(p, "_reciboHasta", "5146");
-            Poner(p, "_abonoPorRecibo", true);
-            await LlamarAsync<object>(p, "Consultar");
-        });
-        Assert.Contains("1.200,00", porRecibo);
-        Assert.DoesNotContain("3.571,60", porRecibo);
+        Assert.Contains("CYEDE CIA. LTDA.", html);             // el 513 entra por la comparaciÃ³n de texto
+        Assert.Contains("001-001-003661", html);
+        Assert.Contains("3.571,60", html);                     // abono total heredado
+        Assert.Contains("1.480,00", html);                     // 2.300 â 550 â 270
     }
 
     [Fact]
@@ -283,7 +277,7 @@ public class PaginasRenderTests
         Assert.Contains("cartera/comisiones/export?", nav.Ultimo);
         Assert.Contains("reciboDesde=5122", nav.Ultimo);
         Assert.Contains("rangoNumerico=true", nav.Ultimo);
-        Assert.Contains("abonoPorRecibo=false", nav.Ultimo);
+        Assert.Contains("abonoPorRecibo=true", nav.Ultimo);
     }
 
     // --- Cheques ------------------------------------------------------------------------------------------------
@@ -303,9 +297,11 @@ public class PaginasRenderTests
         Assert.Contains("Cheques y comprobantes de egreso", html);
         Assert.Contains("Hoja de prueba de impresión (PDF)", html);
         Assert.Contains("bancos/cheques/prueba", html);
-        Assert.Contains("Corrección X (mm)", html);
+        Assert.Contains("Desplazamiento X (mm)", html);
+        Assert.Contains("Margen de Access", html);
+        Assert.Contains("DEBITO", html);
         Assert.Contains("Ciudad del «ciudad, fecha»", html);
-        Assert.Contains("Courier New", html);
+        Assert.Contains("Arial", html);
         Assert.DoesNotContain("Quito", html);
     }
 
@@ -324,18 +320,23 @@ public class PaginasRenderTests
     }
 
     [Fact]
-    public async Task Cheques_elegir_el_tipo_PI_muestra_ese_pago_y_avisa_del_bug_Q1()
+    public async Task Cheques_elegir_el_tipo_PI_muestra_ese_pago_y_solo_avisa_del_bug_Q1_si_no_esta_corregido()
     {
-        var (html, _) = await Renderizar<Cheques>(async p =>
+        Func<object, Task> accion = async p =>
         {
             await Buscar(p);
             Poner(p, "_tipo", "PI-");
             await LlamarAsync<object>(p, "Filtrar");
-        });
+        };
 
-        Assert.Contains("PROVEEDOR CON UN NOMBRE MUY LARGO", html);
-        Assert.DoesNotContain("TONY VERA", html);
-        Assert.Contains("bug Q1", html);                                     // 1,50 < $2,00
+        var (corregido, _) = await Renderizar<Cheques>(accion);
+        Assert.Contains("PROVEEDOR CON UN NOMBRE MUY LARGO", corregido);
+        Assert.DoesNotContain("TONY VERA", corregido);
+        Assert.DoesNotContain("bug Q1", corregido);                          // D7: corregido por defecto
+
+        var (heredado, _) = await Renderizar<Cheques>(accion,
+            cfg => cfg.GuardarAsync("_sin-empresa", ClavesReporte.Cheques, new ConfiguracionCheque { CorregirMontosMenoresA2 = false }, "t").GetAwaiter().GetResult());
+        Assert.Contains("bug Q1", heredado);                                 // 1,50 < $2,00 con el comportamiento de Access
     }
 
     [Fact]

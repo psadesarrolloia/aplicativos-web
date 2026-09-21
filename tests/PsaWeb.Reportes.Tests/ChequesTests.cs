@@ -5,7 +5,13 @@ namespace PsaWeb.Reportes.Tests;
 
 public class ChequesTests
 {
-    private static readonly ConfiguracionCheque Cfg = new();
+    /// <summary>Configuración «heredada» de Access para verificar las constantes crudas: origen en la esquina de la hoja, Courier, 1.234,56 y sin corregir Q1.</summary>
+    private static ConfiguracionCheque Legado(double x = 0, double y = 0) => new()
+    {
+        CorreccionX = x, CorreccionY = y, Fuente = "Courier New", FormatoMonto = "es", CorregirMontosMenoresA2 = false,
+    };
+
+    private static readonly ConfiguracionCheque Cfg = Legado();
     private static readonly OpcionesImpresion Ambos = new();
 
     private static PagoConDetalle Pago(decimal monto = 35m, string benef = "TONY VERA", string referencia = "3094", int lineas = 2)
@@ -250,13 +256,14 @@ public class ChequesTests
     }
 
     [Fact]
-    public void Las_firmas_tienen_su_linea_de_40_mm_en_el_pie()
+    public void Las_firmas_tienen_su_linea_de_40_mm_en_el_pie_anclada_al_margen_inferior()
     {
-        var p = Primera(Pago());
-        Assert.Equal(new[] { 23.0, 80.0, 136.0 }, new[] { "firma1", "firma2", "firma3" }.Select(id => Campo(p, id).X).ToArray());
-        foreach (var x in new[] { 23.0, 80.0, 136.0 })
+        // Con el desplazamiento por defecto (margen de Access) el pie cae en y = 253,7 y las firmas en x = 33 · 90 · 146.
+        var p = Primera(Pago(), new ConfiguracionCheque());
+        Assert.Equal(new[] { 33.0, 90.0, 146.0 }, new[] { "firma1", "firma2", "firma3" }.Select(id => Campo(p, id).X).ToArray());
+        foreach (var x in new[] { 33.0, 90.0, 146.0 })
         {
-            Assert.Contains(p.Lineas, l => l.X1 == x && l.X2 == x + 40.0 && l.Y1 == 253.7);
+            Assert.Contains(p.Lineas, l => Math.Abs(l.X1 - x) < 1e-9 && Math.Abs(l.X2 - (x + 40.0)) < 1e-9 && Math.Abs(l.Y1 - 253.7) < 1e-9);
         }
     }
 
@@ -266,7 +273,7 @@ public class ChequesTests
         var pago = Pago(lineas: 40);
         var hojas = ConstructorPaginaCheque.Construir(pago, Cfg, "EMPRESA", "Quito", false, Ambos);
 
-        Assert.Equal(3, hojas.Count);  // 18 + 18 + 4
+        Assert.Equal(3, hojas.Count);  // 16 + 16 + 8
         Assert.Contains(hojas[0].Campos, c => c.Id == "numero");            // el cheque sólo en la 1.ª
         Assert.DoesNotContain(hojas[1].Campos, c => c.Id == "numero");
         Assert.All(hojas, h => Assert.Contains(h.Campos, c => c.Id == "empresa"));
@@ -274,7 +281,7 @@ public class ChequesTests
         Assert.DoesNotContain(hojas[1].Campos, c => c.Id == "total-pagos");
         Assert.Contains(hojas[2].Campos, c => c.Id == "total-pagos");
         Assert.Contains(hojas[1].Campos, c => c.Id == "titulo" && c.Texto.Contains("continuación"));
-        Assert.Equal(18, ConstructorPaginaCheque.FilasPorHoja);
+        Assert.Equal(16, ConstructorPaginaCheque.FilasPorHoja);
         Assert.All(hojas, h => Assert.Equal(3, h.Campos.Count(c => c.Id.StartsWith("firma"))));
     }
 
@@ -296,7 +303,7 @@ public class ChequesTests
     public void La_correccion_XY_desplaza_todos_los_campos_lineas_y_recuadros()
     {
         var base0 = Primera(Pago(), logo: true);
-        var corr = Primera(Pago(), new ConfiguracionCheque { CorreccionX = 3.0, CorreccionY = -2.5 }, logo: true);
+        var corr = Primera(Pago(), Legado(3.0, -2.5), logo: true);
 
         Assert.Equal(base0.Campos.Count, corr.Campos.Count);
         for (var i = 0; i < base0.Campos.Count; i++)
@@ -338,5 +345,83 @@ public class ChequesTests
         var (lineas, _) = AjusteTexto.PartirEnLineas(new string('X', 60), 50.0, 10, 3);
         Assert.Equal(new string('X', 23), lineas[0]); // 50 mm / 2,1167 mm = 23 caracteres
         Assert.Equal(3, lineas.Count);
+    }
+
+    // --- valores por defecto (decisiones del 2026-09-21, medidas sobre un cheque impreso) ------------------------
+
+    [Fact]
+    public void Los_valores_por_defecto_son_los_medidos_en_el_escaneo_del_cheque_impreso_por_Access()
+    {
+        // Escaneo a 200 ppp: el (0,0) de Access es el margen del reporte (10,0 · 13,0), no la esquina de la hoja.
+        var p = Primera(Pago(35m), new ConfiguracionCheque());
+
+        Assert.Equal((180.1, 18.0), (Campo(p, "numero").X, Campo(p, "numero").Y));      // medido: 180,1 mm
+        Assert.Equal((180.1, 13.0), (Campo(p, "rotulo-numero").X, Campo(p, "rotulo-numero").Y));
+        Assert.Equal(25.0, Campo(p, "beneficiario").X, 6);                                // medido: 24,8 mm
+        Assert.Equal(20.0, Campo(p, "beneficiario").Y, 6);
+        Assert.Equal(25.1, Campo(p, "letras-1").X, 6);
+        Assert.Equal(28.0, Campo(p, "letras-1").Y, 6);
+        Assert.Equal(39.0, Campo(p, "ciudad-fecha").Y, 6);
+        Assert.Equal(144.0, Campo(p, "monto").X + Campo(p, "monto").Ancho, 6);            // borde derecho del monto (medido ≈ 142,9)
+
+        var r = Assert.Single(p.Rectangulos);
+        Assert.Equal((17.9, 90.0), (r.X, r.Y));                                            // medido: recuadro a 89,9 mm del borde
+
+        Assert.Equal((10.0, 13.0), (ConfiguracionCheque.MargenAccessX, ConfiguracionCheque.MargenAccessY));
+    }
+
+    [Fact]
+    public void Por_defecto_Arial_punto_decimal_DEBITO_CREDITO_y_Q1_corregido()
+    {
+        var cfg = new ConfiguracionCheque();
+        Assert.Equal("Arial", cfg.Fuente);
+        Assert.Equal("en", cfg.FormatoMonto);
+        Assert.True(cfg.CorregirMontosMenoresA2);
+
+        var p = Primera(Pago(1.5m), cfg);
+        Assert.Equal("1.50", Campo(p, "monto").Texto);                      // como en el escaneo: 94.63
+        Assert.StartsWith("UN CON 50/100", Campo(p, "letras-1").Texto);     // Q1 corregido (D7)
+        Assert.Equal("DEBITO", Campo(p, "th-pagos").Texto);
+        Assert.Equal("CREDITO", Campo(p, "th-cheque").Texto);
+
+        var otro = Primera(Pago(), new ConfiguracionCheque { EncabezadoDebito = "PAGOS", EncabezadoCredito = "CHEQUE" });
+        Assert.Equal("PAGOS", Campo(otro, "th-pagos").Texto);
+    }
+
+    [Fact]
+    public void El_monto_de_94_63_sale_como_en_el_escaneo()
+    {
+        var p = Primera(Pago(94.63m, "CNT EP", "4047"), new ConfiguracionCheque(), ciudad: "Quito");
+
+        Assert.Equal("94.63", Campo(p, "monto").Texto);
+        Assert.Equal("4047", Campo(p, "numero").Texto);
+        Assert.Equal("Quito, 2026/09/18", Campo(p, "ciudad-fecha").Texto);
+        Assert.StartsWith("NOVENTA Y CUATRO CON 63/100", Campo(p, "letras-1").Texto);
+    }
+
+    [SkippableFact]
+    public void Con_Arial_el_monto_en_letras_cabe_en_2_lineas_de_100_mm_sin_achicar_como_en_Access()
+    {
+        var medidor = MedidorTexto.Para("Arial");
+        Skip.IfNot(medidor is MedidorFuente, "Arial no está instalada en esta máquina.");
+
+        var letras = NumeroALetras.ValorLetras(94.63m, corregirMenoresA2: true);
+        var (lineas, tamano) = AjusteTexto.PartirEnLineas(letras, 100.0, 10, 2, medidor);
+
+        Assert.Equal(2, lineas.Count);
+        Assert.InRange(tamano, 9.5, 10.0);           // el escaneo de Access lo muestra en 2 líneas a ~10 pt
+        Assert.All(lineas, l => Assert.True(medidor.AnchoMm(l, tamano) <= 100.0 + 1e-6));
+    }
+
+    [Fact]
+    public void El_medidor_es_monoespaciado_para_Courier_y_exacto_para_Arial()
+    {
+        Assert.IsType<MedidorMonoespaciado>(MedidorTexto.Para("Courier New"));
+        Assert.IsType<MedidorMonoespaciado>(MedidorTexto.Para(null));
+        var arial = MedidorTexto.Para("Arial");
+        if (arial is MedidorFuente)
+        {
+            Assert.True(arial.AnchoMm("xxxxxxxxxx", 10) < new MedidorMonoespaciado().AnchoMm("xxxxxxxxxx", 10)); // la «x» del relleno es más angosta que un Courier
+        }
     }
 }

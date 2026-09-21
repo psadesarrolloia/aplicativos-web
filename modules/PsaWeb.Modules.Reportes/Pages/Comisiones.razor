@@ -54,19 +54,19 @@
     </p>
 
     <div class="psa-notice" style="margin-top: 1rem">
-        <strong>Comportamiento heredado del reporte de Access</strong> (posibles errores; usted decide):
+        <strong>Errores del reporte de Access, corregidos por defecto</strong> (desmarque para reproducir el cálculo de Access):
         <label style="display: flex; align-items: flex-start; gap: .5rem; margin-top: .5rem">
             <input type="checkbox" @bind="_rangoNumerico" />
             <span>
                 <strong>C2 — Comparar el rango de recibos como número.</strong>
-                Access lo compara como texto: con «5122–5146» entran también recibos como 513 o 514.
+                Access lo comparaba como texto: con «5122–5146» entraban también recibos como 513 o 514.
             </span>
         </label>
         <label style="display: flex; align-items: flex-start; gap: .5rem; margin-top: .5rem">
             <input type="checkbox" @bind="_abonoPorRecibo" />
             <span>
                 <strong>C1 — Abono = lo que aplicó ese recibo.</strong>
-                Access lo calcula como total pagado de la factura − cruces − retención, lo que sobrestima el abono si
+                Access lo calculaba como total pagado de la factura − cruces − retención, lo que sobrestima el abono si
                 la factura tuvo otros cobros.
             </span>
         </label>

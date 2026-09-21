@@ -23,9 +23,12 @@ public class ChequePdfTests
             new(1, "20022-521", "Cuenta", "SERVICIOS", monto, "FAC-001", "PROV"),
         });
 
+    /// <summary>Origen en la esquina de la hoja (0, 0) para verificar las constantes crudas; el resto, valores por defecto (Arial, punto decimal).</summary>
+    private static ConfiguracionCheque Base(double x = 0, double y = 0) => new() { CorreccionX = x, CorreccionY = y };
+
     private static byte[] Pdf(ConfiguracionCheque? cfg = null, LogoEmpresa? logo = null, OpcionesImpresion? o = null, PagoConDetalle? pago = null)
     {
-        cfg ??= new ConfiguracionCheque();
+        cfg ??= Base();
         var paginas = ConstructorPaginaCheque.Construir(pago ?? Pago(), cfg, "EMPRESA DEMO S.A.", "Guayaquil", logo is not null, o ?? new OpcionesImpresion());
         return new ChequePdfRenderer().Generar(paginas, cfg, logo);
     }
@@ -50,7 +53,7 @@ public class ChequePdfTests
     [Fact]
     public void Varios_pagos_son_varias_hojas()
     {
-        var cfg = new ConfiguracionCheque();
+        var cfg = Base();
         var paginas = new[] { Pago(), Pago("OTRO BENEFICIARIO") }
             .SelectMany(p => ConstructorPaginaCheque.Construir(p, cfg, "EMPRESA", "Quito", false, new OpcionesImpresion()))
             .ToList();
@@ -85,7 +88,7 @@ public class ChequePdfTests
         using var doc = PdfDocument.Open(Pdf(o: new OpcionesImpresion(Comprobante: false)));
         var page = doc.GetPage(1);
 
-        var w = page.GetWords().First(x => x.Text == "35,00");
+        var w = page.GetWords().First(x => x.Text == "35.00");
         var derecha = Medidas.PuntosAMm(w.BoundingBox.Right);
         Assert.InRange(derecha, 109.0 + 25.0 - 0.8, 109.0 + 25.0 + 0.3); // borde derecho de la caja (109 + 25 = 134)
     }
@@ -94,7 +97,7 @@ public class ChequePdfTests
     public void La_correccion_XY_mueve_el_texto_esos_milimetros_en_el_PDF()
     {
         var sin = PdfDocument.Open(Pdf(o: new OpcionesImpresion(Comprobante: false)));
-        var con = PdfDocument.Open(Pdf(new ConfiguracionCheque { CorreccionX = 4.0, CorreccionY = 2.0 }, o: new OpcionesImpresion(Comprobante: false)));
+        var con = PdfDocument.Open(Pdf(Base(4.0, 2.0), o: new OpcionesImpresion(Comprobante: false)));
         using (sin)
         using (con)
         {
@@ -108,26 +111,29 @@ public class ChequePdfTests
     [Fact]
     public void El_comprobante_esta_debajo_del_cheque_y_las_firmas_en_el_pie()
     {
-        using var doc = PdfDocument.Open(Pdf());
+        // Con el desplazamiento por defecto (margen de Access 10 Â· 13): tÃ­tulo en y = 86,7 + 13; firmas en y = 253,7.
+        using var doc = PdfDocument.Open(Pdf(new ConfiguracionCheque()));
         var page = doc.GetPage(1);
 
         Assert.Equal("COMPROBANTE", page.GetWords().First(w => w.Text == "COMPROBANTE").Text);
         var (_, yTitulo) = Posicion(page, "COMPROBANTE");
-        Assert.InRange(yTitulo, 86.7 - 0.5, 86.7 + 3.0);
+        Assert.InRange(yTitulo, 99.7 - 0.5, 99.7 + 3.0);
 
         var (xFirma, yFirma) = Posicion(page, "RECIBIDO");
         Assert.InRange(yFirma, 253.7, 253.7 + 3.5);
-        Assert.InRange(xFirma, 23.0, 23.0 + 40.0); // centrado en su línea de 40 mm
+        Assert.InRange(xFirma, 33.0, 33.0 + 40.0); // centrado en su línea de 40 mm
         Assert.Contains(page.GetWords(), w => w.Text == "CODIGO");
         Assert.Contains(page.GetWords(), w => w.Text == "EMPRESA");
     }
 
     [Fact]
-    public void Se_usa_una_fuente_monoespaciada_por_defecto()
+    public void Se_usa_Arial_por_defecto_y_Courier_si_se_configura()
     {
-        using var doc = PdfDocument.Open(Pdf());
-        var fuentes = doc.GetPage(1).Letters.Select(l => l.FontName ?? "").Distinct().ToList();
-        Assert.Contains(fuentes, f => f.Contains("Cour", StringComparison.OrdinalIgnoreCase) || f.Contains("Mono", StringComparison.OrdinalIgnoreCase));
+        using var arial = PdfDocument.Open(Pdf());
+        Assert.Contains(arial.GetPage(1).Letters.Select(l => l.FontName ?? "").Distinct(), f => f.Contains("Arial", StringComparison.OrdinalIgnoreCase));
+
+        using var courier = PdfDocument.Open(Pdf(new ConfiguracionCheque { Fuente = "Courier New", CorreccionX = 0, CorreccionY = 0 }));
+        Assert.Contains(courier.GetPage(1).Letters.Select(l => l.FontName ?? "").Distinct(), f => f.Contains("Cour", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -163,21 +169,21 @@ public class ChequePdfTests
         Assert.Contains("PRUEBA", texto);
         Assert.Contains("100,0", texto);
         Assert.Contains("BENEFICIARIO", texto);
-        Assert.Contains("1.234,56", texto);
+        Assert.Contains("1,234.56", texto);
     }
 
     [Fact]
     public void La_hoja_de_prueba_marca_la_esquina_la_regla_de_100_mm_y_el_margen_de_Access()
     {
-        var p = HojaPruebaCheque.Construir(new ConfiguracionCheque(), "EMPRESA", "Quito");
+        var p = HojaPruebaCheque.Construir(Base(), "EMPRESA", "Quito");
 
         Assert.Contains(p.Lineas, l => l is { X1: 10, X2: 110, Y1: 46, Y2: 46 });                       // 100,0 mm exactos
         Assert.Contains(p.Lineas, l => l.X1 == HojaPruebaCheque.MargenAccessX - 4.0 && l.Y1 == HojaPruebaCheque.MargenAccessY); // cruz en (10; 13)
-        Assert.Contains(p.Campos, c => c.Texto.Contains("margen izq./sup. del reporte de Access"));
+        Assert.Contains(p.Campos, c => c.Texto.Contains("margen del reporte de Access"));
         Assert.True(p.Rectangulos.Count >= 5); // un recuadro por campo del cheque de ejemplo
 
         // La corrección vigente se refleja en el cheque de ejemplo pero NO en las reglas (referencias de la hoja).
-        var conCorreccion = HojaPruebaCheque.Construir(new ConfiguracionCheque { CorreccionX = 2, CorreccionY = 3 }, "EMPRESA", "Quito");
+        var conCorreccion = HojaPruebaCheque.Construir(Base(2, 3), "EMPRESA", "Quito");
         Assert.Contains(conCorreccion.Lineas, l => l is { X1: 10, X2: 110, Y1: 46, Y2: 46 });
         Assert.Equal(p.Campos.Single(c => c.Id == "beneficiario").X + 2, conCorreccion.Campos.Single(c => c.Id == "beneficiario").X);
     }
