@@ -366,7 +366,12 @@ else
                                 @if (MostrarEstadoSri)
                                 {
                                     <td @onclick:stopPropagation="true">
-                                        @if (r.Emitido)
+                                        @if (r.Ambiente == 1)
+                                        {
+                                            @* Pruebas: no existe en el SRI real, no se verifica. *@
+                                            <span class="psa-muted" title="Comprobante de pruebas: no existe en el SRI real, no se verifica.">(Pruebas)</span>
+                                        }
+                                        else if (r.Emitido)
                                         {
                                             <span class="psa-estado @claseEstado" style="font-size:.85rem"
                                                   title="@(est.Detalle ?? (est.FechaVerificacion is { } fv ? $"Verificado {fv.ToLocalTime():dd/MM/yyyy HH:mm} · {est.Fuente}" : "Aún no verificado"))">@txtEstado</span>
@@ -1249,7 +1254,7 @@ else
         {
             q = _fEstadoSri switch
             {
-                "sin" => q.Where(r => r.Emitido && EstadoDe(r).Estado is null),
+                "sin" => q.Where(r => r.Emitido && r.Ambiente != 1 && EstadoDe(r).Estado is null),
                 "aut" => q.Where(r => EstadoDe(r).Estado == nameof(EstadoComprobanteSri.Autorizado)),
                 "anul" => q.Where(r => EstadoSriPresentacion.NoVigente(EstadoDe(r).Estado)),
                 "otro" => q.Where(r => EstadoDe(r).Estado is { } e
