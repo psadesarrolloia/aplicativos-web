@@ -29,6 +29,11 @@ sin pasar por la carpeta de Descargas.
 2. Navegar a "Comprobantes electrónicos recibidos", elegir año/mes/tipo de
    comprobante (**"Todos"** si se quiere cubrir NC/retenciones/liquidaciones
    además de facturas) y presionar "Consultar", como siempre.
+   El portal genera un reporte por tipo: para conciliar también **notas de
+   crédito** y **retenciones** hay que repetir la consulta y la subida
+   cambiando el campo **"Tipo de documento"** (Factura → Nota de Crédito →
+   Comprobante de Retención). Las liquidaciones de compra y notas de débito
+   recibidas no se concilian.
 3. Cuando la lista de resultados carga, aparece un botón flotante
    **"Subir a PSA"** abajo a la derecha de la pantalla — apretarlo.
 4. Un mensaje confirma cuántos comprobantes se subieron (nuevos / ya

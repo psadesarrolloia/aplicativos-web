@@ -25,6 +25,17 @@ else
 {
     <PsaCard Title="Período">
         <PsaDateRange From="_desde" To="_hasta" FromChanged="v => _desde = v" ToChanged="v => _hasta = v" />
+        <div class="psa-row" style="margin-top:1rem;gap:1.2rem;align-items:center">
+            <span class="psa-field__lbl">Documentos a conciliar</span>
+            @foreach (var tipo in TiposConciliables)
+            {
+                <label class="psa-row" style="align-items:center;gap:.4rem;cursor:pointer">
+                    <input type="checkbox" style="width:1.05rem;height:1.05rem;accent-color:var(--psa-magenta,#B40046)"
+                           checked="@_tipos.Contains(tipo)" @onchange="e => AlternarTipo(tipo, (bool)e.Value!)" />
+                    @EtiquetaPlural(tipo)
+                </label>
+            }
+        </div>
         <div class="psa-row" style="margin-top:1rem">
             <PsaButton Variant="primary" OnClick="Consultar" Disabled="_cargando">
                 @(_cargando ? "Consultando…" : "Consultar")
@@ -65,6 +76,11 @@ else
             @if (_avisoVerificacion is not null)
             {
                 <p class="psa-notice">@_avisoVerificacion</p>
+            }
+
+            @foreach (var advertencia in _advertencias)
+            {
+                <p class="psa-notice psa-notice--danger">@advertencia</p>
             }
 
             <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
@@ -116,11 +132,12 @@ else
                 <table class="psa-table">
                     <thead>
                         <tr>
+                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.Tipo)">Tipo @Flecha(ColumnaConciliacion.Tipo)</th>
                             <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.Documento)">
                                 @(_filtro == ClasificacionConciliacion.SoloEnSri ? "Documento (SRI)" : "Documento (Sage)") @Flecha(ColumnaConciliacion.Documento)
                             </th>
-                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.ProveedorSri)">Proveedor (SRI) @Flecha(ColumnaConciliacion.ProveedorSri)</th>
-                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.ProveedorSage)">Proveedor (Sage) @Flecha(ColumnaConciliacion.ProveedorSage)</th>
+                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.ProveedorSri)">Emisor (SRI) @Flecha(ColumnaConciliacion.ProveedorSri)</th>
+                            <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.ProveedorSage)">Emisor (Sage) @Flecha(ColumnaConciliacion.ProveedorSage)</th>
                             <th class="num sortable" @onclick="() => Ordenar(ColumnaConciliacion.TotalSri)">Total (SRI) @Flecha(ColumnaConciliacion.TotalSri)</th>
                             <th class="num sortable" @onclick="() => Ordenar(ColumnaConciliacion.TotalSage)">Total (Sage) @Flecha(ColumnaConciliacion.TotalSage)</th>
                             <th class="sortable" @onclick="() => Ordenar(ColumnaConciliacion.EstadoSri)">Estado en SRI @Flecha(ColumnaConciliacion.EstadoSri)</th>
@@ -136,6 +153,15 @@ else
                             }
                         </tr>
                         <tr class="psa-table__filtros">
+                            <th>
+                                <select class="@ClaseFiltro(_fTipo)" @bind="_fTipo">
+                                    <option value="">Todos</option>
+                                    @foreach (var tipo in TiposConciliables)
+                                    {
+                                        <option value="@tipo">@TiposDocumentoRecibido.Etiqueta(tipo)</option>
+                                    }
+                                </select>
+                            </th>
                             <th><input class="@ClaseFiltro(_fDocumento)" placeholder="buscar…" @bind="_fDocumento" @bind:event="oninput" /></th>
                             <th><input class="@ClaseFiltro(_fProveedorSri)" placeholder="buscar…" @bind="_fProveedorSri" @bind:event="oninput" /></th>
                             <th><input class="@ClaseFiltro(_fProveedorSage)" placeholder="buscar…" @bind="_fProveedorSage" @bind:event="oninput" /></th>
@@ -171,12 +197,13 @@ else
                     <tbody>
                         @if (vista.Count == 0)
                         {
-                            <tr><td colspan="@(7 + (puedeAceptar ? 1 : 0) + 1 + (_mostrarClave ? 1 : 0))" class="psa-muted">Ninguna fila coincide con el filtro.</td></tr>
+                            <tr><td colspan="@(8 + (puedeAceptar ? 1 : 0) + 1 + (_mostrarClave ? 1 : 0))" class="psa-muted">Ninguna fila coincide con el filtro.</td></tr>
                         }
                         @foreach (var d in vista)
                         {
                             var fila = d.Fila;
                             <tr style="@(d.Aceptable ? "cursor:pointer" : "")" @onclick="() => AbrirDetalle(d)">
+                                <td>@d.TipoTexto</td>
                                 <td>
                                     @d.Documento
                                     @if (fila.Clasificacion == ClasificacionConciliacion.SoloEnSage && DocumentoFisico.EsProbable(fila.ClaveAcceso))
@@ -186,7 +213,7 @@ else
                                 </td>
                                 <td>@d.ProveedorSri</td>
                                 <td>@d.ProveedorSage</td>
-                                <td class="num">@(fila.Sri is not null ? fila.Sri.Total.ToString("N2") : "")</td>
+                                <td class="num">@(fila.Sri is not null && d.SriTieneMontos ? fila.Sri.Total.ToString("N2") : "")</td>
                                 <td class="num">@(fila.Sage is not null ? fila.Sage.Total.ToString("N2") : "")</td>
                                 <td>
                                     @if (fila.Sri is null)
@@ -207,7 +234,7 @@ else
                                     }
                                     @if (fila.Diferencias.Count == 0)
                                     {
-                                        <span class="psa-muted">@Hallazgo(fila.Clasificacion)</span>
+                                        <span class="psa-muted">@Hallazgo(fila)</span>
                                     }
                                 </td>
                                 @if (puedeAceptar)
@@ -272,10 +299,22 @@ else
                         <p class="psa-muted" style="margin:.2rem 0">@fila.Sri.RazonSocialEmisor (@fila.Sri.RucEmisor)</p>
                         <p class="psa-muted" style="margin:.2rem 0">Serie: @fila.Sri.SerieComprobante</p>
                         <p class="psa-muted" style="margin:.2rem 0">Fecha emisión: @fila.Sri.FechaEmision.ToString("dd/MM/yyyy")</p>
-                        <p class="psa-muted" style="margin:.2rem 0">
-                            Subtotal @fila.Sri.Subtotal.ToString("N2") · IVA @fila.Sri.Iva.ToString("N2") ·
-                            Total @fila.Sri.Total.ToString("N2")
-                        </p>
+                        <p class="psa-muted" style="margin:.2rem 0">Tipo: @fila.Sri.TipoComprobante</p>
+                        @if (fila.Sri.TieneMontos)
+                        {
+                            <p class="psa-muted" style="margin:.2rem 0">
+                                Subtotal @fila.Sri.Subtotal.ToString("N2") · IVA @fila.Sri.Iva.ToString("N2") ·
+                                Total @fila.Sri.Total.ToString("N2")
+                            </p>
+                        }
+                        else
+                        {
+                            <p class="psa-muted" style="margin:.2rem 0">El reporte del SRI no trae montos de las retenciones: solo se compara documento, fecha y emisor.</p>
+                        }
+                        @if (fila.Sri.Tipo == TipoDocumentoRecibido.NotaCredito && !string.IsNullOrWhiteSpace(fila.Sri.NumeroDocumentoModificado))
+                        {
+                            <p class="psa-muted" style="margin:.2rem 0">Documento modificado: @fila.Sri.NumeroDocumentoModificado</p>
+                        }
                         <p class="psa-muted" style="margin:.2rem 0">Estado en SRI: <span class="psa-estado @claseEstado" style="font-size:.85rem">@textoEstado</span></p>
                     }
                 </div>
@@ -290,10 +329,22 @@ else
                         <p class="psa-muted" style="margin:.2rem 0">@fila.Sage.NombreProveedor (@fila.Sage.RucProveedor)</p>
                         <p class="psa-muted" style="margin:.2rem 0">Referencia: @fila.Sage.Referencia</p>
                         <p class="psa-muted" style="margin:.2rem 0">Fecha: @fila.Sage.Fecha.ToString("dd/MM/yyyy")</p>
-                        <p class="psa-muted" style="margin:.2rem 0">
-                            Subtotal @fila.Sage.Subtotal.ToString("N2") · IVA @fila.Sage.Iva.ToString("N2") ·
-                            Total @fila.Sage.Total.ToString("N2")
-                        </p>
+                        <p class="psa-muted" style="margin:.2rem 0">Tipo: @TiposDocumentoRecibido.Etiqueta(fila.Sage.Tipo)</p>
+                        @if (fila.Sage.Tipo == TipoDocumentoRecibido.Retencion)
+                        {
+                            <p class="psa-muted" style="margin:.2rem 0">Total de la retención: @fila.Sage.Total.ToString("N2")</p>
+                        }
+                        else
+                        {
+                            <p class="psa-muted" style="margin:.2rem 0">
+                                Subtotal @fila.Sage.Subtotal.ToString("N2") · IVA @fila.Sage.Iva.ToString("N2") ·
+                                Total @fila.Sage.Total.ToString("N2")
+                            </p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(fila.Sage.DocumentoModificado))
+                        {
+                            <p class="psa-muted" style="margin:.2rem 0">Documento modificado: @fila.Sage.DocumentoModificado</p>
+                        }
                     }
                 </div>
             </div>
@@ -347,7 +398,7 @@ else
             }
             @if (fila.Diferencias.Count == 0)
             {
-                <p style="margin:.2rem 0">@Hallazgo(fila.Clasificacion)</p>
+                <p style="margin:.2rem 0">@Hallazgo(fila)</p>
             }
             @if (fila.Clasificacion == ClasificacionConciliacion.SoloEnSage && DocumentoFisico.EsProbable(fila.ClaveAcceso))
             {
@@ -411,6 +462,35 @@ else
         (ClasificacionConciliacion.CoincidePendienteDeVerificar, "Conciliado sin verificar"),
     ];
 
+    // Facturas, notas de crédito y retenciones de venta recibidas. Las liquidaciones de compra y notas de
+    // débito recibidas no se contemplan (sin casos en más de 5 años de Sage).
+    private static readonly TipoDocumentoRecibido[] TiposConciliables =
+        [TipoDocumentoRecibido.Factura, TipoDocumentoRecibido.NotaCredito, TipoDocumentoRecibido.Retencion];
+
+    private static string EtiquetaPlural(TipoDocumentoRecibido tipo) => tipo switch
+    {
+        TipoDocumentoRecibido.Factura => "Facturas de compra",
+        TipoDocumentoRecibido.NotaCredito => "Notas de crédito",
+        TipoDocumentoRecibido.Retencion => "Retenciones de venta",
+        _ => tipo.ToString(),
+    };
+
+    private readonly HashSet<TipoDocumentoRecibido> _tipos = [.. TiposConciliables];
+    private IReadOnlyList<string> _advertencias = [];
+    private string _fTipo = "";
+
+    private void AlternarTipo(TipoDocumentoRecibido tipo, bool marcado)
+    {
+        if (marcado)
+        {
+            _tipos.Add(tipo);
+        }
+        else
+        {
+            _tipos.Remove(tipo);
+        }
+    }
+
     private DateOnly _desde = new(DateTime.Today.Year, DateTime.Today.Month, 1);
     private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
     private bool _cargando;
@@ -436,7 +516,7 @@ else
     private bool _ordenAscendente = true;
 
     private CriteriosVista Criterios => new(
-        _busqueda, _fDocumento, _fProveedorSri, _fProveedorSage, _fDiferencias, _fEstadoSri, _fRevision,
+        _busqueda, _fDocumento, _fProveedorSri, _fProveedorSage, _fDiferencias, _fEstadoSri, _fRevision, _fTipo,
         _ordenColumna, _ordenAscendente);
 
     // Popup de detalle / revisión manual.
@@ -461,6 +541,7 @@ else
     {
         _filas = null;
         _error = null;
+        _advertencias = [];
         _avisoVerificacion = null;
         _ultimaVerificacionMasiva = null;
         _detalle = null;
@@ -484,7 +565,7 @@ else
     }
 
     private void LimpiarFiltros() =>
-        _busqueda = _fDocumento = _fProveedorSri = _fProveedorSage = _fDiferencias = _fEstadoSri = _fRevision = "";
+        _busqueda = _fDocumento = _fProveedorSri = _fProveedorSage = _fDiferencias = _fEstadoSri = _fRevision = _fTipo = "";
 
     private static string ClaseFiltro(string valor) =>
         "psa-input psa-input--sm" + (string.IsNullOrEmpty(valor) ? "" : " psa-input--activo");
@@ -507,9 +588,11 @@ else
 
     private static (string Texto, string Clase) EstadoVisual(string? estado) => EstadoSriPresentacion.Visual(estado);
 
-    private static string Hallazgo(ClasificacionConciliacion c) => c switch
+    private static string Hallazgo(FilaConciliacion f) => f.Clasificacion switch
     {
         ClasificacionConciliacion.SoloEnSri => "Falta registrarla en Sage.",
+        ClasificacionConciliacion.SoloEnSage when f.Tipo == TipoDocumentoRecibido.Retencion =>
+            "No hay retención en el SRI con este emisor y esta serie.",
         ClasificacionConciliacion.SoloEnSage => "No hay comprobante en el SRI con esta autorización.",
         _ => "",
     };
@@ -539,7 +622,9 @@ else
         _avisoVerificacion = null;
         try
         {
-            _filas = (await Procesador.ConciliarConRevisionesAsync(ruc, _desde, _hasta)).ToList();
+            var resultado = await Procesador.ConciliarConRevisionesAsync(ruc, _desde, _hasta, _tipos);
+            _filas = resultado.Filas.ToList();
+            _advertencias = resultado.Advertencias;
             if (_ultimaVerificacionMasiva is null)
             {
                 var fechas = _filas
@@ -643,7 +728,7 @@ else
         _lineasSageCargando = true;
         try
         {
-            _lineasSage = await Procesador.LeerLineasSageAsync(ruc, fila.Fila.Sage.PostOrder);
+            _lineasSage = await Procesador.LeerLineasSageAsync(ruc, fila.Fila.Sage.PostOrder, fila.Fila.Sage.Tipo);
         }
         catch (Exception ex)
         {

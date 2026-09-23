@@ -10,6 +10,9 @@ namespace PsaWeb.Comprobantes.Compras;
 /// en vez del desglose por tarifa de IVA que necesita el ATS — no comparte
 /// tipo con <c>PsaWeb.Ats.Esquema.detalleComprasType</c> a propósito.
 /// </summary>
+/// <param name="RucProveedor">RUC de la contraparte: el proveedor (facturas/NC) o el cliente que retuvo (retenciones).</param>
+/// <param name="Tipo">Factura o nota de crédito de compra; <see cref="TipoDocumentoRecibido.Retencion"/> para las retenciones de venta recibidas.</param>
+/// <param name="DocumentoModificado">Solo notas de crédito: la factura a la que se aplica (tal como está en Sage).</param>
 public sealed record CompraSage(
     long PostOrder,
     string RucProveedor,
@@ -19,7 +22,9 @@ public sealed record CompraSage(
     string Autorizacion,
     decimal Subtotal,
     decimal Iva,
-    decimal Total);
+    decimal Total,
+    TipoDocumentoRecibido Tipo = TipoDocumentoRecibido.Factura,
+    string? DocumentoModificado = null);
 
 /// <summary>
 /// Lee las compras del período (Set B de la conciliación SRI) — mismo filtro
@@ -35,7 +40,7 @@ public static class LectorComprasParaConciliacion
     private static readonly string Sql = $"""
         SELECT JrnlHdr.CustVendId AS CustVendId, JrnlHdr.PostOrder AS PostOrder,
                JrnlHdr.Reference AS Reference, JrnlHdr.ShipVia AS ShipVia,
-               JrnlHdr.TransactionDate AS TransactionDate
+               JrnlHdr.TransactionDate AS TransactionDate, JrnlHdr.JournalEx AS JournalEx
         FROM JrnlHdr, Vendors
         WHERE JrnlHdr.CustVendId = Vendors.VendorRecordNumber
           AND JrnlHdr.TransactionDate BETWEEN ? AND ?
@@ -47,7 +52,7 @@ public static class LectorComprasParaConciliacion
     public static async Task<IReadOnlyList<CompraSage>> LeerAsync(
         OdbcConnection connection, DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default)
     {
-        var filas = new List<(long VendorId, long PostOrder, string Reference, string ShipVia, DateTime Fecha)>();
+        var filas = new List<(long VendorId, long PostOrder, string Reference, string ShipVia, DateTime Fecha, bool EsNotaCredito)>();
 
         await using (var cmd = new OdbcCommand(Sql, connection))
         {
@@ -62,7 +67,8 @@ public static class LectorComprasParaConciliacion
                     Convert.ToInt64(r.GetValue(r.GetOrdinal("PostOrder"))),
                     r.GetValue(r.GetOrdinal("Reference")).ToString() ?? string.Empty,
                     r.GetValue(r.GetOrdinal("ShipVia"))?.ToString() ?? string.Empty,
-                    Convert.ToDateTime(r.GetValue(r.GetOrdinal("TransactionDate")))));
+                    Convert.ToDateTime(r.GetValue(r.GetOrdinal("TransactionDate"))),
+                    EsNotaCreditoCompra(r.GetValue(r.GetOrdinal("JournalEx")))));
             }
         }
 
@@ -75,8 +81,15 @@ public static class LectorComprasParaConciliacion
         foreach (var fila in filas)
         {
             var proveedor = await LectorProveedor.LeerAsync(connection, fila.VendorId.ToString(), cancellationToken);
-            var autorizacion = await LectorAuxiliarCompras.NumeroAutorizacionAsync(connection, fila.PostOrder, cancellationToken);
+            // En una nota de crédito el AUT-SRI que cuenta es el suyo: el vínculo a otra transacción que
+            // sigue NumeroAutorizacionAsync (pensado para la orden de compra) apuntaría a la factura original.
+            var autorizacion = fila.EsNotaCredito
+                ? await LectorAuxiliarCompras.AutorizacionPropiaAsync(connection, fila.PostOrder, cancellationToken)
+                : await LectorAuxiliarCompras.NumeroAutorizacionAsync(connection, fila.PostOrder, cancellationToken);
             var buckets = await LectorImponiblesCompra.LeerImponiblesAsync(connection, fila.PostOrder, cancellationToken);
+            var documentoModificado = fila.EsNotaCredito
+                ? NullSiVacio(await LectorAuxiliarCompras.NumeroCompletoDeCompraOriginalAsync(connection, fila.PostOrder, cancellationToken))
+                : null;
 
             resultado.Add(new CompraSage(
                 PostOrder: fila.PostOrder,
@@ -87,9 +100,19 @@ public static class LectorComprasParaConciliacion
                 Autorizacion: autorizacion,
                 Subtotal: buckets.Subtotal,
                 Iva: buckets.MontoIva,
-                Total: buckets.Total));
+                Total: buckets.Total,
+                Tipo: fila.EsNotaCredito ? TipoDocumentoRecibido.NotaCredito : TipoDocumentoRecibido.Factura,
+                DocumentoModificado: documentoModificado));
         }
 
         return resultado;
     }
+
+    // JournalEx de las notas de crédito de compra (Vendor Credit Memos): el mismo diario de compras
+    // que las facturas, distinguidas por este valor (constante ya usada por el ATS).
+    private static bool EsNotaCreditoCompra(object? journalEx) =>
+        journalEx is not null and not DBNull && Convert.ToInt32(journalEx) == DiarioSage.JournalExNotaCreditoCompra;
+
+    private static string? NullSiVacio(string? texto) =>
+        string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
 }

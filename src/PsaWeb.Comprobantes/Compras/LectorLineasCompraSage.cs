@@ -27,7 +27,7 @@ public static class LectorLineasCompraSage
     // porque la sintaxis "{ oj ... }" del outer join ODBC ya usa llaves, y no
     // se puede mezclar con un raw string interpolado (mismo motivo por el que
     // LectorFacturaVenta.SqlCabecera hardcodea JrnlKey_Journal = 3).
-    private static readonly string Sql = """
+    private const string SqlCompras = """
         SELECT JrnlRow.RowDescription, JrnlRow.Amount, LineItem.ItemID
         FROM { oj JrnlRow LEFT OUTER JOIN LineItem ON JrnlRow.ItemRecordNumber = LineItem.ItemRecordNumber }
         WHERE JrnlRow.Journal = 4
@@ -37,10 +37,23 @@ public static class LectorLineasCompraSage
         ORDER BY JrnlRow.RowNumber
         """;
 
+    // Las retenciones recibidas viven en el diario de ventas (JrnlRow.Journal = 3, DiarioSage.Ventas).
+    private const string SqlVentas = """
+        SELECT JrnlRow.RowDescription, JrnlRow.Amount, LineItem.ItemID
+        FROM { oj JrnlRow LEFT OUTER JOIN LineItem ON JrnlRow.ItemRecordNumber = LineItem.ItemRecordNumber }
+        WHERE JrnlRow.Journal = 3
+          AND JrnlRow.RowType = 0
+          AND JrnlRow.RowNumber > 0
+          AND JrnlRow.PostOrder = ?
+        ORDER BY JrnlRow.RowNumber
+        """;
+
     public static async Task<IReadOnlyList<LineaCompraSage>> LeerAsync(
-        OdbcConnection connection, long postOrder, CancellationToken cancellationToken = default)
+        OdbcConnection connection, long postOrder, TipoDocumentoRecibido tipo = TipoDocumentoRecibido.Factura,
+        CancellationToken cancellationToken = default)
     {
-        await using var cmd = new OdbcCommand(Sql, connection);
+        var sql = tipo == TipoDocumentoRecibido.Retencion ? SqlVentas : SqlCompras;
+        await using var cmd = new OdbcCommand(sql, connection);
         cmd.Parameters.Add(new OdbcParameter { OdbcType = OdbcType.BigInt, Value = postOrder });
 
         var lineas = new List<LineaCompraSage>();

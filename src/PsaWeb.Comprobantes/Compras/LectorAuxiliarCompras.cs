@@ -157,6 +157,21 @@ public static class LectorAuxiliarCompras
     }
 
     /// <summary>
+    /// El AUT-SRI del propio comprobante, sin el salto a la orden de compra vinculada de
+    /// <see cref="NumeroAutorizacionAsync"/>: en una nota de crédito de compra o en una retención recibida
+    /// ese vínculo (si existe) apunta a la factura original, cuya clave NO es la del comprobante.
+    /// Sin equivalente en el `.exe` (el ATS no concilia contra el SRI).
+    /// </summary>
+    public static async Task<string> AutorizacionPropiaAsync(
+        OdbcConnection connection, long postOrder, CancellationToken cancellationToken = default)
+    {
+        var autorizacion = await AutSriDeAsync(connection, postOrder, cancellationToken);
+        return string.IsNullOrEmpty(autorizacion)
+            ? await ShipToAddress1Async(connection, postOrder, cancellationToken)
+            : autorizacion;
+    }
+
+    /// <summary>
     /// true si la compra es una autoretención interna (convención 2026-09-12:
     /// <c>ShipVia</c> == "AUTORETENCION", sin distinguir mayúsculas/espacios)
     /// que el SRI exige a los Grandes Contribuyentes registrar en Sage 50 pero

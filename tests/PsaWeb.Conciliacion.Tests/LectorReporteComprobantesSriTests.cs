@@ -142,4 +142,55 @@ public class LectorReporteComprobantesSriTests
         Assert.Single(resultado.Filas);
         Assert.Empty(resultado.Errores);
     }
+
+    // Filas tal cual de los reportes reales que bajó la contadora (2026-09-23): el SRI deja vacío el
+    // IMPORTE_TOTAL de las notas de crédito y los tres montos de las retenciones.
+    private const string RucCptdc = "1792051800001";
+
+    private const string FilaNotaCreditoReal =
+        "1791889568001\tEXPRESSCHASQUIS S.A.\tNota de Crédito\t001-100-000000273\t" +
+        "1808202604179188956800120011000000002734525623419\t18/08/2026 13:33:20\t18/08/2026\t" +
+        RucCptdc + "\t5336.68\t0\t\t001-100-000006645";
+
+    private const string FilaRetencionReal =
+        "1792010721001\tCONSORCIO PETROLERO BLOQUE 17\tComprobante de Retención\t001-005-000035930\t" +
+        "0608202607179201072100120010050000359306000125718\t06/08/2026 17:03:14\t06/08/2026\t" +
+        RucCptdc + "\t\t\t\t28450870306";
+
+    [Fact]
+    public void Nota_de_credito_sin_importe_total_lo_deriva_de_valor_sin_impuestos_mas_IVA()
+    {
+        var resultado = LectorReporteComprobantesSri.Parsear(Reporte(FilaNotaCreditoReal), RucCptdc);
+
+        Assert.Empty(resultado.Errores);
+        var fila = Assert.Single(resultado.Filas);
+        Assert.Equal(5336.68m, fila.Subtotal);
+        Assert.Equal(0m, fila.Iva);
+        Assert.Equal(5336.68m, fila.Total);
+        Assert.Equal("001-100-000006645", fila.NumeroDocumentoModificado);
+    }
+
+    [Fact]
+    public void Retencion_con_los_tres_montos_vacios_se_carga_sin_error_con_montos_en_cero()
+    {
+        var resultado = LectorReporteComprobantesSri.Parsear(Reporte(FilaRetencionReal), RucCptdc);
+
+        Assert.Empty(resultado.Errores);
+        var fila = Assert.Single(resultado.Filas);
+        Assert.Equal("Comprobante de Retención", fila.TipoComprobante);
+        Assert.Equal(0m, fila.Subtotal);
+        Assert.Equal(0m, fila.Iva);
+        Assert.Equal(0m, fila.Total);
+    }
+
+    [Fact]
+    public void Un_monto_que_no_es_numero_sigue_siendo_error_de_fila()
+    {
+        var mala = FilaFactura1.Replace("\t100\t12\t112\t", "\tabc\t12\t112\t");
+
+        var resultado = LectorReporteComprobantesSri.Parsear(Reporte(mala, FilaFactura2), RucEmpresa);
+
+        Assert.Single(resultado.Errores);
+        Assert.Single(resultado.Filas);
+    }
 }

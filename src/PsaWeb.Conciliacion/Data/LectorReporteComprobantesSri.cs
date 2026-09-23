@@ -126,7 +126,15 @@ public static class LectorReporteComprobantesSri
                 continue;
             }
 
-            if (!TryParseMonto(campos[10], out var total))
+            // El SRI deja IMPORTE_TOTAL vacío en las notas de crédito (sí trae valor sin impuestos e IVA) y
+            // los tres montos vacíos en las retenciones. Vacío no es error: el total de la nota de crédito se
+            // deriva, y en las retenciones queda en 0 (la conciliación no compara montos de retenciones).
+            decimal total;
+            if (campos[10].Trim().Length == 0)
+            {
+                total = subtotal + iva;
+            }
+            else if (!TryParseMonto(campos[10], out total))
             {
                 errores.Add(new FilaConError(numeroFila, $"Importe total inválido: «{campos[10]}»."));
                 continue;
@@ -156,6 +164,16 @@ public static class LectorReporteComprobantesSri
         return new ResultadoParseoReporte(filas, errores);
     }
 
-    private static bool TryParseMonto(string texto, out decimal valor) =>
-        decimal.TryParse(texto.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out valor);
+    /// <summary>Un monto vacío cuenta como 0 (retenciones); un texto que no es número sigue siendo error.</summary>
+    private static bool TryParseMonto(string texto, out decimal valor)
+    {
+        var limpio = texto.Trim();
+        if (limpio.Length == 0)
+        {
+            valor = 0m;
+            return true;
+        }
+
+        return decimal.TryParse(limpio, NumberStyles.Number, CultureInfo.InvariantCulture, out valor);
+    }
 }

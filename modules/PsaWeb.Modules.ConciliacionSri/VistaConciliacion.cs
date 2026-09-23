@@ -1,3 +1,4 @@
+using PsaWeb.Comprobantes.Compras;
 using PsaWeb.Conciliacion;
 
 namespace PsaWeb.Modules.ConciliacionSri;
@@ -10,6 +11,13 @@ public sealed record FilaConRevision(FilaConciliacion Fila, RevisionDeFila? Revi
     /// <summary>Nº de documento: el de Sage si la compra está registrada; si no (Solo en SRI), la serie del SRI.</summary>
     public string Documento => Fila.Sage?.Referencia ?? Fila.Sri?.SerieComprobante ?? string.Empty;
 
+    public TipoDocumentoRecibido Tipo => Fila.Tipo;
+
+    public string TipoTexto => TiposDocumentoRecibido.Etiqueta(Tipo);
+
+    /// <summary>El SRI no trae montos de las retenciones: no hay total del SRI que mostrar ni comparar.</summary>
+    public bool SriTieneMontos => Fila.Sri?.TieneMontos ?? true;
+
     public string ProveedorSri => Fila.Sri?.RazonSocialEmisor ?? string.Empty;
 
     public string ProveedorSage => Fila.Sage?.NombreProveedor ?? string.Empty;
@@ -20,7 +28,7 @@ public sealed record FilaConRevision(FilaConciliacion Fila, RevisionDeFila? Revi
 
 public enum ColumnaConciliacion
 {
-    Documento, ProveedorSri, ProveedorSage, TotalSri, TotalSage, EstadoSri, Revision,
+    Tipo, Documento, ProveedorSri, ProveedorSage, TotalSri, TotalSage, EstadoSri, Revision,
 }
 
 /// <summary>
@@ -35,6 +43,7 @@ public sealed record CriteriosVista(
     string Diferencias = "",
     string EstadoSri = "",
     string Revision = "",
+    string Tipo = "",
     ColumnaConciliacion? OrdenColumna = null,
     bool OrdenAscendente = true)
 {
@@ -47,7 +56,7 @@ public sealed record CriteriosVista(
 
     public bool HayFiltros =>
         Busqueda.Length > 0 || Documento.Length > 0 || ProveedorSri.Length > 0 || ProveedorSage.Length > 0
-        || Diferencias.Length > 0 || EstadoSri.Length > 0 || Revision.Length > 0;
+        || Diferencias.Length > 0 || EstadoSri.Length > 0 || Revision.Length > 0 || Tipo.Length > 0;
 }
 
 public static class VistaConciliacion
@@ -66,6 +75,8 @@ public static class VistaConciliacion
                 || Contiene(f.Revision?.Comentario, c.Busqueda));
         }
 
+        // Tipo: el valor es el nombre del enum (lo que llena el <select> de la página).
+        if (Enum.TryParse<TipoDocumentoRecibido>(c.Tipo, out var tipo)) q = q.Where(f => f.Tipo == tipo);
         if (c.Documento.Length > 0) q = q.Where(f => Contiene(f.Documento, c.Documento));
         if (c.ProveedorSri.Length > 0) q = q.Where(f => Contiene(f.ProveedorSri, c.ProveedorSri));
         if (c.ProveedorSage.Length > 0) q = q.Where(f => Contiene(f.ProveedorSage, c.ProveedorSage));
@@ -92,6 +103,7 @@ public static class VistaConciliacion
         {
             q = columna switch
             {
+                ColumnaConciliacion.Tipo => Ordenar(q, f => f.TipoTexto, c.OrdenAscendente),
                 ColumnaConciliacion.Documento => Ordenar(q, f => f.Documento, c.OrdenAscendente),
                 ColumnaConciliacion.ProveedorSri => Ordenar(q, f => f.ProveedorSri, c.OrdenAscendente),
                 ColumnaConciliacion.ProveedorSage => Ordenar(q, f => f.ProveedorSage, c.OrdenAscendente),

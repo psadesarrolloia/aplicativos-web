@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PsaWeb.Comprobantes.Compras;
+using PsaWeb.Comprobantes.Venta;
 using PsaWeb.Conciliacion;
 using PsaWeb.Conciliacion.Data;
 using PsaWeb.PeachEbills;
@@ -11,6 +12,11 @@ namespace PsaWeb.Modules.ConciliacionSri;
 
 public sealed record ResumenVerificacionEmpresa(
     string Ruc, string Nombre, int Verificados, int Anulados, int ConErrores, IReadOnlyList<string> Mensajes);
+
+/// <summary>Filas de la conciliación + avisos que no impiden mostrarla (un tipo que no se pudo leer, un reporte que falta).</summary>
+public sealed record ResultadoConciliacion(IReadOnlyList<FilaConciliacion> Filas, IReadOnlyList<string> Advertencias);
+
+public sealed record ResultadoConciliacionRevisada(IReadOnlyList<FilaConRevision> Filas, IReadOnlyList<string> Advertencias);
 
 public sealed record ResumenVerificacionCorrida(
     DateTimeOffset Inicio, DateTimeOffset Fin, IReadOnlyList<ResumenVerificacionEmpresa> Empresas)
@@ -91,33 +97,36 @@ public sealed class ProcesadorVerificacionEstado(
         repositorioRevisiones.QuitarAsync(ruc, ClaveRevision.De(fila), cancellationToken);
 
     /// <summary>La conciliación con la revisión manual de cada fila ya resuelta — lo que muestra la página.</summary>
-    public async Task<IReadOnlyList<FilaConRevision>> ConciliarConRevisionesAsync(
-        string ruc, DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default)
+    public async Task<ResultadoConciliacionRevisada> ConciliarConRevisionesAsync(
+        string ruc, DateOnly desde, DateOnly hasta, IReadOnlySet<TipoDocumentoRecibido>? tipos = null,
+        CancellationToken cancellationToken = default)
     {
-        var filas = await ConciliarAsync(ruc, desde, hasta, cancellationToken);
-        if (filas.Count == 0)
+        var conciliacion = await ConciliarConAdvertenciasAsync(ruc, desde, hasta, tipos, cancellationToken);
+        if (conciliacion.Filas.Count == 0)
         {
-            return [];
+            return new ResultadoConciliacionRevisada([], conciliacion.Advertencias);
         }
 
         var revisiones = await repositorioRevisiones.ListarAsync(ruc, cancellationToken);
-        return filas.Select(f =>
+        var filas = conciliacion.Filas.Select(f =>
         {
             revisiones.TryGetValue(ClaveRevision.De(f), out var revision);
             return new FilaConRevision(f, revision is null
                 ? null
                 : new RevisionDeFila(revision.Comentario, revision.RevisadaPor, revision.RevisadaUtc, ClaveRevision.Evaluar(f, revision)));
         }).ToList();
+        return new ResultadoConciliacionRevisada(filas, conciliacion.Advertencias);
     }
 
     /// <summary>El desglose de líneas de una compra en Sage, para el popup de detalle (§ítem 2 del feedback post-deploy).</summary>
     public async Task<IReadOnlyList<LineaCompraSage>> LeerLineasSageAsync(
-        string ruc, long postOrder, CancellationToken cancellationToken = default)
+        string ruc, long postOrder, TipoDocumentoRecibido tipo = TipoDocumentoRecibido.Factura,
+        CancellationToken cancellationToken = default)
     {
         var cadenaSage = await conexionesSage.ResolverCadenaOdbcAsync(ruc, cancellationToken);
         await using var conexion = sageFactory.CreateConnection(cadenaSage);
         await conexion.OpenAsync(cancellationToken);
-        return await LectorLineasCompraSage.LeerAsync(conexion, postOrder, cancellationToken);
+        return await LectorLineasCompraSage.LeerAsync(conexion, postOrder, tipo, cancellationToken);
     }
 
     /// <summary>Para el botón individual "Verificar con el SRI" de una fila puntual.</summary>
@@ -140,23 +149,74 @@ public sealed class ProcesadorVerificacionEstado(
     /// verificación de estado es un paso aparte, bajo demanda o del worker.
     /// </summary>
     public async Task<IReadOnlyList<FilaConciliacion>> ConciliarAsync(
-        string ruc, DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default)
+        string ruc, DateOnly desde, DateOnly hasta, CancellationToken cancellationToken = default) =>
+        (await ConciliarConAdvertenciasAsync(ruc, desde, hasta, null, cancellationToken)).Filas;
+
+    /// <summary>
+    /// Igual que <see cref="ConciliarAsync"/> pero acotado a los <paramref name="tipos"/> elegidos (null = los
+    /// tres: facturas, notas de crédito y retenciones) y devolviendo advertencias en vez de fallar cuando una
+    /// lectura opcional de Sage no anda (p. ej. la de retenciones, todavía sin validar contra datos reales).
+    /// </summary>
+    public async Task<ResultadoConciliacion> ConciliarConAdvertenciasAsync(
+        string ruc, DateOnly desde, DateOnly hasta, IReadOnlySet<TipoDocumentoRecibido>? tipos,
+        CancellationToken cancellationToken = default)
     {
-        var setA = await lectorSri.ObtenerAsync(ruc, desde, hasta, cancellationToken);
-        if (setA.Count == 0)
+        var incluidos = tipos is null
+            ? new HashSet<TipoDocumentoRecibido> { TipoDocumentoRecibido.Factura, TipoDocumentoRecibido.NotaCredito, TipoDocumentoRecibido.Retencion }
+            : new HashSet<TipoDocumentoRecibido>(tipos);
+        var advertencias = new List<string>();
+
+        var setATodo = await lectorSri.ObtenerAsync(ruc, desde, hasta, cancellationToken);
+        if (setATodo.Count == 0)
         {
             // Sin comprobantes del SRI para el período: nada que conciliar — ni
             // siquiera hace falta que Sage esté alcanzable para saberlo.
-            return [];
+            return new ResultadoConciliacion([], advertencias);
         }
 
         var cadenaSage = await conexionesSage.ResolverCadenaOdbcAsync(ruc, cancellationToken);
 
         await using var conexion = sageFactory.CreateConnection(cadenaSage);
         await conexion.OpenAsync(cancellationToken);
-        var setB = await LectorComprasParaConciliacion.LeerAsync(conexion, desde, hasta, cancellationToken);
 
-        return MotorConciliacion.Conciliar(setA, setB);
+        var setB = new List<CompraSage>();
+        if (incluidos.Contains(TipoDocumentoRecibido.Factura) || incluidos.Contains(TipoDocumentoRecibido.NotaCredito))
+        {
+            var compras = await LectorComprasParaConciliacion.LeerAsync(conexion, desde, hasta, cancellationToken);
+            setB.AddRange(compras.Where(c => incluidos.Contains(c.Tipo)));
+        }
+
+        if (incluidos.Contains(TipoDocumentoRecibido.Retencion))
+        {
+            try
+            {
+                setB.AddRange(await LectorRetencionesRecibidasParaConciliacion.LeerAsync(conexion, desde, hasta, cancellationToken));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Sin la parte de Sage no se puede conciliar el tipo: se saca también del lado del SRI para no
+                // mostrar todas las retenciones como "Solo en SRI" por un error de lectura.
+                incluidos.Remove(TipoDocumentoRecibido.Retencion);
+                advertencias.Add($"No se pudieron leer las retenciones recibidas de Sage, así que no se concilian: {ex.Message}");
+                logger.LogError(ex, "Lectura de retenciones recibidas de Sage ({Ruc})", ruc);
+            }
+        }
+
+        var setA = setATodo.Where(c => c.Tipo == TipoDocumentoRecibido.Otro || incluidos.Contains(c.Tipo)).ToList();
+
+        // Un tipo elegido sin ningún comprobante del SRI cargado no es una diferencia: es un reporte que falta subir.
+        foreach (var tipo in incluidos.OrderBy(t => t))
+        {
+            var enSage = setB.Count(c => c.Tipo == tipo);
+            if (enSage > 0 && !setA.Any(c => c.Tipo == tipo))
+            {
+                advertencias.Add(
+                    $"Hay {enSage} {TiposDocumentoRecibido.Etiqueta(tipo).ToLowerInvariant()} en Sage y ninguna del SRI cargada para este período: " +
+                    "aparecen como «Solo en Sage». Subí el reporte de ese tipo desde el portal (campo «Tipo de documento») o desmarcalo.");
+            }
+        }
+
+        return new ResultadoConciliacion(MotorConciliacion.Conciliar(setA, setB), advertencias);
     }
 
     private async Task<ResumenVerificacionEmpresa> ProcesarEmpresaAsync(

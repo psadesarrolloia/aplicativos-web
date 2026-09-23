@@ -49,7 +49,11 @@ public sealed record FilaConciliacion(
     ComprobanteSriGuardado? Sri,
     CompraSage? Sage,
     ClasificacionConciliacion Clasificacion,
-    IReadOnlyList<string> Diferencias);
+    IReadOnlyList<string> Diferencias)
+{
+    /// <summary>Tipo de documento: el del SRI si hay comprobante, si no el de la compra en Sage.</summary>
+    public TipoDocumentoRecibido Tipo => Sri?.Tipo ?? Sage?.Tipo ?? TipoDocumentoRecibido.Otro;
+}
 
 /// <summary>
 /// Full outer join por clave de acceso entre Set A (SRI) y Set B (Sage) — las
@@ -85,21 +89,47 @@ public static class MotorConciliacion
             }
         }
 
+        // Las retenciones recibidas se registran en Sage como notas de crédito de ventas y no siempre llevan
+        // la clave de acceso: si no cruzan por clave se cruzan por RUC emisor + serie, que identifican a un
+        // comprobante ("001-005-000035930" de ese emisor). Las facturas y notas de crédito NO tienen este
+        // respaldo a propósito: una clave mal tecleada debe verse como "Solo en Sage", no taparse.
+        var retencionesPorSerie = new Dictionary<(string Ruc, string Serie), CompraSage>();
+        foreach (var compra in setB.Where(c => c.Tipo == TipoDocumentoRecibido.Retencion))
+        {
+            retencionesPorSerie[(compra.RucProveedor.Trim(), compra.Referencia.Trim())] = compra;
+        }
+
         var resultado = new List<FilaConciliacion>();
         var clavesConsumidas = new HashSet<string>(StringComparer.Ordinal);
+        var consumidasPorSerie = new HashSet<long>(); // PostOrder de las retenciones cruzadas por serie.
 
         foreach (var comprobante in setA)
         {
+            var cruzoPorSerie = false;
             if (!porAutorizacion.TryGetValue(comprobante.ClaveAcceso, out var compra))
             {
-                resultado.Add(new FilaConciliacion(
-                    comprobante.ClaveAcceso, comprobante, null, ClasificacionConciliacion.SoloEnSri, []));
-                continue;
+                if (comprobante.Tipo == TipoDocumentoRecibido.Retencion
+                    && retencionesPorSerie.TryGetValue((comprobante.RucEmisor.Trim(), comprobante.SerieComprobante.Trim()), out compra)
+                    && !consumidasPorSerie.Contains(compra.PostOrder))
+                {
+                    cruzoPorSerie = true;
+                    consumidasPorSerie.Add(compra.PostOrder);
+                }
+                else
+                {
+                    resultado.Add(new FilaConciliacion(
+                        comprobante.ClaveAcceso, comprobante, null, ClasificacionConciliacion.SoloEnSri, []));
+                    continue;
+                }
+            }
+            else
+            {
+                clavesConsumidas.Add(comprobante.ClaveAcceso);
             }
 
-            clavesConsumidas.Add(comprobante.ClaveAcceso);
-
-            var diferenciasMontos = CompararMontos(comprobante, compra, toleranciaMontos);
+            var diferenciasMontos = comprobante.TieneMontos
+                ? CompararMontos(comprobante, compra, toleranciaMontos)
+                : [];
             if (diferenciasMontos.Count > 0)
             {
                 resultado.Add(new FilaConciliacion(
@@ -107,20 +137,20 @@ public static class MotorConciliacion
                 continue;
             }
 
-            var diferenciasMetadata = CompararMetadata(comprobante, compra);
+            var diferenciasMetadata = CompararMetadata(comprobante, compra, cruzoPorSerie);
             resultado.Add(diferenciasMetadata.Count > 0
                 ? new FilaConciliacion(comprobante.ClaveAcceso, comprobante, compra, ClasificacionConciliacion.MetadataDistinta, diferenciasMetadata)
                 : new FilaConciliacion(comprobante.ClaveAcceso, comprobante, compra, ClasificacionConciliacion.CoincidePendienteDeVerificar, []));
         }
 
-        foreach (var compra in sinAutorizacion)
+        foreach (var compra in sinAutorizacion.Where(c => !consumidasPorSerie.Contains(c.PostOrder)))
         {
             resultado.Add(new FilaConciliacion(null, null, compra, ClasificacionConciliacion.SoloEnSage, []));
         }
 
         foreach (var (clave, compra) in porAutorizacion)
         {
-            if (!clavesConsumidas.Contains(clave))
+            if (!clavesConsumidas.Contains(clave) && !consumidasPorSerie.Contains(compra.PostOrder))
             {
                 resultado.Add(new FilaConciliacion(clave, null, compra, ClasificacionConciliacion.SoloEnSage, []));
             }
@@ -147,13 +177,11 @@ public static class MotorConciliacion
     }
 
     /// <summary>
-    /// Compara fecha y RUC emisor. No compara "tipo de comprobante": el SRI lo
-    /// da como texto ("Factura", "Nota de Crédito"); reconstruirlo del lado de
-    /// Sage exigiría duplicar la clasificación por <c>ShipVia</c> que ya hace
-    /// el ATS (<c>ResolverTipoYSustentoAsync</c>) — no se trajo a propósito
-    /// (§13.1: Set B se mantiene simple). Se agrega si hace falta más adelante.
+    /// Compara fecha, RUC emisor y —desde que se concilian notas de crédito y retenciones— el tipo de
+    /// documento (el de Sage sale del diario/JournalEx, no de <c>ShipVia</c>), la factura que modifica una
+    /// nota de crédito y, si una retención cruzó por serie, que su clave tecleada en Sage no contradiga la del SRI.
     /// </summary>
-    private static List<string> CompararMetadata(ComprobanteSriGuardado sri, CompraSage sage)
+    private static List<string> CompararMetadata(ComprobanteSriGuardado sri, CompraSage sage, bool cruzoPorSerie)
     {
         var diferencias = new List<string>();
 
@@ -165,6 +193,26 @@ public static class MotorConciliacion
         if (!string.Equals(sri.RucEmisor, sage.RucProveedor, StringComparison.Ordinal))
         {
             diferencias.Add($"RUC emisor: SRI {sri.RucEmisor} vs Sage {sage.RucProveedor}");
+        }
+
+        if (sri.Tipo != TipoDocumentoRecibido.Otro && sri.Tipo != sage.Tipo)
+        {
+            diferencias.Add($"Tipo: SRI {TiposDocumentoRecibido.Etiqueta(sri.Tipo)} vs Sage {TiposDocumentoRecibido.Etiqueta(sage.Tipo)}");
+        }
+
+        // Solo si ambos lados lo tienen: un vacío en Sage no debe inundar de falsas diferencias.
+        if (sri.Tipo == TipoDocumentoRecibido.NotaCredito && sage.Tipo == TipoDocumentoRecibido.NotaCredito
+            && !string.IsNullOrWhiteSpace(sri.NumeroDocumentoModificado)
+            && !string.IsNullOrWhiteSpace(sage.DocumentoModificado)
+            && !string.Equals(sri.NumeroDocumentoModificado.Trim(), sage.DocumentoModificado.Trim(), StringComparison.Ordinal))
+        {
+            diferencias.Add($"Documento modificado: SRI {sri.NumeroDocumentoModificado.Trim()} vs Sage {sage.DocumentoModificado.Trim()}");
+        }
+
+        if (cruzoPorSerie && !string.IsNullOrWhiteSpace(sage.Autorizacion)
+            && !string.Equals(sage.Autorizacion.Trim(), sri.ClaveAcceso, StringComparison.Ordinal))
+        {
+            diferencias.Add($"Clave de acceso: SRI {sri.ClaveAcceso} vs Sage {sage.Autorizacion.Trim()}");
         }
 
         return diferencias;

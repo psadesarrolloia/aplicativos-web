@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using PsaWeb.Comprobantes.Compras;
 
 namespace PsaWeb.Conciliacion.Data;
 
@@ -21,7 +22,16 @@ public sealed record ComprobanteSriGuardado(
     decimal Total,
     string? NumeroDocumentoModificado,
     string? Estado,
-    DateTime? FechaVerificacionEstado);
+    DateTime? FechaVerificacionEstado)
+{
+    public TipoDocumentoRecibido Tipo => TiposDocumentoRecibido.De(TipoComprobante);
+
+    /// <summary>
+    /// El reporte del SRI no trae montos de las retenciones (los tres vienen vacíos): no hay nada que
+    /// comparar contra Sage, solo existencia, fecha y emisor.
+    /// </summary>
+    public bool TieneMontos => Tipo != TipoDocumentoRecibido.Retencion;
+}
 
 /// <summary>Lector de Set A (comprobantes del SRI ya en el staging) para una empresa y un período.</summary>
 public interface ILectorComprobantesSri

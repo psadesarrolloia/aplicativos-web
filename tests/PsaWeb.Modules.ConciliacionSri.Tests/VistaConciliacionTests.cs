@@ -120,6 +120,35 @@ public class VistaConciliacionTests
     }
 
     [Fact]
+    public void Filtra_y_ordena_por_tipo_de_documento()
+    {
+        var nc = Fila(
+            ClasificacionConciliacion.MetadataDistinta,
+            Sri(new string('6', 49), "003-001-000000001", "EXPRESSCHASQUIS S.A.", 5336.68m) with { TipoComprobante = "Nota de Crédito" },
+            Sage("003-001-000000001", "EXPRESSCHASQUIS", 5336.68m) with { Tipo = TipoDocumentoRecibido.NotaCredito },
+            ["Documento modificado: SRI A vs Sage B"]);
+        var todas = new[] { Ecua, nc, Setel };
+
+        var soloNc = VistaConciliacion.Aplicar(todas, new CriteriosVista(Tipo: nameof(TipoDocumentoRecibido.NotaCredito)));
+        var ordenadas = VistaConciliacion.Aplicar(todas, new CriteriosVista(OrdenColumna: ColumnaConciliacion.Tipo, OrdenAscendente: true));
+
+        Assert.Equal([nc], soloNc);
+        Assert.Equal([Ecua, Setel, nc], ordenadas); // "Factura" < "Nota de crédito"; estable entre iguales
+    }
+
+    [Fact]
+    public void Las_retenciones_no_muestran_total_del_SRI()
+    {
+        var ret = Fila(
+            ClasificacionConciliacion.SoloEnSri,
+            Sri(new string('8', 49), "001-005-000000001", "PETRO", 0m) with { TipoComprobante = "Comprobante de Retención" },
+            null);
+
+        Assert.False(ret.SriTieneMontos);
+        Assert.True(Ecua.SriTieneMontos);
+    }
+
+    [Fact]
     public void Solo_en_SRI_usa_la_serie_del_SRI_como_documento()
     {
         var soloSri = Fila(ClasificacionConciliacion.SoloEnSri, Sri(new string('4', 49), "005-005-000000077", "X", 5m), null);

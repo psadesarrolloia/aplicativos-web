@@ -237,8 +237,9 @@ public class ProcesadorVerificacionEstadoTests
     {
         var procesador = ProcesadorConRevisiones(new RevisionesFake()); // Set A vacío: Sage (que falla) no se usa.
 
-        var filas = await procesador.ConciliarConRevisionesAsync(Ruc, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30));
+        var resultado = await procesador.ConciliarConRevisionesAsync(Ruc, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 30));
 
-        Assert.Empty(filas);
+        Assert.Empty(resultado.Filas);
+        Assert.Empty(resultado.Advertencias);
     }
 }
