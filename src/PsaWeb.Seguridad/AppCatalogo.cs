@@ -11,7 +11,7 @@ public static class Categorias
     public const string Cartera = "Cartera";
     public const string Bancos = "Bancos";
     public const string Impuestos = "Impuestos";
-    public const string ComprobantesElectronicos = "Comprobantes Electrónicos";
+    public const string ComprobantesElectronicos = "Comprobantes Electrónicos Emitidos";
     public const string Inventario = "Inventario";
 
     public static readonly IReadOnlyList<string> Orden = new[]
@@ -89,24 +89,24 @@ public static class AppCatalogo
             "🔎", "/conciliacion-sri", Categorias.Impuestos,
             Array.Empty<string>()),
 
-        new("fe-facturas", "Facturas de venta",
+        new("fe-facturas", "Facturas de venta emitidas",
             "Genera y emite en Datil las facturas de venta de Sage 50.",
             "🧾", "/fe/facturas", Categorias.ComprobantesElectronicos,
             new[] { Permisos.VerFacturas, Permisos.HacerFactura, Permisos.HacerFacturasLote }),
 
-        new("retenciones", "Retenciones",
+        new("retenciones", "Retenciones de compra emitidas",
             "Genera y emite en Datil las retenciones de compra pendientes.",
             "📄", "/fe/retenciones", Categorias.ComprobantesElectronicos,
             new[] { Permisos.VerRetenciones, Permisos.HacerRetencion, Permisos.HacerRetencionesLote }),
 
         // Requiere las filas de docs/sql/permisos-comprobantes-v2.sql en allowAction
         // (y asignadas a roles); sin ellas la app queda invisible para todos.
-        new("fe-liquidaciones", "Liquidaciones de compra",
+        new("fe-liquidaciones", "Liquidaciones de compra emitidas",
             "Genera y emite en Datil las liquidaciones de compra.",
             "📥", "/fe/liquidaciones", Categorias.ComprobantesElectronicos,
             new[] { Permisos.VerLiquidaciones, Permisos.HacerLiquidacion, Permisos.HacerLiquidacionesLote }),
 
-        new("fe-notas-credito", "Notas de crédito",
+        new("fe-notas-credito", "Notas de crédito emitidas",
             "Genera y emite en Datil las notas de crédito de venta.",
             "↩️", "/fe/notas-credito", Categorias.ComprobantesElectronicos,
             new[] { Permisos.VerNotasCredito, Permisos.HacerNotaCredito, Permisos.HacerNotasCreditoLote }),

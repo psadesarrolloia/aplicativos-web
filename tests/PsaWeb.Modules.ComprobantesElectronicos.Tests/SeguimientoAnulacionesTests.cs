@@ -197,6 +197,48 @@ public class ServicioAnulacionesTests : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task ContarNoVigentes_suma_solo_Anulado_y_NoAutorizado_del_tipo_y_del_rango()
+    {
+        Skip.IfNot(Disponible(), "PsaWebPlataforma / PeachEBills locales no disponibles.");
+        var sp = new ServiceCollection()
+            .AddSingleton(OpcionesDb)
+            .AddSingleton<IVerificadorEstadoSri>(new SriFake(EstadoComprobanteSri.Autorizado))
+            .BuildServiceProvider();
+        var peach = new PeachFactory();
+        var estado = new ServicioEstadoSri(sp, peach, new DatilFake(), new EmisorLookup(peach), NullLogger<ServicioEstadoSri>.Instance);
+
+        // La base local puede traer estados reales del mismo RUC: se compara contra lo que ya había.
+        var desde = new DateTime(2026, 9, 1);
+        var hasta = new DateTime(2026, 9, 30);
+        var antesFact = (await estado.ContarNoVigentesAsync(TipoComprobante.Factura, new[] { Ruc }, desde, hasta)).GetValueOrDefault(Ruc);
+        var antesRet = (await estado.ContarNoVigentesAsync(TipoComprobante.Retencion, new[] { Ruc }, desde, hasta)).GetValueOrDefault(Ruc);
+
+        EstadoSriComprobante Fila(int refId, string codDoc, string? est, string fecha) => new()
+        {
+            Ruc = Ruc, CodDoc = codDoc, RefId = refId, FechaEmision = DateOnly.Parse(fecha), Estado = est,
+        };
+        await using (var db = new ConciliacionDbContext(OpcionesDb))
+        {
+            db.EstadosSriComprobantes.AddRange(
+                Fila(900000101, "01", nameof(EstadoComprobanteSri.Anulado), "2026-09-10"),        // cuenta
+                Fila(900000102, "01", nameof(EstadoComprobanteSri.NoAutorizado), "2026-09-11"),   // cuenta
+                Fila(900000103, "01", nameof(EstadoComprobanteSri.Autorizado), "2026-09-12"),     // vigente: no
+                Fila(900000104, "01", null, "2026-09-12"),                                        // sin verificar: no
+                Fila(900000105, "01", nameof(EstadoComprobanteSri.Anulado), "2026-08-01"),        // fuera del rango: no
+                Fila(900000106, "07", nameof(EstadoComprobanteSri.Anulado), "2026-09-10"));       // otro tipo: no
+            await db.SaveChangesAsync();
+        }
+
+        var facturas = await estado.ContarNoVigentesAsync(
+            TipoComprobante.Factura, new[] { Ruc, "0000000000000" }, desde, hasta);
+        Assert.Equal(antesFact + 2, facturas[Ruc]);
+        Assert.False(facturas.ContainsKey("0000000000000"));
+
+        var retenciones = await estado.ContarNoVigentesAsync(TipoComprobante.Retencion, new[] { Ruc }, desde, hasta);
+        Assert.Equal(antesRet + 1, retenciones[Ruc]);
+    }
+
+    [SkippableFact]
     public async Task Registrar_es_idempotente_y_no_sigue_comprobantes_de_pruebas()
     {
         Skip.IfNot(Disponible(), "PsaWebPlataforma / PeachEBills locales no disponibles.");

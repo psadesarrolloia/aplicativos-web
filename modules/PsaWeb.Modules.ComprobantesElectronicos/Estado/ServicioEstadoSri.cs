@@ -180,6 +180,35 @@ public sealed class ServicioEstadoSri
         return resultado;
     }
 
+    /// <summary>
+    /// Cuántos comprobantes de un tipo están Anulados o No autorizados en el SRI, por RUC, entre dos fechas de
+    /// emisión (inclusive). Solo cuenta los ya verificados: los "sin verificar" no suman.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, int>> ContarNoVigentesAsync(
+        TipoComprobante tipo, IReadOnlyCollection<string> rucs, DateTime desde, DateTime hasta, CancellationToken ct = default)
+    {
+        var resultado = new Dictionary<string, int>();
+        if (!Disponible || rucs.Count == 0) return resultado;
+
+        var codDoc = Tipos.De(tipo).CodDoc;
+        var rucArr = rucs.Distinct().ToArray();
+        var d = DateOnly.FromDateTime(desde);
+        var h = DateOnly.FromDateTime(hasta);
+        var anulado = nameof(EstadoComprobanteSri.Anulado);
+        var noAutorizado = nameof(EstadoComprobanteSri.NoAutorizado);
+
+        await using var db = new ConciliacionDbContext(_opcionesDb!);
+        var filas = await db.EstadosSriComprobantes.AsNoTracking()
+            .Where(e => e.CodDoc == codDoc && EF.Constant(rucArr).Contains(e.Ruc)
+                        && e.FechaEmision >= d && e.FechaEmision <= h
+                        && (e.Estado == anulado || e.Estado == noAutorizado))
+            .GroupBy(e => e.Ruc)
+            .Select(g => new { Ruc = g.Key, Total = g.Count() })
+            .ToListAsync(ct);
+        foreach (var f in filas) resultado[f.Ruc] = f.Total;
+        return resultado;
+    }
+
     /// <summary>Comprobantes emitidos (producción, con id de Datil) de un tipo desde <paramref name="desde"/>.</summary>
     public async Task<List<ComprobanteAVerificar>> ListarEmitidosAsync(
         TipoComprobante tipo, DateTime desde, CancellationToken ct = default)

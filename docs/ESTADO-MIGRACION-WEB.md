@@ -126,7 +126,7 @@ pantallas en `src/PsaWeb.Host`.
   fila a `AppCatalogo.Todas` (`Id`/`Nombre`/`Descripcion`/`Icono`/`Ruta`/
   **`Categoria`**/`Permisos`), sin tocar `NavMenu.razor` ni `Home.razor`.
   `Categorias.Orden` fija las categorías y su orden en la barra — hoy
-  `Caja` → `Cartera` → `Bancos` → `Impuestos` → `Comprobantes Electrónicos` → `Inventario`; agregar
+  `Caja` → `Cartera` → `Bancos` → `Impuestos` → `Comprobantes Electrónicos Emitidos` → `Inventario`; agregar
   una categoría nueva es agregarla ahí, en la posición donde deba aparecer.
   Una categoría con un solo módulo sigue rindiéndose como grupo desplegable
   (no como link directo) — así no hay que tocar nada cuando un segundo módulo
@@ -157,7 +157,7 @@ Gate `quKardex` (`GateProvisional`). **Desplegado y validado** (2026-09-12)
 contra datos reales de CPTDC — fila a fila idéntico contra una
 reimplementación independiente de verificación.
 
-### 5.3 Retenciones — categoría **Comprobantes Electrónicos** (app #1, `AutomaticTwhSender`)
+### 5.3 Retenciones — categoría **Comprobantes Electrónicos Emitidos** (app #1, `AutomaticTwhSender`)
 Lee compras pendientes de retención de Sage, arma y emite retenciones vía
 Datil, guarda en `PeachEBills`. `/retenciones`, acotado a empresa de sesión +
 toggle "Ver todas las empresas" (si el usuario tiene el permiso de lote).
@@ -166,7 +166,7 @@ Worker en background (`RetencionesWorker`, deshabilitado por defecto) +
 manual). Popup de detalle con enlace a PDF/XML de Datil. **Desplegado.**
 `Datil:DryRun=true` — nada de emisión real todavía.
 
-### 5.4 Facturas de venta / Notas de crédito / Liquidaciones de compra — categoría **Comprobantes Electrónicos** (app #2, `Sage50FacturacionElectronica`)
+### 5.4 Facturas de venta / Notas de crédito / Liquidaciones de compra — categoría **Comprobantes Electrónicos Emitidos** (app #2, `Sage50FacturacionElectronica`)
 3 módulos separados salidos del mismo `.exe` (las retenciones de compra del
 mismo `.exe` ya las cubre el módulo de Retenciones, no se duplican). Páginas
 `/fe/facturas`, `/fe/notas-credito`, `/fe/liquidaciones`, mismo patrón de

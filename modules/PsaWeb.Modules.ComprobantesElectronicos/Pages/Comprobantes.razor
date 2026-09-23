@@ -87,8 +87,13 @@ else
                 {
                     <div class="psa-grid psa-grid--stats" style="margin-bottom:1rem">
                         <PsaStat Label="Empresas" Value="@($"{pv.Count} / {_panorama.Count}")" />
-                        <PsaStat Label="Pendientes de emitir" Value="@pv.Sum(f => f.Pendientes).ToString()"
+                        <PsaStat Label="Pendientes de emisión (Dátil)" Value="@pv.Sum(f => f.Pendientes).ToString()"
                                  State="@(pv.Sum(f => f.Pendientes) > 0 ? "warn" : "ok")" />
+                        @if (MostrarEstadoSri)
+                        {
+                            <PsaStat Label="Anulados / No autorizados (SRI)" Value="@pv.Sum(f => f.NoVigentesSri).ToString()"
+                                     State="@(pv.Sum(f => f.NoVigentesSri) > 0 ? "warn" : "ok")" />
+                        }
                     </div>
                 }
 
@@ -106,19 +111,23 @@ else
                         <tr>
                             <th class="sortable" @onclick="() => OrdenarPan(ColP.Empresa)">Empresa @FlechaPan(ColP.Empresa)</th>
                             <th>RUC</th>
-                            <th class="num sortable" @onclick="() => OrdenarPan(ColP.Pendientes)">Pendientes @FlechaPan(ColP.Pendientes)</th>
-                            <th class="num sortable" @onclick="() => OrdenarPan(ColP.Guardados)">Guardados @FlechaPan(ColP.Guardados)</th>
+                            <th class="num sortable" @onclick="() => OrdenarPan(ColP.Pendientes)">Pendientes de emisión (Dátil) @FlechaPan(ColP.Pendientes)</th>
+                            @if (MostrarEstadoSri)
+                            {
+                                <th class="num sortable" title="Comprobantes del rango de fechas que el SRI tiene Anulados o No autorizados (solo los ya verificados)"
+                                    @onclick="() => OrdenarPan(ColP.NoVigentes)">Anulados / No autorizados (SRI) @FlechaPan(ColP.NoVigentes)</th>
+                            }
                             <th class="sortable" @onclick="() => OrdenarPan(ColP.Ultima)">Última emisión @FlechaPan(ColP.Ultima)</th>
                         </tr>
                         <tr class="psa-table__filtros">
                             <th><input class="@ClaseFiltro(_fEmpresa)" placeholder="filtrar…" @bind="_fEmpresa" @bind:event="oninput" /></th>
-                            <th></th><th></th><th></th><th></th>
+                            @for (var i = 1; i < PanCols; i++) { <th></th> }
                         </tr>
                     </thead>
                     <tbody>
                         @if (pv.Count == 0)
                         {
-                            <tr><td colspan="5" class="psa-muted">Ninguna empresa coincide con el filtro.</td></tr>
+                            <tr><td colspan="@PanCols" class="psa-muted">Ninguna empresa coincide con el filtro.</td></tr>
                         }
                         @foreach (var f in pv)
                         {
@@ -136,12 +145,24 @@ else
                                         @f.Pendientes
                                     }
                                 </td>
-                                <td class="num">@f.Guardados</td>
+                                @if (MostrarEstadoSri)
+                                {
+                                    <td class="num">
+                                        @if (f.NoVigentesSri > 0)
+                                        {
+                                            <span class="psa-estado psa-estado--bad">@f.NoVigentesSri</span>
+                                        }
+                                        else
+                                        {
+                                            @f.NoVigentesSri
+                                        }
+                                    </td>
+                                }
                                 <td>@(f.UltimaEmision is { } u ? u.ToString("dd/MM/yyyy") : "—")</td>
                             </tr>
                             @if (f.Error is not null)
                             {
-                                <tr><td colspan="5" class="psa-muted" style="font-size:.85rem">@f.Error</td></tr>
+                                <tr><td colspan="@PanCols" class="psa-muted" style="font-size:.85rem">@f.Error</td></tr>
                             }
                         }
                     </tbody>
@@ -606,7 +627,7 @@ else
     private const string DatilVerBase = "https://app.datil.co/ver/";
     private const int Tope = 200;
     private enum Col { Fecha, Empresa, Numero, Persona, Iva, Total, Ambiente }
-    private enum ColP { Empresa, Pendientes, Guardados, Ultima }
+    private enum ColP { Empresa, Pendientes, NoVigentes, Ultima }
 
     private ServicioComprobantes? _servicio;
     private TableroComprobantes? _tablero;
@@ -680,6 +701,9 @@ else
     private bool MostrarEstadoSri => _estadoSri?.Disponible == true;
 
     // Fecha, [Empresa], Número, Secuencial, Persona, [IVA], Total, Ambiente, Datil, [Estado SRI], PDF.
+    // Columnas de la tabla de empresas: Empresa, RUC, Pendientes, [Anulados/No autorizados SRI], Última emisión.
+    private int PanCols => 4 + (MostrarEstadoSri ? 1 : 0);
+
     private int Cols => 8 + (MostrarColEmpresa ? 1 : 0) + (Info.EsRetencion ? 0 : 1) + (MostrarEstadoSri ? 1 : 0);
 
     private string TituloLista => _verTodas && _empresaSelNombre is not null
@@ -937,8 +961,25 @@ else
             var empresas = _verTodas
                 ? _empresasUsuario.Select(e => (e.Ruc, e.Nombre)).ToList()
                 : new List<(string Ruc, string Nombre)> { (_ruc!, _empresaNombre ?? _ruc!) };
-            _panorama = await _tablero.PanoramaAsync(empresas, Info.CodDoc,
+            var filas = await _tablero.PanoramaAsync(empresas, Info.CodDoc,
                 async (ruc, ct) => (await ListarPendientesSinEmitidosAsync(ruc, d, h)).Count);
+
+            // Anulados / No autorizados en el SRI dentro del mismo rango de fechas. Un fallo aquí no debe
+            // tumbar el panorama: esa columna queda en 0 y el resto sigue.
+            if (_estadoSri is { Disponible: true })
+            {
+                try
+                {
+                    var noVigentes = await _estadoSri.ContarNoVigentesAsync(
+                        Tipo, filas.Select(f => f.Ruc).ToList(), d, h);
+                    filas = filas.Select(f => f with { NoVigentesSri = noVigentes.GetValueOrDefault(f.Ruc) }).ToList();
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Conteo de anulados/no autorizados {Tipo}", Tipo);
+                }
+            }
+            _panorama = filas;
         }
         catch (Exception ex)
         {
@@ -1256,7 +1297,7 @@ else
         q = _panCol switch
         {
             ColP.Empresa => _panAsc ? q.OrderBy(f => f.Empresa) : q.OrderByDescending(f => f.Empresa),
-            ColP.Guardados => _panAsc ? q.OrderBy(f => f.Guardados) : q.OrderByDescending(f => f.Guardados),
+            ColP.NoVigentes => _panAsc ? q.OrderBy(f => f.NoVigentesSri) : q.OrderByDescending(f => f.NoVigentesSri),
             ColP.Ultima => _panAsc ? q.OrderBy(f => f.UltimaEmision ?? DateTime.MinValue) : q.OrderByDescending(f => f.UltimaEmision ?? DateTime.MinValue),
             _ => _panAsc ? q.OrderBy(f => f.Pendientes) : q.OrderByDescending(f => f.Pendientes),
         };

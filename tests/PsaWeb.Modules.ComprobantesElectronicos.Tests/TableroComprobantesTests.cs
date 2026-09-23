@@ -89,7 +89,7 @@ public class TableroComprobantesTests
     }
 
     [SkippableFact]
-    public async Task Panorama_de_retenciones_cuenta_guardadas_y_los_pendientes_los_aporta_el_llamador()
+    public async Task Panorama_de_retenciones_trae_la_ultima_emision_y_los_pendientes_los_aporta_el_llamador()
     {
         Skip.IfNot(DbOk(), "PeachEBills local no disponible.");
         var tablero = new TableroComprobantes(new Factory());
@@ -101,11 +101,10 @@ public class TableroComprobantesTests
 
         var a = filas.Single(f => f.Ruc == "1792051800001");
         Assert.Equal(7, a.Pendientes);
-        Assert.True(a.Guardados > 0);
         Assert.NotNull(a.UltimaEmision);
 
         var inexistente = filas.Single(f => f.Ruc == "00000000000000");
-        Assert.Equal(0, inexistente.Guardados);
+        Assert.Null(inexistente.UltimaEmision);
         Assert.NotNull(inexistente.Error);          // el fallo de Sage queda en la fila, no rompe el panorama
     }
 

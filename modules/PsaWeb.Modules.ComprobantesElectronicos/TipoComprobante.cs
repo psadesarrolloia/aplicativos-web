@@ -39,25 +39,25 @@ public static class Tipos
 {
     public static IReadOnlyList<InfoTipo> Todos { get; } = new[]
     {
-        new InfoTipo(TipoComprobante.Factura, "01", "Facturas de venta",
+        new InfoTipo(TipoComprobante.Factura, "01", "Facturas de venta emitidas",
             "Genera y emite en Datil las facturas de venta registradas en Sage 50.",
             "factura", "Cliente",
             Permisos.VerFacturas, Permisos.HacerFactura, Permisos.HacerFacturasLote,
             Permisos.AutorizarAnulacionFactura, "/fe/facturas"),
 
-        new InfoTipo(TipoComprobante.Retencion, "07", "Retenciones de compra",
+        new InfoTipo(TipoComprobante.Retencion, "07", "Retenciones de compra emitidas",
             "Genera y emite en Datil las retenciones de las facturas de compra registradas en Sage 50.",
             "retención", "Proveedor",
             Permisos.VerRetenciones, Permisos.HacerRetencion, Permisos.HacerRetencionesLote,
             Permisos.AutorizarAnulacionRetencion, "/fe/retenciones"),
 
-        new InfoTipo(TipoComprobante.NotaCredito, "04", "Notas de crédito de venta",
+        new InfoTipo(TipoComprobante.NotaCredito, "04", "Notas de crédito emitidas",
             "Genera y emite en Datil las notas de crédito de venta registradas en Sage 50.",
             "nota de crédito", "Cliente",
             Permisos.VerNotasCredito, Permisos.HacerNotaCredito, Permisos.HacerNotasCreditoLote,
             Permisos.AutorizarAnulacionNotaCredito, "/fe/notas-credito"),
 
-        new InfoTipo(TipoComprobante.Liquidacion, "03", "Liquidaciones de compra",
+        new InfoTipo(TipoComprobante.Liquidacion, "03", "Liquidaciones de compra emitidas",
             "Genera y emite en Datil las liquidaciones de compra registradas en Sage 50.",
             "liquidación de compra", "Proveedor",
             Permisos.VerLiquidaciones, Permisos.HacerLiquidacion, Permisos.HacerLiquidacionesLote,

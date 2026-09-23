@@ -23,14 +23,17 @@ public sealed record ComprobanteReciente(
     public bool Emitido => !string.IsNullOrWhiteSpace(DatilId);
 }
 
-/// <summary>Una fila del panorama multi-empresa: empresa + cuántos comprobantes tiene guardados / pendientes.</summary>
+/// <summary>
+/// Una fila del panorama por empresa: pendientes de emisión (Dátil), última emisión y cuántos comprobantes
+/// del rango están Anulados / No autorizados en el SRI (lo completa quien tiene el estado del SRI).
+/// </summary>
 public sealed record FilaPanorama(
     string Ruc,
     string Empresa,
-    int Guardados,
     int Pendientes,
     DateTime? UltimaEmision,
-    string? Error);
+    string? Error,
+    int NoVigentesSri = 0);
 
 /// <summary>Una línea de un comprobante guardado.</summary>
 public sealed record LineaComprobante(
@@ -243,9 +246,9 @@ public sealed class TableroComprobantes(IDbContextFactory<PeachEbillsContext> co
     }
 
     /// <summary>
-    /// Panorama por empresa (para el modo "ver todas"): comprobantes guardados +
-    /// última emisión (SQL, barato) + pendientes de Sage 50 (por empresa, tolera
-    /// fallos). Análogo a <c>TableroRetenciones.PanoramaAsync</c>.
+    /// Panorama por empresa (para el modo "ver todas"): última emisión (SQL, barato) +
+    /// pendientes de Sage 50 (por empresa, tolera fallos). Los Anulados / No autorizados
+    /// del SRI los completa el llamador (viven en otra base).
     /// </summary>
     public async Task<IReadOnlyList<FilaPanorama>> PanoramaAsync(
         IReadOnlyList<(string Ruc, string Empresa)> empresas,
@@ -260,20 +263,20 @@ public sealed class TableroComprobantes(IDbContextFactory<PeachEbillsContext> co
             ? await db.TaxWithHoldings.AsNoTracking()
                 .Where(t => EF.Constant(rucArr).Contains(t.TransmitterRuc))
                 .GroupBy(t => t.TransmitterRuc)
-                .Select(g => new { Ruc = g.Key, Guardados = g.Count(), Ultima = g.Max(x => (DateTime?)x.DateIssued) })
+                .Select(g => new { Ruc = g.Key, Ultima = g.Max(x => (DateTime?)x.DateIssued) })
                 .ToListAsync(cancellationToken)
             : await db.Facturas.AsNoTracking()
                 .Where(f => f.CodDoc == codDoc && f.TransmitterRuc != null && EF.Constant(rucArr).Contains(f.TransmitterRuc))
                 .GroupBy(f => f.TransmitterRuc!)
-                .Select(g => new { Ruc = g.Key, Guardados = g.Count(), Ultima = g.Max(x => (DateTime?)x.DateIssued) })
+                .Select(g => new { Ruc = g.Key, Ultima = g.Max(x => (DateTime?)x.DateIssued) })
                 .ToListAsync(cancellationToken);
-        var mapa = agregados.ToDictionary(x => x.Ruc, x => (x.Guardados, x.Ultima));
+        var mapa = agregados.ToDictionary(x => x.Ruc, x => x.Ultima);
 
         var filas = new List<FilaPanorama>(empresas.Count);
         foreach (var (ruc, empresa) in empresas)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var (guardados, ultima) = mapa.TryGetValue(ruc, out var ag) ? ag : (0, (DateTime?)null);
+            var ultima = mapa.TryGetValue(ruc, out var ag) ? ag : null;
 
             int pendientes = 0;
             string? error = null;
@@ -288,7 +291,7 @@ public sealed class TableroComprobantes(IDbContextFactory<PeachEbillsContext> co
                     : ex.Message;
             }
 
-            filas.Add(new FilaPanorama(ruc, empresa, guardados, pendientes, ultima, error));
+            filas.Add(new FilaPanorama(ruc, empresa, pendientes, ultima, error));
         }
         return filas;
     }
