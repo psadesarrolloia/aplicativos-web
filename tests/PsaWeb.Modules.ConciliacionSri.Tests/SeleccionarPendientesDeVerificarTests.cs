@@ -13,10 +13,10 @@ public class SeleccionarPendientesDeVerificarTests
     private static readonly TimeSpan Umbral = TimeSpan.FromDays(7);
     private static readonly DateTime Ahora = new(2026, 9, 17, 12, 0, 0, DateTimeKind.Utc);
 
-    private static ComprobanteSriGuardado Sri(DateTime? fechaVerificacion = null) => new(
+    private static ComprobanteSriGuardado Sri(DateTime? fechaVerificacion = null, DateOnly? emision = null) => new(
         Id: 1, ClaveAcceso: new string('1', 49), RucEmisor: "1791111111001", RazonSocialEmisor: "PROVEEDOR DEMO S.A.",
         TipoComprobante: "Factura", SerieComprobante: "001-001-000000001",
-        FechaAutorizacion: Ahora, FechaEmision: DateOnly.FromDateTime(Ahora),
+        FechaAutorizacion: Ahora, FechaEmision: emision ?? DateOnly.FromDateTime(Ahora),
         Subtotal: 100, Iva: 12, Total: 112, NumeroDocumentoModificado: null,
         Estado: null, FechaVerificacionEstado: fechaVerificacion);
 
@@ -42,6 +42,26 @@ public class SeleccionarPendientesDeVerificarTests
         var resultado = ProcesadorVerificacionEstado.SeleccionarPendientesDeVerificar([Fila(clasificacion)], Umbral, Ahora);
 
         Assert.Empty(resultado);
+    }
+
+    [Fact]
+    public void Excluye_las_de_meses_que_el_WS_del_SRI_ya_no_responde()
+    {
+        // Hoy 17/09: el WS responde desde el 01/08. Una del 31/07 nunca se va a poder verificar.
+        var vieja = new FilaConciliacion(null, Sri(emision: new DateOnly(2026, 7, 31)), null, ClasificacionConciliacion.CoincidePendienteDeVerificar, []);
+        var enRango = new FilaConciliacion(null, Sri(emision: new DateOnly(2026, 8, 1)), null, ClasificacionConciliacion.CoincidePendienteDeVerificar, []);
+
+        var resultado = ProcesadorVerificacionEstado.SeleccionarPendientesDeVerificar([vieja, enRango], Umbral, Ahora);
+
+        Assert.Equal([enRango], resultado);
+    }
+
+    [Fact]
+    public void Excluye_las_filas_sin_comprobante_del_SRI()
+    {
+        var soloSage = new FilaConciliacion(null, null, null, ClasificacionConciliacion.MetadataDistinta, []);
+
+        Assert.Empty(ProcesadorVerificacionEstado.SeleccionarPendientesDeVerificar([soloSage], Umbral, Ahora));
     }
 
     [Fact]

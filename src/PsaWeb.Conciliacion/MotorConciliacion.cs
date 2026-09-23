@@ -49,8 +49,11 @@ public sealed record FilaConciliacion(
     ComprobanteSriGuardado? Sri,
     CompraSage? Sage,
     ClasificacionConciliacion Clasificacion,
-    IReadOnlyList<string> Diferencias)
+    IReadOnlyList<string> Diferencias,
+    bool EnPlazo = false)
 {
+    // EnPlazo: retención "Solo en SRI"/"Solo en Sage" cuya fecha todavía cae dentro del plazo que da el SRI para emitirla
+    // (RetencionPlazoDias): puede simplemente no haberse emitido o registrado aún, no es necesariamente un problema.
     /// <summary>Tipo de documento: el del SRI si hay comprobante, si no el de la compra en Sage.</summary>
     public TipoDocumentoRecibido Tipo => Sri?.Tipo ?? Sage?.Tipo ?? TipoDocumentoRecibido.Otro;
 }
@@ -69,8 +72,14 @@ public static class MotorConciliacion
     public static IReadOnlyList<FilaConciliacion> Conciliar(
         IReadOnlyList<ComprobanteSriGuardado> setA,
         IReadOnlyList<CompraSage> setB,
-        decimal toleranciaMontos = ToleranciaMontosPorDefecto)
+        decimal toleranciaMontos = ToleranciaMontosPorDefecto,
+        DateOnly? hoy = null,
+        int plazoRetencionDias = 5)
     {
+        bool EnPlazo(TipoDocumentoRecibido tipo, DateOnly fecha) =>
+            hoy is { } h && tipo == TipoDocumentoRecibido.Retencion && plazoRetencionDias > 0
+            && h.DayNumber - fecha.DayNumber <= plazoRetencionDias;
+
         // Set B indexado por autorización (§13.2: solo Trim(), nunca "arreglar"
         // la clave tecleada en Sage) — las que vienen vacías nunca pueden
         // matchear, van directo a Solo en Sage.
@@ -118,7 +127,8 @@ public static class MotorConciliacion
                 else
                 {
                     resultado.Add(new FilaConciliacion(
-                        comprobante.ClaveAcceso, comprobante, null, ClasificacionConciliacion.SoloEnSri, []));
+                        comprobante.ClaveAcceso, comprobante, null, ClasificacionConciliacion.SoloEnSri, [],
+                        EnPlazo(comprobante.Tipo, comprobante.FechaEmision)));
                     continue;
                 }
             }
@@ -137,7 +147,7 @@ public static class MotorConciliacion
                 continue;
             }
 
-            var diferenciasMetadata = CompararMetadata(comprobante, compra, cruzoPorSerie);
+            var diferenciasMetadata = CompararMetadata(comprobante, compra, cruzoPorSerie, plazoRetencionDias);
             resultado.Add(diferenciasMetadata.Count > 0
                 ? new FilaConciliacion(comprobante.ClaveAcceso, comprobante, compra, ClasificacionConciliacion.MetadataDistinta, diferenciasMetadata)
                 : new FilaConciliacion(comprobante.ClaveAcceso, comprobante, compra, ClasificacionConciliacion.CoincidePendienteDeVerificar, []));
@@ -145,18 +155,34 @@ public static class MotorConciliacion
 
         foreach (var compra in sinAutorizacion.Where(c => !consumidasPorSerie.Contains(c.PostOrder)))
         {
-            resultado.Add(new FilaConciliacion(null, null, compra, ClasificacionConciliacion.SoloEnSage, []));
+            resultado.Add(new FilaConciliacion(null, null, compra, ClasificacionConciliacion.SoloEnSage, [],
+                EnPlazo(compra.Tipo, compra.Fecha)));
         }
 
         foreach (var (clave, compra) in porAutorizacion)
         {
             if (!clavesConsumidas.Contains(clave) && !consumidasPorSerie.Contains(compra.PostOrder))
             {
-                resultado.Add(new FilaConciliacion(clave, null, compra, ClasificacionConciliacion.SoloEnSage, []));
+                resultado.Add(new FilaConciliacion(clave, null, compra, ClasificacionConciliacion.SoloEnSage, [],
+                    EnPlazo(compra.Tipo, compra.Fecha)));
             }
         }
 
         return resultado;
+    }
+
+    /// <summary>
+    /// Las retenciones se buscan en una ventana ampliada (±plazo) para poder encontrar a su pareja cuando las fechas
+    /// del SRI y de Sage difieren, pero al usuario se le muestran solo las del período pedido: una fila (o pareja) de
+    /// retención se queda si alguna de sus dos fechas cae dentro de [desde, hasta]. Las demás filas ya venían acotadas.
+    /// </summary>
+    public static IReadOnlyList<FilaConciliacion> RecortarAlPeriodo(
+        IEnumerable<FilaConciliacion> filas, DateOnly desde, DateOnly hasta)
+    {
+        bool Dentro(DateOnly? fecha) => fecha is { } f && f >= desde && f <= hasta;
+        return filas
+            .Where(f => f.Tipo != TipoDocumentoRecibido.Retencion || Dentro(f.Sri?.FechaEmision) || Dentro(f.Sage?.Fecha))
+            .ToList();
     }
 
     private static List<string> CompararMontos(ComprobanteSriGuardado sri, CompraSage sage, decimal tolerancia)
@@ -181,11 +207,15 @@ public static class MotorConciliacion
     /// documento (el de Sage sale del diario/JournalEx, no de <c>ShipVia</c>), la factura que modifica una
     /// nota de crédito y, si una retención cruzó por serie, que su clave tecleada en Sage no contradiga la del SRI.
     /// </summary>
-    private static List<string> CompararMetadata(ComprobanteSriGuardado sri, CompraSage sage, bool cruzoPorSerie)
+    private static List<string> CompararMetadata(
+        ComprobanteSriGuardado sri, CompraSage sage, bool cruzoPorSerie, int plazoRetencionDias)
     {
         var diferencias = new List<string>();
 
-        if (sri.FechaEmision != sage.Fecha)
+        // Las retenciones se pueden emitir hasta N días después de la venta: entre la fecha del SRI y la de
+        // Sage es normal que haya hasta esa distancia. Solo se marca lo que pasa del plazo.
+        var toleranciaDias = sri.Tipo == TipoDocumentoRecibido.Retencion ? Math.Max(plazoRetencionDias, 0) : 0;
+        if (Math.Abs(sri.FechaEmision.DayNumber - sage.Fecha.DayNumber) > toleranciaDias)
         {
             diferencias.Add($"Fecha: SRI {sri.FechaEmision:dd/MM/yyyy} vs Sage {sage.Fecha:dd/MM/yyyy}");
         }

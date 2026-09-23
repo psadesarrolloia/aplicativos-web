@@ -163,6 +163,79 @@ public class ProcesadorVerificacionEstadoTests
         Assert.Equal(0, verificador.Llamadas);
     }
 
+    // ------------------------------------------------------------ verificación masiva con avance
+
+    private sealed class VerificadorPorClave(Func<string, EstadoComprobanteSri> estado) : IVerificadorEstadoSri
+    {
+        public Task<ResultadoVerificacionEstado> VerificarAsync(string claveAcceso, CancellationToken ct = default) =>
+            Task.FromResult(new ResultadoVerificacionEstado(estado(claveAcceso), null));
+    }
+
+    private static FilaConciliacion FilaConClave(char digito) => new(
+        new string(digito, 49), FilaSri(new string(digito, 49)), null, ClasificacionConciliacion.CoincidePendienteDeVerificar, []);
+
+    [Fact]
+    public async Task Verificar_filas_informa_el_avance_hasta_el_total_y_cuenta_los_resultados()
+    {
+        var filas = "12345".Select(FilaConClave).ToList();
+        var procesador = Construir(
+            new EmpresasActivasFake([]), new LectorSriFake([]),
+            new VerificadorPorClave(clave => clave[0] switch
+            {
+                '3' => EstadoComprobanteSri.Anulado,
+                '4' => EstadoComprobanteSri.ErrorServicio,
+                '5' => EstadoComprobanteSri.FueraDeRango,
+                _ => EstadoComprobanteSri.Autorizado,
+            }));
+        var avances = new List<int>();
+        var avance = new SincronoProgress(avances.Add);
+
+        var corrida = await procesador.VerificarFilasAsync(Ruc, "Empresa", filas, avance);
+
+        var r = Assert.Single(corrida.Empresas);
+        Assert.Equal(3, r.Verificados);   // 1, 2 y 3 (la 3 quedó anulada)
+        Assert.Equal(1, r.Anulados);
+        Assert.Equal(1, r.ConErrores);    // la 4
+        Assert.Equal(5, avances.Count);   // se informa también la fuera de rango (5): el contador llega al total
+        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, avances.OrderBy(n => n).ToArray());
+    }
+
+    [Fact]
+    public async Task Verificar_filas_sin_candidatas_no_hace_nada()
+    {
+        var procesador = Construir(new EmpresasActivasFake([]), new LectorSriFake([]), new VerificadorFake());
+
+        var corrida = await procesador.VerificarFilasAsync(Ruc, "Empresa", []);
+
+        var r = Assert.Single(corrida.Empresas);
+        Assert.Equal(0, r.Verificados + r.ConErrores);
+    }
+
+    [Fact]
+    public void Las_candidatas_excluyen_lo_ya_verificado_para_que_el_contador_baje()
+    {
+        var recien = DateTime.UtcNow;
+        var pendiente = FilaConClave('1');
+        var verificada = pendiente with { Sri = pendiente.Sri! with { FechaVerificacionEstado = recien } };
+        var procesador = Construir(new EmpresasActivasFake([]), new LectorSriFake([]), new VerificadorFake());
+
+        Assert.Single(procesador.CandidatasAVerificar([pendiente, verificada]));
+    }
+
+    // Progress<T> reparte por SynchronizationContext (asíncrono): para el test se quiere registrar en el acto.
+    private sealed class SincronoProgress(Action<int> alReportar) : IProgress<int>
+    {
+        private readonly object _candado = new();
+
+        public void Report(int valor)
+        {
+            lock (_candado)
+            {
+                alReportar(valor);
+            }
+        }
+    }
+
     // ------------------------------------------------------------ revisión manual ("Aceptada / Revisada OK")
 
     private const string Ruc = "1799999999006";

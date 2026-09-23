@@ -1,11 +1,13 @@
 @page "/conciliacion-sri"
 @namespace PsaWeb.Modules.ConciliacionSri.Pages
+@using Microsoft.Extensions.Options
 @using PsaWeb.Comprobantes.Compras
 @using PsaWeb.Conciliacion
 @using PsaWeb.Sage50
 @inject ProcesadorVerificacionEstado Procesador
 @inject EjecucionVerificacionGate Gate
 @inject IResolverEmpresaSage EmpresaSage
+@inject IOptions<ConciliacionOptions> Opciones
 @inject AuthenticationStateProvider AuthState
 @inject ILogger<ConciliacionSri> Logger
 @implements IDisposable
@@ -55,13 +57,14 @@ else
     }
     else if (_filas is not null)
     {
-        var pendientesDeVerificar = _filas.Count(f => f.Fila.Clasificacion is ClasificacionConciliacion.CoincidePendienteDeVerificar
-            or ClasificacionConciliacion.ValoresDistintos or ClasificacionConciliacion.MetadataDistinta);
+        // Solo las que todavía tiene sentido verificar: sin verificar (o con la verificación vencida) y dentro del
+        // rango que responde el SRI. Las ya verificadas no cuentan, así el número baja al terminar.
+        var pendientesDeVerificar = Procesador.CandidatasAVerificar(_filas.Select(f => f.Fila)).Count;
 
         <PsaCard Title="Resultado">
             <Actions>
                 <PsaButton Variant="secondary" OnClick="VerificarPendientes" Disabled="@(_verificando || pendientesDeVerificar == 0)">
-                    @(_verificando ? "Verificando…" : $"Verificar pendientes ({pendientesDeVerificar})")
+                    @(_verificando ? $"Verificando… {_progreso}/{_totalVerificar}" : $"Verificar pendientes ({pendientesDeVerificar})")
                 </PsaButton>
             </Actions>
             <ChildContent>
@@ -236,6 +239,11 @@ else
                                     {
                                         <span class="psa-muted">@Hallazgo(fila)</span>
                                     }
+                                    @if (fila.EnPlazo)
+                                    {
+                                        <br /><span class="psa-estado psa-estado--warn" style="font-size:.75rem"
+                                                    title="El SRI da @Plazo días para emitir una retención después de la venta: puede no haberse emitido o registrado todavía.">En plazo (@Plazo días)</span>
+                                    }
                                 </td>
                                 @if (puedeAceptar)
                                 {
@@ -400,6 +408,13 @@ else
             {
                 <p style="margin:.2rem 0">@Hallazgo(fila)</p>
             }
+            @if (fila.EnPlazo)
+            {
+                <p style="margin:.2rem 0">
+                    <span class="psa-estado psa-estado--warn" style="font-size:.8rem">En plazo (@Plazo días)</span>
+                    <span class="psa-muted">— el SRI da @Plazo días para emitir una retención después de la venta, así que puede no haberse emitido o registrado todavía. Revisala pasado ese plazo.</span>
+                </p>
+            }
             @if (fila.Clasificacion == ClasificacionConciliacion.SoloEnSage && DocumentoFisico.EsProbable(fila.ClaveAcceso))
             {
                 <p style="margin:.2rem 0">
@@ -459,7 +474,7 @@ else
         (ClasificacionConciliacion.SoloEnSage, "Solo en Sage"),
         (ClasificacionConciliacion.ValoresDistintos, "Valores distintos"),
         (ClasificacionConciliacion.MetadataDistinta, "Metadata distinta"),
-        (ClasificacionConciliacion.CoincidePendienteDeVerificar, "Conciliado sin verificar"),
+        (ClasificacionConciliacion.CoincidePendienteDeVerificar, "Conciliado"),
     ];
 
     // Facturas, notas de crédito y retenciones de venta recibidas. Las liquidaciones de compra y notas de
@@ -474,6 +489,8 @@ else
         TipoDocumentoRecibido.Retencion => "Retenciones de venta",
         _ => tipo.ToString(),
     };
+
+    private int Plazo => Opciones.Value.RetencionPlazoDias;
 
     private readonly HashSet<TipoDocumentoRecibido> _tipos = [.. TiposConciliables];
     private IReadOnlyList<string> _advertencias = [];
@@ -495,6 +512,8 @@ else
     private DateOnly _hasta = DateOnly.FromDateTime(DateTime.Today);
     private bool _cargando;
     private bool _verificando;
+    private int _progreso;
+    private int _totalVerificar;
     private long? _verificandoFila;
     private string? _error;
     private string? _avisoVerificacion;
@@ -680,11 +699,25 @@ else
             return;
         }
 
+        // Verifica exactamente lo que la pantalla cuenta como pendiente (no una ventana aparte del worker).
+        var candidatas = Procesador.CandidatasAVerificar(_filas!.Select(f => f.Fila));
+        if (candidatas.Count == 0)
+        {
+            return;
+        }
+
         _verificando = true;
+        _progreso = 0;
+        _totalVerificar = candidatas.Count;
         _avisoVerificacion = null;
         try
         {
-            var resultado = await Gate.EjecutarAsync(ct => Procesador.ProcesarUnaAsync(ruc, ruc, ct));
+            var avance = new Progress<int>(n =>
+            {
+                _progreso = n;
+                _ = InvokeAsync(StateHasChanged);
+            });
+            var resultado = await Gate.EjecutarAsync(ct => Procesador.VerificarFilasAsync(ruc, ruc, candidatas, avance, ct));
             if (!resultado.Ejecuto)
             {
                 _avisoVerificacion = resultado.Motivo;
@@ -692,9 +725,16 @@ else
             }
 
             var r = resultado.Resumen!.Empresas[0];
-            _avisoVerificacion = $"Verificados: {r.Verificados} · Anulados: {r.Anulados} · Con error: {r.ConErrores}.";
+            var resumen = $"Verificados: {r.Verificados} · Anulados: {r.Anulados} · Con error: {r.ConErrores}.";
+            var sinResponder = candidatas.Count - r.Verificados - r.ConErrores;
+            if (sinResponder > 0)
+            {
+                resumen += $" {sinResponder} sin respuesta del SRI (fuera de rango).";
+            }
+
             _ultimaVerificacionMasiva = resultado.Resumen.Fin.UtcDateTime;
-            await Consultar();
+            await Consultar(); // refleja los estados ya guardados (y limpia el aviso, por eso se arma después)
+            _avisoVerificacion = resumen;
         }
         finally
         {

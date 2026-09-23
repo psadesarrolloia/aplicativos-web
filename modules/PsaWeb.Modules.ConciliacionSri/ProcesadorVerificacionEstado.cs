@@ -166,7 +166,14 @@ public sealed class ProcesadorVerificacionEstado(
             : new HashSet<TipoDocumentoRecibido>(tipos);
         var advertencias = new List<string>();
 
-        var setATodo = await lectorSri.ObtenerAsync(ruc, desde, hasta, cancellationToken);
+        // Retenciones: el SRI da N días para emitirlas y las fechas del SRI y de Sage pueden distar hasta N días,
+        // así que se lee una ventana de ±N alrededor del período para encontrar a la pareja (después se recorta).
+        var plazo = Math.Max(opciones.Value.RetencionPlazoDias, 0);
+        var ampliar = incluidos.Contains(TipoDocumentoRecibido.Retencion) && plazo > 0;
+        var desdeAmplio = ampliar ? desde.AddDays(-plazo) : desde;
+        var hastaAmplio = ampliar ? hasta.AddDays(plazo) : hasta;
+
+        var setATodo = await lectorSri.ObtenerAsync(ruc, desdeAmplio, hastaAmplio, cancellationToken);
         if (setATodo.Count == 0)
         {
             // Sin comprobantes del SRI para el período: nada que conciliar — ni
@@ -190,7 +197,7 @@ public sealed class ProcesadorVerificacionEstado(
         {
             try
             {
-                setB.AddRange(await LectorRetencionesRecibidasParaConciliacion.LeerAsync(conexion, desde, hasta, cancellationToken));
+                setB.AddRange(await LectorRetencionesRecibidasParaConciliacion.LeerAsync(conexion, desdeAmplio, hastaAmplio, cancellationToken));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -202,7 +209,12 @@ public sealed class ProcesadorVerificacionEstado(
             }
         }
 
-        var setA = setATodo.Where(c => c.Tipo == TipoDocumentoRecibido.Otro || incluidos.Contains(c.Tipo)).ToList();
+        // Facturas y notas de crédito se quedan en el período pedido; las retenciones conservan la ventana ampliada.
+        var setA = setATodo
+            .Where(c => c.Tipo == TipoDocumentoRecibido.Retencion
+                ? incluidos.Contains(c.Tipo)
+                : (c.Tipo == TipoDocumentoRecibido.Otro || incluidos.Contains(c.Tipo)) && c.FechaEmision >= desde && c.FechaEmision <= hasta)
+            .ToList();
 
         // Un tipo elegido sin ningún comprobante del SRI cargado no es una diferencia: es un reporte que falta subir.
         foreach (var tipo in incluidos.OrderBy(t => t))
@@ -216,7 +228,9 @@ public sealed class ProcesadorVerificacionEstado(
             }
         }
 
-        return new ResultadoConciliacion(MotorConciliacion.Conciliar(setA, setB), advertencias);
+        var filas = MotorConciliacion.Conciliar(
+            setA, setB, MotorConciliacion.ToleranciaMontosPorDefecto, DateOnly.FromDateTime(DateTime.Today), plazo);
+        return new ResultadoConciliacion(MotorConciliacion.RecortarAlPeriodo(filas, desde, hasta), advertencias);
     }
 
     private async Task<ResumenVerificacionEmpresa> ProcesarEmpresaAsync(
@@ -241,56 +255,107 @@ public sealed class ProcesadorVerificacionEstado(
         var ahora = DateTime.UtcNow;
         var pendientes = SeleccionarPendientesDeVerificar(filas, umbral, ahora);
 
+        return await VerificarAsync(ruc, nombre, pendientes, semaforo, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Las filas que hoy tiene sentido verificar contra el SRI (lo que cuenta el botón "Verificar pendientes"):
+    /// con comprobante del SRI, sin verificar o con la verificación vencida, y dentro del rango que el WS responde.
+    /// </summary>
+    public IReadOnlyList<FilaConciliacion> CandidatasAVerificar(IEnumerable<FilaConciliacion> filas) =>
+        SeleccionarPendientesDeVerificar(filas.ToList(), TimeSpan.FromDays(opciones.Value.VerificacionUmbralDias), DateTime.UtcNow);
+
+    /// <summary>
+    /// Verifica exactamente las <paramref name="candidatas"/> (las que muestra la pantalla), informando el avance
+    /// (cuántas van) — mismo <see cref="ResumenVerificacionCorrida"/> de 1 empresa que <see cref="ProcesarUnaAsync"/>
+    /// para poder pasar por el mismo <see cref="EjecucionVerificacionGate"/>.
+    /// </summary>
+    public async Task<ResumenVerificacionCorrida> VerificarFilasAsync(
+        string ruc, string nombre, IReadOnlyList<FilaConciliacion> candidatas, IProgress<int>? avance = null,
+        CancellationToken cancellationToken = default)
+    {
+        var inicio = DateTimeOffset.Now;
+        using var semaforo = new SemaphoreSlim(opciones.Value.VerificacionConcurrenciaMaxima);
+        var resumen = await VerificarAsync(ruc, nombre, candidatas, semaforo, avance, cancellationToken);
+        return new ResumenVerificacionCorrida(inicio, DateTimeOffset.Now, [resumen]);
+    }
+
+    // Las llamadas al WS del SRI corren en paralelo (acotadas por el semáforo); las escrituras a la base van de a una
+    // porque el DbContext no es seguro entre hilos.
+    private async Task<ResumenVerificacionEmpresa> VerificarAsync(
+        string ruc, string nombre, IReadOnlyList<FilaConciliacion> pendientes, SemaphoreSlim semaforo,
+        IProgress<int>? avance, CancellationToken cancellationToken)
+    {
         if (pendientes.Count == 0)
         {
             return new ResumenVerificacionEmpresa(ruc, nombre, 0, 0, 0, []);
         }
 
+        var ahora = DateTime.UtcNow;
         var verificados = 0;
         var anulados = 0;
         var conErrores = 0;
+        var hechos = 0;
         var mensajes = new List<string>();
+        var candadoMensajes = new object();
+        using var candadoDb = new SemaphoreSlim(1, 1);
 
-        foreach (var fila in pendientes)
+        void Mensaje(string texto)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            lock (candadoMensajes)
+            {
+                mensajes.Add(texto);
+            }
+        }
+
+        await Task.WhenAll(pendientes.Select(async fila =>
+        {
             await semaforo.WaitAsync(cancellationToken);
             try
             {
                 var resultado = await verificador.VerificarAsync(fila.ClaveAcceso!, cancellationToken);
                 if (resultado.Estado == EstadoComprobanteSri.FueraDeRango)
                 {
-                    continue; // el WS no responde por este comprobante (fuera de rango): ni error ni verificado
+                    return; // el WS no responde por este comprobante (fuera de rango): ni error ni verificado
                 }
 
                 if (resultado.Estado == EstadoComprobanteSri.ErrorServicio)
                 {
-                    conErrores++;
-                    mensajes.Add($"{fila.ClaveAcceso}: {resultado.MensajeSri}");
-                    continue;
+                    Interlocked.Increment(ref conErrores);
+                    Mensaje($"{fila.ClaveAcceso}: {resultado.MensajeSri}");
+                    return;
                 }
 
-                await repositorioSri.ActualizarEstadoAsync(
-                    fila.Sri!.Id, resultado.Estado.ToString(), ahora, cancellationToken);
-                verificados++;
+                await candadoDb.WaitAsync(cancellationToken);
+                try
+                {
+                    await repositorioSri.ActualizarEstadoAsync(
+                        fila.Sri!.Id, resultado.Estado.ToString(), ahora, cancellationToken);
+                }
+                finally
+                {
+                    candadoDb.Release();
+                }
 
+                Interlocked.Increment(ref verificados);
                 if (resultado.Estado is EstadoComprobanteSri.NoAutorizado or EstadoComprobanteSri.Anulado or EstadoComprobanteSri.Otro)
                 {
-                    anulados++;
-                    mensajes.Add($"{fila.ClaveAcceso}: NO AUTORIZADO en el SRI — contabilizado como vigente en Sage.");
+                    Interlocked.Increment(ref anulados);
+                    Mensaje($"{fila.ClaveAcceso}: NO AUTORIZADO en el SRI — contabilizado como vigente en Sage.");
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                conErrores++;
-                mensajes.Add($"{fila.ClaveAcceso}: error al verificar — {ex.Message}");
+                Interlocked.Increment(ref conErrores);
+                Mensaje($"{fila.ClaveAcceso}: error al verificar — {ex.Message}");
                 logger.LogError(ex, "Verificación de estado de {Clave} ({Ruc})", fila.ClaveAcceso, ruc);
             }
             finally
             {
                 semaforo.Release();
+                avance?.Report(Interlocked.Increment(ref hechos));
             }
-        }
+        }));
 
         return new ResumenVerificacionEmpresa(ruc, nombre, verificados, anulados, conErrores, mensajes);
     }
@@ -312,6 +377,10 @@ public sealed class ProcesadorVerificacionEstado(
             .Where(f => f.Clasificacion is ClasificacionConciliacion.CoincidePendienteDeVerificar
                 or ClasificacionConciliacion.ValoresDistintos
                 or ClasificacionConciliacion.MetadataDistinta)
+            .Where(f => f.Sri is not null)
             .Where(f => f.Sri!.FechaVerificacionEstado is null || ahora - f.Sri.FechaVerificacionEstado.Value > umbral)
+            // El WS solo responde por el mes en curso y el anterior: fuera de eso no hay nada que verificar y contarlas
+            // como pendientes dejaría el botón con un número que nunca baja.
+            .Where(f => RangoConsultaSri.Contiene(f.Sri!.FechaEmision.ToDateTime(TimeOnly.MinValue), ahora.ToLocalTime()))
             .ToList();
 }

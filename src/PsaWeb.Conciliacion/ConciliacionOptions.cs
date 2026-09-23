@@ -16,6 +16,14 @@ public sealed class ConciliacionOptions
     /// <summary>Máximo de llamadas simultáneas al WS del SRI durante una corrida (worker o botón masivo).</summary>
     public int VerificacionConcurrenciaMaxima { get; set; } = 5;
 
+    /// <summary>
+    /// Días que el SRI da para emitir una retención después de la venta. En retenciones, el comprobante del SRI y su
+    /// registro en Sage pueden diferir en la fecha hasta esta cantidad de días: no se marca como diferencia, se busca
+    /// la pareja en una ventana de ±este valor alrededor del período, y una retención sin pareja que todavía está
+    /// dentro de este plazo se muestra como "en plazo" (puede simplemente no haberse emitido/registrado aún).
+    /// </summary>
+    public int RetencionPlazoDias { get; set; } = 5;
+
     /// <summary>Configuración del worker de verificación de estado (§13.4/§14.2).</summary>
     public WorkerOptions Worker { get; set; } = new();
 

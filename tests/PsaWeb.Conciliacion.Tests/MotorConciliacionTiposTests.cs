@@ -135,9 +135,9 @@ public class MotorConciliacionTiposTests
     }
 
     [Fact]
-    public void Retencion_con_otra_fecha_o_emisor_en_Sage_es_metadata_distinta()
+    public void Retencion_con_una_fecha_en_Sage_fuera_del_plazo_es_metadata_distinta()
     {
-        var sage = RetSage() with { Fecha = new DateOnly(2026, 8, 7) };
+        var sage = RetSage() with { Fecha = new DateOnly(2026, 8, 14) }; // 8 días después: más que el plazo
 
         var r = MotorConciliacion.Conciliar([RetSri()], [sage]);
 
@@ -169,6 +169,103 @@ public class MotorConciliacionTiposTests
         Assert.Equal(2, r.Count);
         Assert.Contains(r, f => f.Clasificacion == ClasificacionConciliacion.SoloEnSri);
         Assert.Contains(r, f => f.Clasificacion == ClasificacionConciliacion.SoloEnSage);
+    }
+
+    // ---------------------------------------------------------------- plazo de 5 días de las retenciones
+
+    [Theory]
+    [InlineData(0, ClasificacionConciliacion.CoincidePendienteDeVerificar)]
+    [InlineData(5, ClasificacionConciliacion.CoincidePendienteDeVerificar)]  // el plazo del SRI: normal
+    [InlineData(-5, ClasificacionConciliacion.CoincidePendienteDeVerificar)] // Sage puede ir antes o después
+    [InlineData(6, ClasificacionConciliacion.MetadataDistinta)]
+    [InlineData(-6, ClasificacionConciliacion.MetadataDistinta)]
+    public void La_fecha_de_una_retencion_puede_diferir_hasta_el_plazo_entre_SRI_y_Sage(int dias, ClasificacionConciliacion esperada)
+    {
+        var sage = RetSage() with { Fecha = new DateOnly(2026, 8, 6).AddDays(dias) };
+
+        var r = MotorConciliacion.Conciliar([RetSri()], [sage]);
+
+        Assert.Equal(esperada, Assert.Single(r).Clasificacion);
+    }
+
+    [Fact]
+    public void En_una_factura_cualquier_diferencia_de_fecha_sigue_marcandose()
+    {
+        var sri = SriDe(ClaveFactura, "Factura", "001-001-000000001", "1791111111001", 100m, 12m, 112m, fecha: new DateOnly(2026, 8, 6));
+        var sage = new CompraSage(1, "1791111111001", "PROV", "001-001-000000001", new DateOnly(2026, 8, 7),
+            ClaveFactura, 100m, 12m, 112m);
+
+        var r = MotorConciliacion.Conciliar([sri], [sage]);
+
+        Assert.Equal(ClasificacionConciliacion.MetadataDistinta, Assert.Single(r).Clasificacion);
+    }
+
+    [Fact]
+    public void Retencion_solo_en_SRI_dentro_del_plazo_queda_en_plazo()
+    {
+        var hoy = new DateOnly(2026, 8, 9); // la retención es del 06/08: 3 días
+
+        var r = MotorConciliacion.Conciliar([RetSri()], [], hoy: hoy, plazoRetencionDias: 5);
+
+        var fila = Assert.Single(r);
+        Assert.Equal(ClasificacionConciliacion.SoloEnSri, fila.Clasificacion);
+        Assert.True(fila.EnPlazo);
+    }
+
+    [Fact]
+    public void Retencion_solo_en_SRI_pasado_el_plazo_ya_no_esta_en_plazo()
+    {
+        var r = MotorConciliacion.Conciliar([RetSri()], [], hoy: new DateOnly(2026, 8, 12), plazoRetencionDias: 5); // 6 días
+
+        Assert.False(Assert.Single(r).EnPlazo);
+    }
+
+    [Fact]
+    public void Retencion_solo_en_Sage_dentro_del_plazo_queda_en_plazo_tenga_o_no_clave()
+    {
+        var hoy = new DateOnly(2026, 8, 8);
+
+        var sinClave = MotorConciliacion.Conciliar([], [RetSage(autorizacion: "")], hoy: hoy, plazoRetencionDias: 5);
+        var conClave = MotorConciliacion.Conciliar([], [RetSage(autorizacion: ClaveRet)], hoy: hoy, plazoRetencionDias: 5);
+
+        Assert.True(Assert.Single(sinClave).EnPlazo);
+        Assert.True(Assert.Single(conClave).EnPlazo);
+    }
+
+    [Fact]
+    public void Facturas_y_notas_de_credito_nunca_quedan_en_plazo()
+    {
+        var factura = SriDe(ClaveFactura, "Factura", "001-001-000000001", "1791111111001", 100m, 12m, 112m);
+
+        var r = MotorConciliacion.Conciliar([factura, NcSri()], [], hoy: new DateOnly(2026, 8, 18), plazoRetencionDias: 5);
+
+        Assert.All(r, f => Assert.False(f.EnPlazo));
+    }
+
+    [Fact]
+    public void Sin_fecha_de_hoy_no_se_calcula_el_plazo()
+    {
+        Assert.False(Assert.Single(MotorConciliacion.Conciliar([RetSri()], [])).EnPlazo);
+    }
+
+    [Fact]
+    public void Recortar_al_periodo_deja_las_retenciones_cuya_fecha_del_SRI_o_de_Sage_esta_dentro()
+    {
+        var desde = new DateOnly(2026, 9, 1);
+        var hasta = new DateOnly(2026, 9, 30);
+        // Pareja: SRI 30/08 (fuera) con Sage 02/09 (dentro) -> se queda.
+        var pareja = new FilaConciliacion(ClaveRet, RetSri() with { FechaEmision = new DateOnly(2026, 8, 30) },
+            RetSage() with { Fecha = new DateOnly(2026, 9, 2) }, ClasificacionConciliacion.CoincidePendienteDeVerificar, []);
+        // Solo en Sage del 28/08 (solo entró por la ventana ampliada) -> se va.
+        var fuera = new FilaConciliacion(null, null, RetSage() with { Fecha = new DateOnly(2026, 8, 28), PostOrder = 99 },
+            ClasificacionConciliacion.SoloEnSage, []);
+        // Una factura no se recorta acá (ya venía acotada).
+        var factura = new FilaConciliacion(ClaveNc, NcSri() with { FechaEmision = new DateOnly(2026, 8, 18) }, null,
+            ClasificacionConciliacion.SoloEnSri, []);
+
+        var r = MotorConciliacion.RecortarAlPeriodo([pareja, fuera, factura], desde, hasta);
+
+        Assert.Equal([pareja, factura], r);
     }
 
     [Fact]
