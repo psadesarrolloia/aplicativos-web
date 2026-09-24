@@ -137,6 +137,25 @@ public class VistaConciliacionTests
     }
 
     [Fact]
+    public void El_valor_de_la_diferencia_es_Sage_menos_SRI_por_campo()
+    {
+        // Ecua: SRI subtotal/total 974.32 vs Sage 970 (helper: subtotal = total, IVA 0).
+        Assert.Equal(970m - 974.32m, VistaConciliacion.ValorDiferencia(Ecua.Fila, "Subtotal"));
+        Assert.Equal(970m - 974.32m, VistaConciliacion.ValorDiferencia(Ecua.Fila, "Total"));
+        Assert.Equal(0m, VistaConciliacion.ValorDiferencia(Ecua.Fila, "IVA"));
+    }
+
+    [Fact]
+    public void No_hay_valor_de_diferencia_para_campos_que_no_son_montos_ni_si_falta_un_lado()
+    {
+        var soloSri = Fila(ClasificacionConciliacion.SoloEnSri, Sri(new string('4', 49), "1", "X", 5m), null);
+
+        Assert.Null(VistaConciliacion.ValorDiferencia(Ecua.Fila, "Fecha"));
+        Assert.Null(VistaConciliacion.ValorDiferencia(Ecua.Fila, "RUC emisor"));
+        Assert.Null(VistaConciliacion.ValorDiferencia(soloSri.Fila, "Total"));
+    }
+
+    [Fact]
     public void Las_retenciones_no_muestran_total_del_SRI()
     {
         var ret = Fila(

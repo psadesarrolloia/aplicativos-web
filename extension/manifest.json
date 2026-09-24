@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "PSA - Conciliación SRI",
-  "version": "0.1.0",
-  "description": "Sube el reporte de comprobantes electrónicos recibidos del SRI a PSA para conciliarlo contra Sage 50.",
+  "name": "PSA - Conciliación con SRI - Docs Recibidos",
+  "version": "0.2.0",
+  "description": "Sube el reporte de documentos electrónicos recibidos del SRI (facturas, notas de crédito y retenciones) a PSA para conciliarlo contra Sage 50.",
   "permissions": ["storage", "notifications"],
   "host_permissions": [
     "https://srienlinea.sri.gob.ec/*",
@@ -22,6 +22,6 @@
   ],
   "options_page": "options.html",
   "action": {
-    "default_title": "PSA - Conciliación SRI (click para configurar)"
+    "default_title": "PSA - Conciliación con SRI - Docs Recibidos (click para configurar)"
   }
 }

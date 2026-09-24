@@ -24,24 +24,23 @@ public class SeleccionarPendientesDeVerificarTests
         new(Sri(fechaVerificacion).ClaveAcceso, Sri(fechaVerificacion), null, clasificacion, []);
 
     [Theory]
+    [InlineData(ClasificacionConciliacion.SoloEnSri)]
     [InlineData(ClasificacionConciliacion.CoincidePendienteDeVerificar)]
     [InlineData(ClasificacionConciliacion.ValoresDistintos)]
     [InlineData(ClasificacionConciliacion.MetadataDistinta)]
-    public void Incluye_coincide_valores_distintos_y_metadata_distinta_sin_verificar(ClasificacionConciliacion clasificacion)
+    public void Incluye_toda_fila_con_comprobante_del_SRI_sin_verificar(ClasificacionConciliacion clasificacion)
     {
         var resultado = ProcesadorVerificacionEstado.SeleccionarPendientesDeVerificar([Fila(clasificacion)], Umbral, Ahora);
 
         Assert.Single(resultado);
     }
 
-    [Theory]
-    [InlineData(ClasificacionConciliacion.SoloEnSri)]
-    [InlineData(ClasificacionConciliacion.SoloEnSage)]
-    public void Excluye_solo_en_sri_y_solo_en_sage(ClasificacionConciliacion clasificacion)
+    [Fact]
+    public void Excluye_solo_en_Sage_porque_no_tiene_comprobante_del_SRI_que_consultar()
     {
-        var resultado = ProcesadorVerificacionEstado.SeleccionarPendientesDeVerificar([Fila(clasificacion)], Umbral, Ahora);
+        var soloSage = new FilaConciliacion(null, null, null, ClasificacionConciliacion.SoloEnSage, []);
 
-        Assert.Empty(resultado);
+        Assert.Empty(ProcesadorVerificacionEstado.SeleccionarPendientesDeVerificar([soloSage], Umbral, Ahora));
     }
 
     [Fact]

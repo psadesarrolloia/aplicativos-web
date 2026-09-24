@@ -120,6 +120,23 @@ public static class VistaConciliacion
 
     public static string TextoDiferencias(FilaConRevision f) => string.Join(" ", f.Fila.Diferencias);
 
+    /// <summary>
+    /// Cuánto le sobra (+) o le falta (−) a Sage respecto del SRI en un campo de monto ("Subtotal", "IVA", "Total"),
+    /// para ubicar la línea que explica la diferencia. Null si el campo no es un monto o falta uno de los dos lados.
+    /// Se calcula al mostrar y no forma parte del texto de <see cref="FilaConciliacion.Diferencias"/>: ese texto entra
+    /// en la huella de las revisiones ya guardadas y cambiarlo las dejaría "desactualizadas".
+    /// </summary>
+    public static decimal? ValorDiferencia(FilaConciliacion fila, string campo) =>
+        fila.Sri is null || fila.Sage is null
+            ? null
+            : campo switch
+            {
+                "Subtotal" => fila.Sage.Subtotal - fila.Sri.Subtotal,
+                "IVA" => fila.Sage.Iva - fila.Sri.Iva,
+                "Total" => fila.Sage.Total - fila.Sri.Total,
+                _ => null,
+            };
+
     private static bool Contiene(string? texto, string buscado) =>
         texto is not null && texto.Contains(buscado, StringComparison.OrdinalIgnoreCase);
 

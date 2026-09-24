@@ -341,7 +341,9 @@ public sealed class ProcesadorVerificacionEstado(
                 if (resultado.Estado is EstadoComprobanteSri.NoAutorizado or EstadoComprobanteSri.Anulado or EstadoComprobanteSri.Otro)
                 {
                     Interlocked.Increment(ref anulados);
-                    Mensaje($"{fila.ClaveAcceso}: NO AUTORIZADO en el SRI — contabilizado como vigente en Sage.");
+                    Mensaje(fila.Clasificacion == ClasificacionConciliacion.SoloEnSri
+                        ? $"{fila.ClaveAcceso}: {resultado.Estado} en el SRI (no está registrado en Sage)."
+                        : $"{fila.ClaveAcceso}: NO AUTORIZADO en el SRI — contabilizado como vigente en Sage.");
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -364,19 +366,16 @@ public sealed class ProcesadorVerificacionEstado(
         new(ruc, nombre, 0, 0, 1, [mensaje]);
 
     /// <summary>
-    /// Candidatas a "Verificar pendientes": ya no es solo <see cref="ClasificacionConciliacion.CoincidePendienteDeVerificar"/>
-    /// — las filas con diferencias (§ítem 3 del feedback post-deploy: el revisor
-    /// quiere saber si un comprobante con diferencia sigue autorizado, no solo
-    /// los que coinciden del todo) también se re-verifican, respetando el mismo
-    /// umbral para no golpear el WS del SRI en cada corrida. Lógica pura,
+    /// Candidatas a "Verificar pendientes": todo comprobante del SRI de la conciliación, esté o no en Sage y
+    /// coincida o no (al revisor le interesa saber si un comprobante sigue autorizado aunque falte registrarlo o
+    /// tenga diferencias), respetando el umbral para no golpear el WS del SRI en cada corrida. Lógica pura,
     /// separada para poder testearla sin Sage/DB.
     /// </summary>
     internal static List<FilaConciliacion> SeleccionarPendientesDeVerificar(
         IReadOnlyList<FilaConciliacion> filas, TimeSpan umbral, DateTime ahora) =>
         filas
-            .Where(f => f.Clasificacion is ClasificacionConciliacion.CoincidePendienteDeVerificar
-                or ClasificacionConciliacion.ValoresDistintos
-                or ClasificacionConciliacion.MetadataDistinta)
+            // Toda fila con comprobante del SRI (Solo en SRI, Valores distintos, Metadata distinta y Conciliado): "Solo en
+            // Sage" no tiene nada que consultarle al SRI.
             .Where(f => f.Sri is not null)
             .Where(f => f.Sri!.FechaVerificacionEstado is null || ahora - f.Sri.FechaVerificacionEstado.Value > umbral)
             // El WS solo responde por el mes en curso y el anterior: fuera de eso no hay nada que verificar y contarlas

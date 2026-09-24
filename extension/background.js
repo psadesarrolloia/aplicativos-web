@@ -79,7 +79,7 @@ chrome.runtime.onMessage.addListener((mensaje, _sender, sendResponse) => {
   }
 
   subirReporte(mensaje.ruc, mensaje.contenido).then((resultado) => {
-    notificar("PSA - Conciliación SRI", resultado.mensaje);
+    notificar("PSA - Conciliación con SRI - Docs Recibidos", resultado.mensaje);
     sendResponse(resultado);
   });
 

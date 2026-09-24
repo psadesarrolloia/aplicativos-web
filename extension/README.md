@@ -1,4 +1,4 @@
-# PSA - Conciliación SRI (extensión de Chrome)
+# PSA - Conciliación con SRI - Docs Recibidos (extensión de Chrome)
 
 Sube el reporte de "Comprobantes electrónicos recibidos" del portal SRI en
 Línea a PSA, para conciliarlo contra Sage 50. No navega el portal ni elige

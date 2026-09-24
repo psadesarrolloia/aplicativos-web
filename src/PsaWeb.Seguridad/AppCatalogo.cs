@@ -84,8 +84,8 @@ public static class AppCatalogo
         // cargue quconcsri en allowAction. Mientras tanto visible para
         // cualquier empresa. Revertir a new[] { Permisos.VerConciliacionSri }
         // cuando el área asigne el permiso a los roles pertinentes.
-        new("conciliacion-sri", "Conciliación SRI",
-            "Concilia los comprobantes electrónicos recibidos del SRI contra Sage 50.",
+        new("conciliacion-sri", "Conciliación con SRI - Docs Recibidos",
+            "Concilia contra Sage 50 las facturas, notas de crédito y retenciones recibidas del SRI.",
             "🔎", "/conciliacion-sri", Categorias.Impuestos,
             Array.Empty<string>()),
 

@@ -12,14 +12,14 @@
 @inject ILogger<ConciliacionSri> Logger
 @implements IDisposable
 
-<PageTitle>Conciliación SRI — Aplicativos web PSA</PageTitle>
+<PageTitle>Conciliación con SRI - Docs Recibidos — Aplicativos web PSA</PageTitle>
 
-<PsaPageHeader Title="Conciliación SRI"
-               Subtitle="Concilia los comprobantes electrónicos recibidos del SRI (subidos por la extensión de Chrome) contra las compras registradas en Sage 50." />
+<PsaPageHeader Title="Conciliación con SRI - Docs Recibidos"
+               Subtitle="Concilia los documentos electrónicos recibidos del SRI (facturas, notas de crédito y retenciones, subidos por la extensión de Chrome) contra lo registrado en Sage 50." />
 
 @if (EmpresaSage.RucSesion is null)
 {
-    <PsaCard Title="Conciliación SRI">
+    <PsaCard Title="Conciliación con SRI - Docs Recibidos">
         <p class="psa-notice psa-notice--danger">Este módulo necesita una empresa de sesión activa.</p>
     </PsaCard>
 }
@@ -51,7 +51,7 @@ else
 
     @if (_error is not null)
     {
-        <PsaCard Title="Conciliación SRI">
+        <PsaCard Title="Conciliación con SRI - Docs Recibidos">
             <p class="psa-notice psa-notice--danger">@_error</p>
         </PsaCard>
     }
@@ -299,7 +299,7 @@ else
                     <h3 style="margin:0 0 .4rem">SRI</h3>
                     @if (fila.Sri is null)
                     {
-                        <p class="psa-muted" style="margin:.2rem 0">No hay comprobante del SRI para esta compra.</p>
+                        <p class="psa-muted" style="margin:.2rem 0">No hay comprobante del SRI para este documento.</p>
                     }
                     else
                     {
@@ -330,7 +330,7 @@ else
                     <h3 style="margin:0 0 .4rem">Sage</h3>
                     @if (fila.Sage is null)
                     {
-                        <p class="psa-muted" style="margin:.2rem 0">Esta compra no está registrada en Sage.</p>
+                        <p class="psa-muted" style="margin:.2rem 0">Este documento no está registrado en Sage.</p>
                     }
                     else
                     {
@@ -359,7 +359,7 @@ else
 
             @if (fila.Sage is not null)
             {
-                <h3 style="margin:1rem 0 .4rem">Líneas de la compra en Sage</h3>
+                <h3 style="margin:1rem 0 .4rem">Líneas del documento en Sage</h3>
                 @if (_lineasSageCargando)
                 {
                     <p class="psa-muted">Cargando…</p>
@@ -402,7 +402,7 @@ else
             @foreach (var dif in fila.Diferencias)
             {
                 var (campo, resto) = PartirDiferencia(dif);
-                <p style="margin:.2rem 0"><strong>@campo:</strong>@resto</p>
+                <p style="margin:.2rem 0"><strong>@campo:</strong>@resto <strong>@DiferenciaEnSage(fila, campo)</strong></p>
             }
             @if (fila.Diferencias.Count == 0)
             {
@@ -621,6 +621,12 @@ else
 
     private static string TextoRevision(RevisionDeFila r) =>
         $"{r.RevisadaPor}, {FechaLocal(r.RevisadaUtc)}: {r.Comentario}";
+
+    /// <summary>"→ Sage +4.85" / "→ Sage −4.85": cuánto se aparta Sage del SRI en un campo de monto (vacío si no aplica).</summary>
+    private static string DiferenciaEnSage(FilaConciliacion fila, string campo) =>
+        VistaConciliacion.ValorDiferencia(fila, campo) is { } d
+            ? $"→ Sage {(d > 0 ? "+" : d < 0 ? "−" : "")}{Math.Abs(d):N2}"
+            : "";
 
     /// <summary>"Subtotal: SRI 969.47 vs Sage 974.32" → ("Subtotal", " SRI 969.47 vs Sage 974.32") para resaltar el campo.</summary>
     private static (string Campo, string Resto) PartirDiferencia(string diferencia)
