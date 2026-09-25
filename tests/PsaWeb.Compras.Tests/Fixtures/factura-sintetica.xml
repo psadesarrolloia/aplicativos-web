@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Factura SINTÉTICA (datos inventados) para las pruebas del lector. -->
+<factura id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>2</ambiente>
+    <tipoEmision>1</tipoEmision>
+    <razonSocial>PROVEEDOR DE PRUEBA S.A.</razonSocial>
+    <nombreComercial>PRUEBA</nombreComercial>
+    <ruc>1799999999001</ruc>
+    <claveAcceso>0101202601179999999900120010020000001231234567811</claveAcceso>
+    <codDoc>01</codDoc>
+    <estab>001</estab>
+    <ptoEmi>002</ptoEmi>
+    <secuencial>000000123</secuencial>
+    <dirMatriz>AV. SIEMPRE VIVA 123</dirMatriz>
+  </infoTributaria>
+  <infoFactura>
+    <fechaEmision>01/01/2026</fechaEmision>
+    <dirEstablecimiento>AV. SIEMPRE VIVA 123</dirEstablecimiento>
+    <contribuyenteEspecial>5368</contribuyenteEspecial>
+    <obligadoContabilidad>SI</obligadoContabilidad>
+    <tipoIdentificacionComprador>04</tipoIdentificacionComprador>
+    <razonSocialComprador>EMPRESA COMPRADORA DE PRUEBA</razonSocialComprador>
+    <identificacionComprador>1799999998001</identificacionComprador>
+    <totalSinImpuestos>110.50</totalSinImpuestos>
+    <totalDescuento>1.00</totalDescuento>
+    <totalConImpuestos>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>4</codigoPorcentaje>
+        <baseImponible>100.00</baseImponible>
+        <valor>15.00</valor>
+      </totalImpuesto>
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>0</codigoPorcentaje>
+        <baseImponible>10.50</baseImponible>
+        <valor>0.00</valor>
+      </totalImpuesto>
+    </totalConImpuestos>
+    <propina>2.00</propina>
+    <importeTotal>130.50</importeTotal>
+    <moneda>DOLAR</moneda>
+    <pagos>
+      <pago>
+        <formaPago>19</formaPago>
+        <total>130.50</total>
+      </pago>
+    </pagos>
+  </infoFactura>
+  <detalles>
+    <detalle>
+      <codigoPrincipal>A-1</codigoPrincipal>
+      <descripcion>SERVICIO CON IVA</descripcion>
+      <cantidad>4.000</cantidad>
+      <precioUnitario>25.25</precioUnitario>
+      <descuento>1.00</descuento>
+      <precioTotalSinImpuesto>100.00</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>4</codigoPorcentaje>
+          <tarifa>15</tarifa>
+          <baseImponible>100.00</baseImponible>
+          <valor>15.00</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+    <detalle>
+      <codigoPrincipal>B-2</codigoPrincipal>
+      <codigoAuxiliar>AUX</codigoAuxiliar>
+      <descripcion>BIEN TARIFA CERO</descripcion>
+      <cantidad>0</cantidad>
+      <precioUnitario>0</precioUnitario>
+      <descuento>0</descuento>
+      <precioTotalSinImpuesto>10.50</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>0</codigoPorcentaje>
+          <tarifa>0</tarifa>
+          <baseImponible>10.50</baseImponible>
+          <valor>0.00</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+    <detalle>
+      <codigoPrincipal>OBS</codigoPrincipal>
+      <descripcion>OBSEQUIO</descripcion>
+      <cantidad>1</cantidad>
+      <precioUnitario>0</precioUnitario>
+      <descuento>0</descuento>
+      <precioTotalSinImpuesto>0.00</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>0</codigoPorcentaje>
+          <tarifa>0</tarifa>
+          <baseImponible>0.00</baseImponible>
+          <valor>0.00</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>
+  </detalles>
+  <otrosRubrosTerceros>
+    <rubro>
+      <concepto>TASA 1</concepto>
+      <total>1.50</total>
+    </rubro>
+    <rubro>
+      <concepto>TASA 2</concepto>
+      <total>1.50</total>
+    </rubro>
+  </otrosRubrosTerceros>
+</factura>

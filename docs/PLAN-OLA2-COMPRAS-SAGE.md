@@ -531,3 +531,47 @@ Datos de prueba que quedaron en la copia (a limpiar restaurándola): OC-8904 (10
 - Correr el Bridge como servicio con la cuenta dedicada (F0-a ya lo validó con el spike; se hace con el anfitrión real en F8 o antes si
   se prefiere) y login SQL de esa cuenta en `PsaWebPlataforma`/`PeachEBills`.
 - Encolado de trabajos que escriben (F3): la web solo debe encolar en empresas habilitadas.
+
+---
+
+## 16. F2 — Lógica pura de la compra (implementada 2026-09-25)
+
+### 16.1 Qué se construyó (`src/PsaWeb.Compras`, sin escribir en Sage)
+| Pieza | Port de | Notas |
+|---|---|---|
+| `Sri/LectorComprobanteSri`, `LectorFacturaSri` | `ImportXmlLib.XmlReader` + `FacturaE.LoadSaleInvoice` | Desenvuelve la respuesta SOAP del WS, el `<autorizacion>` del portal (CDATA) y el comprobante suelto; exige `id="comprobante"`; reconoce retención/NC/ND (para F7/F7b). Números en cultura invariante, `decimal` |
+| `Catalogo/LectorCatalogoCompras` (ODBC) | `sageItems`, `sageVendors`, `SageContext.GetTwh*` | Una sola lectura de `LineItem` y los mismos filtros del `.exe`: ítems C (`CustomField1='COMPRA'`, **incluye inactivos**), IMPUESTO/R-IRF/R-IVA activos, detalle (clases 0/1/10, incluye inactivos), `AUT-SRI`, primera cuenta. Proveedor por identificación/ID |
+| `Catalogo/LectorCatalogoPeachEbills` + 4 entidades nuevas en `PsaWeb.PeachEbills` | — | `AboutApplyTwh`, `dicImpuestosTipo`, `IdentityType`, `VendorConfiguration` (partial `PeachEbillsContext.Compras.cs`) |
+| `Armado/PreparacionCompra` | `LoadInfoBill`, `LoadDetails`, `LoadingPaymentsAboutTwh`, `Twh332CodeUpdate`, `UpdateTaxLines` | Detalles del XML (total > 0, ítem aprendido de `VendorConfiguration`), «Resumir» (`Gruoped000…`), forma de pago sugerida, «no aplica retención» (332/332G/332I), líneas de IVA del XML y de una compra digitada |
+| `Armado/CalculadorRetenciones` | `CheckTwhApply` + `LoadTwhItems` | Renta por ítem (322 al 10 %), IVA por (ítem, tarifa) con base redondeada lejos de cero, contrapartida de retención asumida (7) |
+| `Armado/ArmadorOc` | `CorrectToLoad`, `LoadPurchaseOC`, `LoadPurchaseOrder` | Ítem C por línea, ítem C de ICE y propina, validaciones (mismos textos), reparto 10/90 de seguros, líneas en el orden del `.exe` (detalle, impuestos, propina, AUT-SRI, retenciones, asumidas, dos «.») y cabecera (§1.2). Devuelve errores, avisos y confirmaciones (factura a otra empresa) |
+| `Catalogo/ReglasProveedor` | setters de `sageVendor` | Proveedor nuevo/actualizado desde el XML (tipo de identificación, nombre 30+30, dirección 30+30, `PhoneNumber2`) e **ID propuesto** (§5.1) |
+
+### 16.2 Correcciones y fidelidades documentadas (§8)
+| | Qué | Decisión |
+|---|---|---|
+| C1 | `otrosRubrosTerceros`: el `.exe` sumaba solo el primer `<rubro>` a la propina | Se suman todos |
+| C2 | Ítem de IVA sin tarifa que calce: el `.exe` usaba el primer ítem IMPUESTO | Error |
+| C3 | IVA de compra digitada con el `float` de `dicTaxRate` (0.15000001) | Tasa exacta |
+| C4 | Nº de OC exigido de 7 caracteres | `XX-` + 4 o más dígitos (`OC-10000`) |
+| C5 | `PhoneNumber2`: el `.exe` truncaba el nº de contribuyente especial a 3 caracteres al releerlo | Número completo |
+| — | Suma de la compra ≠ total de la factura | Aviso (no bloquea) |
+| B1 | Ítem C del ICE compara el código de impuesto en vez del de porcentaje (suma todas las líneas) | Fiel |
+| B2 | Seguros 322 con cantidad ≠ 1: el 10 % queda multiplicado por la cantidad (el total cuadra) | Fiel |
+
+### 16.3 Cierre: las OC reales se reconstruyen sin diferencias
+`tests/PsaWeb.Compras.Tests/Validacion/ReconstruccionOcRealesTests` (x86, se salta sin `PSAWEB_TEST_SAGE_COMPRAS`): lee por ODBC las
+OC de la copia de prueba desde el 11/09, su XML de `C:\PSA-F2\xml` (bajado del WS con `descargar-xml.ps1`, fuera del repo) y los
+catálogos reales, deduce lo que eligió el digitador (forma de pago, cuenta y retenciones de cada línea, «Resumir», descripción editada)
+y compara **cabecera y cada fila** (ítem, descripción, cantidad, precio a 15 decimales, monto, cuenta, job).
+
+**Resultado (2026-09-25): 146 OC comparadas, 0 diferencias** (33 resumidas, 44 descripciones editadas por el digitador). Fuera de
+la comparación: OC-8904 (la de prueba de la F0) y **OC-8902**, donde el digitador resumió y cambió a mano el monto del grupo con IVA
+(61,51 → 57,60) sin tocar el IVA: esa OC no cuadra con su factura (74,36 vs 78,27) — justamente lo que el aviso nuevo detecta.
+
+Tests: 49 nuevos (lector, preparación, armador, retenciones, validaciones, proveedor); solución completa 896 en verde.
+
+### 16.4 Pendiente para F3
+- Numeración de OC (máximo numérico) y de retención (`twhNumNext` + `CheckForTwhNumberAlreadyUsed`) — necesitan leer Sage al guardar.
+- `LoadVendor` (crear/actualizar el proveedor por SDK) antes de la OC; `VendorConfiguration` nuevas/modificadas al guardar.
+- Contrato del trabajo `CrearOc` (payload = `OcArmada` + proveedor) y su manejador en el Bridge.
