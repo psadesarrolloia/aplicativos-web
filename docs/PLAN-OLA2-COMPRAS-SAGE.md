@@ -600,8 +600,10 @@ Tests: 49 nuevos (lector, preparación, armador, retenciones, validaciones, prov
 
 ### 17.3 Hallazgo: el anfitrión cambiaba con cada commit
 El SDK de .NET agrega `+<commit>` a la versión informativa: cada commit cambiaba el hash de `PsaWeb.SageBridge.exe` y Sage pedía
-autorizarlo de nuevo. Corregido con `IncludeSourceRevisionInInformationalVersion=false` en el anfitrión (verificado: dos commits distintos →
-mismo binario, SHA-256 `B3A05872…`). El usuario re-aprobó el acceso una vez en la copia (2026-09-25).
+autorizarlo de nuevo. Corregido con `IncludeSourceRevisionInInformationalVersion=false` en el anfitrión. **No alcanzaba** (visto en la F4): el PDB embebido
+llevaba SourceLink con el commit. Solución final: sin consultas a git (`EnableSourceControlManagerQueries=false`, `EnableSourceLink=false`)
+y sin PDB (`DebugType=none`). Verificado compilando en **dos commits distintos** (worktree temporal en ee296cf y HEAD): mismo binario,
+SHA-256 `99C8E111…`. Re-aprobado en la copia el 2026-09-25 (dos veces en total por este motivo).
 
 ### 17.4 Cierre: las OC escritas por el Bridge = las del `.exe`
 `tests/PsaWeb.Compras.Tests/Validacion/EscrituraOcCopiaTests` (**escribe en la copia**; solo con `PSAWEB_TEST_F3_ESCRIBIR=1` y el Bridge en
@@ -622,3 +624,58 @@ Tests: 913 en verde en la solución (12 saltados).
 ### 17.5 Pendiente
 - F4: módulo Compras (manual) — encola `GuardarOc`, muestra el resultado; permisos y auditoría.
 - F6: convertir OC → compra en el Bridge (`PurchaseOrderSync`).
+
+---
+
+## 18. F4 — Módulo Compras, captura manual (implementada 2026-09-25)
+
+### 18.1 Qué se construyó
+| Pieza | Ubicación | Notas |
+|---|---|---|
+| Lecturas de Sage | `src/PsaWeb.Compras/Sage/LectorOcs.cs` | Lista (`FrmPrintedPurchases`: estado Guardado/Contabilizado por la compra con `INV_POSOOrderNumber`, autorización), OC guardada con sus filas, cuentas, jobs, último prefijo y vista previa de numeración |
+| Recarga de una OC guardada | `src/PsaWeb.Compras/Sage/RecargaOc.cs` | **C9**: el `.exe` recargaba con IVA 12 % fijo, sin retenciones por línea y con la propina como detalle. Acá: tarifa desde la línea de IVA (la que reproduce el valor redondeado), retenciones deducidas (ítem C + suma de bases), forma de pago por las retenciones, propina e impuestos aparte, reparto 322 vuelto a unir. Avisa si lo recalculado no coincide con Sage |
+| Auditoría | `PsaWebPlataforma.AuditoriaRegistrosSage` (contexto de la cola, migración `AuditoriaRegistrosSage`) + `IAuditoriaSage` | Una fila por encolado o rechazo por validación: usuario, documento, tercero, trabajo, huella SHA-256 del payload |
+| Módulo | `modules/PsaWeb.Modules.Compras` | `/compras` (lista, filtro, Nueva, Abrir, Copiar — no electrónicas), `/compras/nueva?tipo=01\|02\|03`, `/compras/{postOrder}`, `/compras/{postOrder}/copiar`. Formulario: comprobante, proveedor (buscar por identificación, nuevo con «Proponer ID», datos del exterior), forma de pago (332* automático), detalle, impuestos, retención, totales/NETO, guardar → `GuardarOc` con seguimiento del trabajo. Solo lectura si la OC ya es compra o sin permiso. Aviso D5 desde OC-9900. Muestra la base de Sage que lee |
+| Menú y permisos | Categoría **Compras** (E3), `qupurchinv`/`mkpurchinv`, `docs/sql/permisos-compras-ventas.sql` (vista previa probada, **no aplicado**) | GateProvisional: `ServicioCompras.PermisosProvisionales = true` → también habilitan `qupurchtwh`/`mkpurchtwh` |
+| Desarrollo | `PeachEbills:DbqPorRuc` (`"RUC=dbq"`, user-secrets) | La web lee la misma copia en la que escribe el Bridge (`BasesPorRuc`) |
+
+La web no encola si la empresa no está **habilitada** en el Bridge (lo avisa). El proveedor existente solo se reescribe en lo que el
+digitador edita (sin volver a partir nombre/dirección/`PhoneNumber2`).
+
+### 18.2 Validación
+- **Recarga (solo lectura)**: `RecargaOcRealesTests` — las 146 OC reales de la copia se reabren sin XML y se vuelven a armar: **0
+  diferencias** (OC-8902 se advierte: no cuadra en Sage).
+- **Usuario en PREDATOR (2026-09-25)**, sobre la copia: factura física nueva **OC-8927** (ítem elegido, IVA 15 %, retención 1 % y 30 %
+  IVA; CxP 21,90) verificada fila a fila por ODBC; **actualización** de OC-8921 dos veces (mismo PostOrder, nº de OC y de retención);
+  rechazo por validación auditado. El resto de casos (tarjeta, asumida, nota de venta, liquidación, proveedor nuevo, copiar, contabilizada)
+  **se probará en el despliegue** (decisión del usuario).
+- Tests: 923 en verde en la solución.
+- Hallazgo del Bridge: el `.exe` todavía cambiaba con el commit por SourceLink (§17.3 corregido); re-aprobado en la copia.
+
+### 18.3 Pendiente
+- F5: documentos recibidos (XML del SRI → mismo formulario, «Resumir», `VendorConfiguration`), «Registrar en Sage» desde Conciliación.
+- Al desplegar: aplicar `permisos-compras-ventas.sql` y quitar el GateProvisional; casos de prueba pendientes de la F4.
+
+---
+
+## 19. F5 — Facturas recibidas desde el XML del SRI (implementada 2026-09-25)
+
+### 19.1 Qué se construyó
+| Pieza | Ubicación | Notas |
+|---|---|---|
+| Almacén de XML (§13.1) | `src/PsaWeb.Recibidos` — `RecibidosDbContext` (migración `Inicial`): `XmlComprobantesRecibidos`, `ConflictosXmlRecibidos`, `DescargasXmlFallidas` | gzip + SHA-256, único por RUC + clave, **inmutable** (un XML distinto para la misma clave queda como conflicto; el mismo comprobante con otro envoltorio SOAP/portal no es conflicto). Valida: parsea, clave interna = esperada, receptor = empresa (salvo confirmación explícita, como el «factura para otra empresa» del `.exe`), factura/NC/retención |
+| Descarga por el WS | `DescargadorXmlSri` (`AutorizacionComprobantesOffline`, 3 intentos) + `ServicioDescargaXml` | Lo que el WS no entrega queda en `DescargasXmlFallidas` (motivo `SinXml`/`Error`): mide lo que cae fuera de la ventana (§13.5) y no se reintenta pasados 20 días de la emisión |
+| Descarga automática | `ColaDescargaXml` + `TrabajadorDescargaXml` (BackgroundService); gancho en `POST /conciliacion-sri/api/comprobantes` | Al subir la extensión el reporte, se encolan las claves de facturas, NC y retenciones (código 01/04/07 de la clave) y se bajan detrás; la respuesta a la extensión no espera |
+| Bandeja | `/compras/recibidos` (módulo Compras) | Facturas / NC del período: reporte del SRI (staging de Conciliación) ∪ XML guardados. Estados **Falta XML / Pendiente / Guardado / Registrado** (por la OC con esa clave en su AUT-SRI y si ya se recibió). «Descargar XML faltantes», **«Desde texto»** (port del `.exe`: pegar texto, se toman las claves de 49 dígitos). NC solo se listan (F7) |
+| Formulario desde el XML | `/compras/recibidos/factura/{clave}` (mismo formulario de la F4) | `FormularioCompraEstado.DesdeFactura`: proveedor por RUC (existente actualizado como `LoadInfoBill`, o nuevo con ID propuesto), ítem aprendido de `VendorConfiguration`, forma de pago sugerida (332* automático), impuestos **fijos del XML**, propina, «Resumir detalles». Cabecera y montos del XML en solo lectura. Si ya hay OC con la clave: actualizar (o solo lectura si ya es compra). Avisos: ANULADO (WS de estado), ambiente de pruebas, otro receptor, total ≠ suma. Sin XML: **subida manual** (validada contra la clave). Al guardar: huella del XML en la auditoría y **aprende** código del proveedor → ítem de stock (`VendorConfiguration`, nuevas/modificadas) |
+| Conciliación | «**Registrar en Sage**» en las filas *Solo en SRI* de tipo factura (§4.2), con `?volver=conciliacion` | Solo si el usuario puede registrar compras (`ReglasCompras`, compartido con el módulo) |
+
+### 19.2 Validación
+- `PsaWeb.Recibidos.Tests` (8): almacén (guardar/leer, mismo comprobante con otro envoltorio, conflicto, rechazos, otro receptor con
+  confirmación), descargador, servicio de descarga (fuera de ventana no se reintenta). Carga de los **146 XML reales** de la F2 en el
+  almacén local: 0 rechazos, 0 conflictos, ~5 KB comprimido por factura.
+- `RecibidosCopiaTests` (copia de prueba, solo lectura): la bandeja 11–23/09 muestra las 146 facturas **Registrado**; el formulario desde
+  el XML de OC-8757 abre en modo actualizar/solo lectura, con el proveedor y la retención de la OC, y arma la misma OC que el `.exe`.
+- 932 tests en verde en la solución.
+- **Pendiente para el despliegue** (decisión del usuario): lote real de un día de CPTDC registrado desde la bandeja, y medir cuántos
+  documentos quedan fuera de la ventana del WS (`DescargasXmlFallidas`) para decidir la **F5b** (descarga por la extensión).

@@ -10,6 +10,7 @@
 @inject IOptions<ConciliacionOptions> Opciones
 @inject AuthenticationStateProvider AuthState
 @inject ILogger<ConciliacionSri> Logger
+@inject IServiceProvider Sp
 @implements IDisposable
 
 <PageTitle>Conciliación con SRI - Docs Recibidos — Aplicativos web PSA</PageTitle>
@@ -271,6 +272,12 @@ else
                                                    Disabled="_verificandoFila == fila.Sri.Id">
                                             @(_verificandoFila == fila.Sri.Id ? "…" : "Verificar con el SRI")
                                         </PsaButton>
+                                    }
+                                    @if (_puedeRegistrarCompras && fila.Clasificacion == ClasificacionConciliacion.SoloEnSri
+                                         && fila.Tipo == TipoDocumentoRecibido.Factura && fila.ClaveAcceso is not null)
+                                    {
+                                        @* §4.2: abre el formulario del módulo Compras con el XML; al terminar ofrece volver acá. *@
+                                        <a class="psa-linkbtn" style="margin-left: .4rem" href="/compras/recibidos/factura/@fila.ClaveAcceso?volver=conciliacion">Registrar en Sage</a>
                                     }
                                 </td>
                                 @if (_mostrarClave)
@@ -552,12 +559,27 @@ else
         EmpresaSage.Cambio += Refrescar;
         var estado = await AuthState.GetAuthenticationStateAsync();
         _usuarioActual = estado.User.Identity?.Name ?? "desconocido";
+        await CalcularPermisoComprasAsync();
+    }
+
+    // «Registrar en Sage» (§4.2 de la Ola 2): solo si el usuario puede registrar compras en la empresa de sesión.
+    private bool _puedeRegistrarCompras;
+
+    private async Task CalcularPermisoComprasAsync()
+    {
+        _puedeRegistrarCompras = false;
+        if (EmpresaSage.RucSesion is not { } ruc) return;
+        if (Sp.GetService(typeof(PsaWeb.Seguridad.ISecurityDirectory)) is PsaWeb.Seguridad.ISecurityDirectory dir)
+        {
+            _puedeRegistrarCompras = PsaWeb.Seguridad.ReglasCompras.PuedeRegistrar(await dir.PermisosAsync(_usuarioActual ?? string.Empty, ruc));
+        }
     }
 
     public void Dispose() => EmpresaSage.Cambio -= Refrescar;
 
     private void Refrescar()
     {
+        _ = InvokeAsync(async () => { await CalcularPermisoComprasAsync(); StateHasChanged(); });
         _filas = null;
         _error = null;
         _advertencias = [];

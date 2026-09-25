@@ -1,0 +1,887 @@
+@page "/compras/nueva"
+@page "/compras/{PostOrder:int}"
+@page "/compras/{PostOrder:int}/copiar"
+@page "/compras/recibidos/factura/{Clave}"
+@namespace PsaWeb.Modules.Compras.Pages
+@using System.Globalization
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Seguridad
+@using PsaWeb.SageBridge.Contratos
+@using PsaWeb.SageBridge.Cola.Data
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ILogger<Compra> Logger
+@implements IDisposable
+
+<PageTitle>@Titulo — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="@Titulo" Subtitle="@_empresaActual?.Nombre">
+    @if (Volver == "conciliacion")
+    {
+        <a class="psa-linkbtn" href="/conciliacion-sri">← Volver a Conciliación</a>
+    }
+    else if (Clave is not null)
+    {
+        <a class="psa-linkbtn" href="/compras/recibidos">← Volver a documentos recibidos</a>
+    }
+    else
+    {
+        <a class="psa-linkbtn" href="/compras">← Volver a la lista</a>
+    }
+</PsaPageHeader>
+
+@if (_servicio is null)
+{
+    <div class="psa-notice psa-notice--danger">El módulo Compras no está configurado.</div>
+}
+else if (_ruc is null)
+{
+    <div class="psa-notice">Elija una empresa para trabajar.</div>
+}
+else if (_cargaError is not null)
+{
+    <div class="psa-notice psa-notice--danger">@_cargaError</div>
+}
+else if (_faltaXml)
+{
+    <PsaCard Title="Falta el XML de la factura">
+        <p>
+            El web service del SRI ya no entrega este comprobante (solo lo hace ~15 días después de emitido).
+            Descárguelo del portal del SRI (Comprobantes electrónicos recibidos › XML) y súbalo aquí.
+        </p>
+        <p class="psa-muted">Clave de acceso: @Clave</p>
+        <div class="psa-row" style="gap: 1rem; align-items: center; flex-wrap: wrap; margin-top: .8rem">
+            <InputFile OnChange="SubirXml" accept=".xml" />
+            <label style="display: flex; gap: .4rem; align-items: center">
+                <input type="checkbox" @bind="_aceptarOtroReceptor" /> Es de otra empresa (confirmo que la registro aquí)
+            </label>
+        </div>
+        @if (_errorSubida is not null)
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-top: .8rem">@_errorSubida</div>
+        }
+    </PsaCard>
+}
+else if (_f is null || _ctx is null)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else
+{
+    @if (_soloLectura)
+    {
+        <div class="psa-notice" style="margin-bottom: 1rem">
+            @(_contabilizada ? "Esta OC ya se convirtió en compra (contabilizada): solo lectura." : "No tiene permiso para registrar compras: solo lectura.")
+        </div>
+    }
+    @foreach (var a in _avisosCarga)
+    {
+        <div class="psa-notice @(a.Contains("ANULADO") || a.StartsWith("No se pudo") || a.StartsWith("No hay") ? "psa-notice--danger" : "")" style="margin-bottom: .6rem">@a</div>
+    }
+
+    <fieldset disabled="@_soloLectura" style="border: 0; padding: 0; margin: 0">
+
+    <PsaCard Title="Comprobante">
+        <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
+            <label class="psa-field">
+                <span class="psa-field__label">Tipo</span>
+                <select class="psa-input" value="@_f.Tipo" @onchange="CambiarTipo" disabled="@(_f.Modo == ModoFormulario.Existente || DesdeXml)">
+                    <option value="@TipoDocumentoCompra.Factura">Factura</option>
+                    <option value="@TipoDocumentoCompra.NotaDeVenta">Nota de venta</option>
+                    <option value="@TipoDocumentoCompra.Liquidacion">Liquidación de compra</option>
+                </select>
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Sustento</span>
+                <select class="psa-input" @bind="_f.Sustento">
+                    <option value="@SustentoCompra.Credito">Crédito</option>
+                    <option value="@SustentoCompra.Costo">Costo</option>
+                </select>
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Nº de factura</span>
+                <input class="psa-input" @bind="_f.NumeroFactura" placeholder="001-001-000000123" maxlength="17" disabled="@(_f.Modo == ModoFormulario.Existente || DesdeXml)" />
+            </label>
+            <label class="psa-field" style="min-width: 24rem">
+                <span class="psa-field__label">Autorización (10 dígitos) o clave de acceso (49)</span>
+                <input class="psa-input" @bind="_f.Autorizacion" inputmode="numeric" maxlength="49" disabled="@DesdeXml" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Fecha de emisión</span>
+                <input type="date" class="psa-input" @bind="_f.FechaEmision" disabled="@DesdeXml" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Fecha de registro</span>
+                <input type="date" class="psa-input" @bind="_f.FechaRegistro" />
+            </label>
+        </div>
+        <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin-top: .8rem">
+            <label class="psa-field">
+                <span class="psa-field__label">Nº de OC</span>
+                @if (_f.Modo == ModoFormulario.Existente)
+                {
+                    <input class="psa-input" value="@_f.NumeroOcExistente" disabled />
+                }
+                else
+                {
+                    <input class="psa-input" @bind="_f.NumeroOcManual" placeholder="@($"{_f.NumeroOcPrevisto} (automático)")" maxlength="12" />
+                }
+            </label>
+            @if (AvisoNumeracion is { } aviso)
+            {
+                <div class="psa-notice" style="flex: 1">@aviso</div>
+            }
+        </div>
+    </PsaCard>
+
+    <PsaCard Title="Proveedor">
+        @if (_f.Proveedor is null)
+        {
+            <div class="psa-row" style="gap: 1rem; align-items: flex-end; flex-wrap: wrap">
+                <label class="psa-field">
+                    <span class="psa-field__label">RUC / cédula / identificación</span>
+                    <input class="psa-input" @bind="_buscarId" @bind:event="oninput" @onkeydown="BuscarConEnter" />
+                </label>
+                <PsaButton Variant="secondary" OnClick="BuscarProveedor" Disabled="@string.IsNullOrWhiteSpace(_buscarId)">Buscar en Sage</PsaButton>
+            </div>
+            @if (_encontrados is not null)
+            {
+                @if (_encontrados.Count == 0)
+                {
+                    <p class="psa-muted" style="margin-top: .8rem">No hay proveedores con esa identificación en Sage.</p>
+                }
+                else
+                {
+                    <table class="psa-table psa-table--interactiva" style="margin-top: .8rem">
+                        <thead><tr><th>ID</th><th>Nombre</th><th>Cuenta de gasto</th><th>Estado</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in _encontrados)
+                            {
+                                <tr style="cursor: pointer" @onclick="() => ElegirProveedor(p)">
+                                    <td>@p.Id</td><td>@p.NombreCompleto</td><td>@p.CuentaGasto</td><td>@(p.Inactivo ? "Inactivo (se reactiva)" : "Activo")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                <PsaButton Variant="ghost" OnClick="NuevoProveedor" style="margin-top: .8rem">Crear proveedor nuevo con esta identificación</PsaButton>
+            }
+        }
+        else
+        {
+            var p = _f.Proveedor;
+            <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
+                <label class="psa-field">
+                    <span class="psa-field__label">ID en Sage @(p.EsNuevo ? "(nuevo)" : "")</span>
+                    <input class="psa-input" @bind="p.Id" maxlength="20" disabled="@(!p.EsNuevo)" />
+                </label>
+                @if (p.EsNuevo)
+                {
+                    <PsaButton Variant="ghost" OnClick="ProponerId">Proponer ID</PsaButton>
+                }
+                <label class="psa-field">
+                    <span class="psa-field__label">Identificación</span>
+                    <input class="psa-input" value="@p.Identificacion" disabled />
+                </label>
+                <label class="psa-field">
+                    <span class="psa-field__label">Tipo</span>
+                    <select class="psa-input" @bind="p.TipoIdentificacion">
+                        <option value="04">04 RUC</option>
+                        <option value="05">05 Cédula</option>
+                        <option value="06">06 Pasaporte</option>
+                        <option value="08">08 Identificación del exterior</option>
+                    </select>
+                </label>
+                <label class="psa-field" style="min-width: 22rem">
+                    <span class="psa-field__label">Razón social</span>
+                    <input class="psa-input" @bind="p.NombreCompleto" maxlength="60" />
+                </label>
+            </div>
+            <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin-top: .8rem">
+                <label class="psa-field" style="min-width: 22rem">
+                    <span class="psa-field__label">Dirección</span>
+                    <input class="psa-input" @bind="p.Direccion" maxlength="60" />
+                </label>
+                <label class="psa-field" style="min-width: 16rem">
+                    <span class="psa-field__label">Email</span>
+                    <input class="psa-input" @bind="p.Email" />
+                </label>
+                <label class="psa-field">
+                    <span class="psa-field__label">Teléfono</span>
+                    <input class="psa-input" @bind="p.Telefono" />
+                </label>
+                <label class="psa-field">
+                    <span class="psa-field__label">Cuenta de gasto</span>
+                    <input class="psa-input" list="compras-cuentas" @bind="p.CuentaGasto" disabled="@(!p.EsNuevo)" />
+                </label>
+                <label class="psa-field">
+                    <span class="psa-field__label">Contribuyente especial (nº)</span>
+                    <input class="psa-input" @bind="p.ContribuyenteEspecial" />
+                </label>
+                <label style="display: flex; gap: .4rem; align-items: center">
+                    <input type="checkbox" @bind="p.ObligadoContabilidad" /> Obligado a llevar contabilidad
+                </label>
+            </div>
+            @if (p.TipoIdentificacion is "06" or "08")
+            {
+                <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin-top: .8rem">
+                    <label class="psa-field">
+                        <span class="psa-field__label">Tipo de proveedor del exterior</span>
+                        <select class="psa-input" value="@ExteriorValor(0)" @onchange="e => ExteriorPoner(0, e.Value)">
+                            <option value="">—</option><option value="01">01 Persona natural</option><option value="02">02 Sociedad</option>
+                        </select>
+                    </label>
+                    <label class="psa-field">
+                        <span class="psa-field__label">Pago</span>
+                        <select class="psa-input" value="@ExteriorValor(1)" @onchange="e => ExteriorPoner(1, e.Value)">
+                            <option value="">—</option><option value="01">01 Local</option><option value="02">02 Exterior</option>
+                        </select>
+                    </label>
+                    <label class="psa-field">
+                        <span class="psa-field__label">Código de país</span>
+                        <input class="psa-input" value="@ExteriorValor(4)" @onchange="e => ExteriorPoner(4, e.Value)" maxlength="3" />
+                    </label>
+                    <label class="psa-field">
+                        <span class="psa-field__label">Convenio de doble tributación</span>
+                        <select class="psa-input" value="@ExteriorValor(5)" @onchange="e => ExteriorPoner(5, e.Value)">
+                            <option value="">—</option><option value="SI">SI</option><option value="NO">NO</option>
+                        </select>
+                    </label>
+                </div>
+            }
+            @if (_f.Modo != ModoFormulario.Existente && !DesdeXml)
+            {
+                <PsaButton Variant="ghost" OnClick="CambiarProveedor" style="margin-top: .8rem">Cambiar proveedor</PsaButton>
+            }
+            @if (_idUsado)
+            {
+                <div class="psa-notice psa-notice--danger" style="margin-top: .6rem">El ID «@p.Id» ya lo usa otro proveedor en Sage. Elija otro.</div>
+            }
+        }
+    </PsaCard>
+
+    <PsaCard Title="Detalle">
+        <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin-bottom: .8rem">
+            <label class="psa-field" style="min-width: 22rem">
+                <span class="psa-field__label">Forma de pago / retención</span>
+                <select class="psa-input" value="@_f.FormaPagoId" @onchange="CambiarFormaPago">
+                    <optgroup label="Aplica retención">
+                        @foreach (var fp in _ctx.Catalogo.FormasPago.Where(x => x.TieneRetencion))
+                        {
+                            <option value="@fp.Id">@fp.Descripcion</option>
+                        }
+                    </optgroup>
+                    <optgroup label="No aplica retención">
+                        @foreach (var fp in _ctx.Catalogo.FormasPago.Where(x => !x.TieneRetencion))
+                        {
+                            <option value="@fp.Id">@fp.Descripcion</option>
+                        }
+                    </optgroup>
+                </select>
+            </label>
+        </div>
+        <div style="overflow-x: auto">
+        <table class="psa-table">
+            <thead>
+                <tr>
+                    <th style="min-width: 16rem">Descripción</th><th>Cantidad</th><th>Precio unit.</th><th>Subtotal</th><th>IVA</th>
+                    <th>Ítem (opcional)</th><th>Cuenta</th><th>Ret. renta</th><th>Ret. IVA</th><th>Job</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in _f.Detalles)
+                {
+                    <tr>
+                        <td><input class="psa-input psa-input--sm" style="width: 100%" @bind="d.Descripcion" maxlength="159" /></td>
+                        <td><input class="psa-input psa-input--sm" style="width: 6rem" type="number" step="any" value="@Num(d.Cantidad)" @onchange="e => PonerCantidad(d, e.Value)" disabled="@DesdeXml" /></td>
+                        <td><input class="psa-input psa-input--sm" style="width: 7rem" type="number" step="any" value="@Num(d.PrecioUnitario)" @onchange="e => PonerPrecio(d, e.Value)" disabled="@DesdeXml" /></td>
+                        <td style="text-align: right">@Dinero(d.MontoSinImpuestos)</td>
+                        <td>
+                            <select class="psa-input psa-input--sm" value="@d.CodigoPorcentajeIva" @onchange="e => CambiarIva(d, e.Value)" disabled="@DesdeXml">
+                                @foreach (var t in _ctx.Catalogo.TarifasIva)
+                                {
+                                    <option value="@t.CodigoPorcentaje">@t.Nombre</option>
+                                }
+                            </select>
+                        </td>
+                        <td><input class="psa-input psa-input--sm" style="width: 9rem" list="compras-items" value="@d.ItemId" @onchange="e => PonerItem(d, e.Value)" /></td>
+                        <td><input class="psa-input psa-input--sm" style="width: 8rem" list="compras-cuentas" @bind="d.CuentaId" /></td>
+                        <td>
+                            <select class="psa-input psa-input--sm" value="@d.RetencionFuenteId" @onchange="e => PonerRetencion(d, e.Value, fuente: true)" disabled="@(!AplicaRetencion)">
+                                <option value="">—</option>
+                                @foreach (var r in _ctx.Catalogo.ItemsRetencionFuente)
+                                {
+                                    <option value="@r.Id">@r.Id</option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <select class="psa-input psa-input--sm" value="@d.RetencionIvaId" @onchange="e => PonerRetencion(d, e.Value, fuente: false)" disabled="@(!AplicaRetencion)">
+                                <option value="">—</option>
+                                @foreach (var r in _ctx.Catalogo.ItemsRetencionIva)
+                                {
+                                    <option value="@r.Id">@r.Id</option>
+                                }
+                            </select>
+                        </td>
+                        <td><input class="psa-input psa-input--sm" style="width: 7rem" list="compras-jobs" @bind="d.JobId" /></td>
+                        <td>@if (!DesdeXml) { <button class="psa-linkbtn" title="Quitar línea" @onclick="() => QuitarLinea(d)">✕</button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+        @if (DesdeXml)
+        {
+            @if (_f.DetallesOriginales is { Count: > 1 })
+            {
+                <PsaButton Variant="ghost" OnClick="AlternarResumen" style="margin-top: .8rem">@(_f.Resumido ? "Detalles originales" : "Resumir detalles")</PsaButton>
+            }
+        }
+        else
+        {
+            <PsaButton Variant="ghost" OnClick="AgregarLinea" style="margin-top: .8rem">+ Agregar línea</PsaButton>
+        }
+
+        <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end; margin-top: 1rem">
+            <label class="psa-field">
+                <span class="psa-field__label">Propina / otros</span>
+                <input class="psa-input" type="number" step="any" style="width: 8rem" value="@Num(_f.Propina)" @onchange="PonerPropina" />
+            </label>
+        </div>
+    </PsaCard>
+
+    <div class="psa-grid" style="grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 1rem">
+        <PsaCard Title="Impuestos">
+            @if (_erroresImpuestos.Count > 0)
+            {
+                @foreach (var e in _erroresImpuestos) { <div class="psa-notice psa-notice--danger">@e</div> }
+            }
+            <table class="psa-table">
+                <thead><tr><th>Impuesto</th><th>Ítem</th><th>Cuenta</th><th>Base</th><th>Valor</th></tr></thead>
+                <tbody>
+                    @foreach (var t in _impuestos)
+                    {
+                        <tr>
+                            <td>@(_ctx.Catalogo.TiposImpuesto.GetValueOrDefault(t.Codigo) ?? t.Codigo)</td>
+                            <td>@t.ItemId</td><td>@t.CuentaId</td>
+                            <td style="text-align: right">@Dinero(t.BaseImponible)</td><td style="text-align: right">@Dinero(t.Valor)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (_f.ImpuestosOriginales is not null && !_f.LineasModificadas)
+            {
+                <p class="psa-muted" style="margin-top: .5rem">Impuestos tal como están en la OC; si cambia las líneas se recalculan.</p>
+            }
+        </PsaCard>
+
+        <PsaCard Title="Retención">
+            @if (_retenciones is null)
+            {
+                <p class="psa-muted">Sin retención.</p>
+            }
+            else
+            {
+                <div class="psa-row" style="gap: 1rem; align-items: flex-end; margin-bottom: .6rem">
+                    <label class="psa-field">
+                        <span class="psa-field__label">Nº de retención</span>
+                        @if (_f.NumeroRetencionExistente is { } ret)
+                        {
+                            <input class="psa-input" value="@ret" disabled />
+                        }
+                        else
+                        {
+                            <input class="psa-input" @bind="_f.NumeroRetencionManual" placeholder="@($"{_f.NumeroRetencionPrevisto} (automático)")" maxlength="17" />
+                        }
+                    </label>
+                </div>
+                <table class="psa-table">
+                    <thead><tr><th>Ítem</th><th>Cuenta</th><th>Base</th><th>Valor</th>@if (EsAsumida) { <th>Cuenta asumida</th> }</tr></thead>
+                    <tbody>
+                        @foreach (var r in _retenciones)
+                        {
+                            <tr>
+                                <td>@r.ItemId</td><td>@r.CuentaId</td>
+                                <td style="text-align: right">@Dinero(r.BaseImponible)</td><td style="text-align: right">@Dinero(r.Valor)</td>
+                                @if (EsAsumida) { <td>@r.CuentaAsumida</td> }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </PsaCard>
+
+        <PsaCard Title="Totales">
+            <dl class="psa-def">
+                <dt>Subtotal</dt><dd>@Dinero(Subtotal)</dd>
+                <dt>IVA y otros impuestos</dt><dd>@Dinero(_impuestos.Sum(x => x.Valor))</dd>
+                <dt>Propina / otros</dt><dd>@Dinero(_f.Propina)</dd>
+                <dt>Total</dt><dd><strong>@Dinero(Total)</strong></dd>
+                <dt>Retenciones</dt><dd>@Dinero(TotalRetenido)</dd>
+                <dt>Neto a pagar</dt><dd><strong>@Dinero(Total + (EsAsumida ? 0 : TotalRetenido))</strong></dd>
+            </dl>
+        </PsaCard>
+    </div>
+
+    </fieldset>
+
+    @if (!_soloLectura)
+    {
+        <PsaCard Title="Guardar en Sage">
+            @if (_resultado?.Armado is { } armado)
+            {
+                @foreach (var e in armado.Errores) { <div class="psa-notice psa-notice--danger" style="margin-bottom: .4rem">@e</div> }
+                @if (armado.Errores.Count == 0)
+                {
+                    @foreach (var c in armado.Confirmaciones)
+                    {
+                        <label class="psa-notice" style="display: flex; gap: .5rem; margin-bottom: .4rem">
+                            <input type="checkbox" @bind="_confirmado" /> @c
+                        </label>
+                    }
+                }
+                <details style="margin-bottom: .6rem">
+                    <summary class="psa-muted">Avisos del armado (@armado.Avisos.Count)</summary>
+                    <ul>@foreach (var a in armado.Avisos) { <li>@a</li> }</ul>
+                </details>
+            }
+            @if (_errorGuardar is not null)
+            {
+                <div class="psa-notice psa-notice--danger" style="margin-bottom: .6rem">@_errorGuardar</div>
+            }
+            @if (_trabajo is not null)
+            {
+                <div class="psa-notice @(ClaseTrabajo)" style="margin-bottom: .6rem">@TextoTrabajo</div>
+            }
+            <PsaButton Variant="primary" OnClick="Guardar" Disabled="@(_guardando || TrabajoEnCurso)">
+                @(_guardando ? "Validando…" : _f.Modo == ModoFormulario.Existente ? "Actualizar en Sage" : "Guardar en Sage")
+            </PsaButton>
+            <p class="psa-muted" style="margin-top: .5rem">
+                Se valida aquí y el Sage Bridge escribe la orden de compra en Sage; los números de OC y retención se asignan al guardar.
+            </p>
+        </PsaCard>
+    }
+
+    <datalist id="compras-cuentas">
+        @foreach (var c in _ctx.Cuentas) { <option value="@c.Id">@c.Descripcion</option> }
+    </datalist>
+    <datalist id="compras-items">
+        @foreach (var i in _ctx.Catalogo.ItemsDetalle.Where(x => !x.Inactivo)) { <option value="@i.Id">@i.Descripcion</option> }
+    </datalist>
+    <datalist id="compras-jobs">
+        @foreach (var j in _ctx.Jobs) { <option value="@j.Id">@j.Descripcion</option> }
+    </datalist>
+}
+
+@code {
+    [Parameter] public int? PostOrder { get; set; }
+    [SupplyParameterFromQuery(Name = "tipo")] public string? TipoQuery { get; set; }
+    [Parameter] public string? Clave { get; set; }
+    [SupplyParameterFromQuery(Name = "volver")] public string? Volver { get; set; }
+
+    private static readonly CultureInfo Es = CultureInfo.GetCultureInfo("es-EC");
+    private ServicioCompras? _servicio;
+    private EmpresaActualService? _empresaActual;
+    private string? _ruc;
+    private string _usuario = "web";
+    private PermisosCompras? _permisos;
+    private ContextoCompras? _ctx;
+    private FormularioCompraEstado? _f;
+    private string? _cargaError;
+    private IReadOnlyList<string> _avisosCarga = [];
+    private bool _contabilizada;
+    private bool _soloLectura;
+    private string _buscarId = string.Empty;
+    private IReadOnlyList<ProveedorSage>? _encontrados;
+    private bool _idUsado;
+    private IReadOnlyList<LineaImpuesto> _impuestos = [];
+    private IReadOnlyList<string> _erroresImpuestos = [];
+    private IReadOnlyList<LineaRetencion>? _retenciones;
+    private ResultadoGuardarCompra? _resultado;
+    private bool _confirmado;
+    private bool _guardando;
+    private string? _errorGuardar;
+    private TrabajoSage? _trabajo;
+    private System.Threading.Timer? _sondeo;
+    private ServicioRecibidos? _recibidos;
+    private bool _faltaXml;
+    private bool _aceptarOtroReceptor;
+    private string? _errorSubida;
+    private string? _huellaXml;
+    private bool DesdeXml => _f?.Factura is not null;
+
+    private bool EsCopia => Nav.Uri.Split('?')[0].EndsWith("/copiar", StringComparison.OrdinalIgnoreCase);
+    private string Titulo => Clave is not null ? $"Factura recibida {_f?.NumeroFactura}".TrimEnd() : _f?.Modo switch
+    {
+        ModoFormulario.Existente => $"Compra {_f.NumeroOcExistente}",
+        ModoFormulario.Copia => "Nueva compra (copia)",
+        _ => "Nueva compra",
+    };
+
+    private bool AplicaRetencion => _f?.FormaPagoId is { } id && _ctx?.Catalogo.FormaPago(id) is { TieneRetencion: true };
+    private bool EsAsumida => _f?.FormaPagoId == FormaPagoRetencion.RetencionAsumida;
+    private decimal Subtotal => _f?.Detalles.Sum(x => x.MontoSinImpuestos) ?? 0;
+    private decimal Total => Subtotal + _impuestos.Sum(x => x.Valor) + (_f?.Propina ?? 0);
+    private decimal TotalRetenido => _retenciones?.Sum(x => x.Valor) ?? 0;
+    private bool TrabajoEnCurso => _trabajo is not null && !EstadosTrabajo.EsFinal(_trabajo.Estado);
+
+    /// <summary>D5: el `.exe` exige «xx-xxxx»; desde -9900 se avisa que se acerca al límite (la web sigue en -10000).</summary>
+    private string? AvisoNumeracion
+    {
+        get
+        {
+            var n = string.IsNullOrWhiteSpace(_f?.NumeroOcManual) ? _f?.NumeroOcPrevisto : _f?.NumeroOcManual;
+            if (n is null || n.Length < 4 || !int.TryParse(n[3..], out var numero) || numero < 9900) return null;
+            return $"La numeración de OC llegó a {n}: el aplicativo de escritorio no acepta más de OC-9999 (la web continúa en OC-10000).";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _servicio = Sp.GetService<ServicioCompras>();
+        _recibidos = Sp.GetService<ServicioRecibidos>();
+        _empresaActual = Sp.GetService<EmpresaActualService>();
+        _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        _ruc = _empresaActual?.Ruc;
+        if (_servicio is null || _ruc is null) return;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        if (_servicio is null || _ruc is null) return;
+        try
+        {
+            _permisos = await _servicio.PermisosAsync(_usuario, _ruc);
+            if (!_permisos.Ver) { _cargaError = "No tiene permiso para ver las compras de esta empresa."; return; }
+            _ctx = await _servicio.ContextoAsync(_ruc);
+            if (Clave is not null)
+            {
+                if (_recibidos is not { Disponible: true }) { _cargaError = "Falta configurar el almacén de XML recibidos."; return; }
+                var carga = await _recibidos.CargarFacturaAsync(_ruc, Clave, _usuario);
+                _faltaXml = carga.FaltaXml;
+                if (carga.FaltaXml) return;
+                if (carga.Error is not null) { _cargaError = "El XML no se pudo leer como factura: " + carga.Error; return; }
+                _f = carga.Formulario!;
+                _avisosCarga = carga.Avisos;
+                _huellaXml = carga.HuellaXml;
+                _contabilizada = carga.OcExistente?.Recibida == true;
+            }
+            else if (PostOrder is { } po)
+            {
+                var abierta = await _servicio.AbrirAsync(_ruc, po);
+                if (abierta is null) { _cargaError = $"No se encontró la orden de compra (PostOrder {po}) o su proveedor."; return; }
+                var (recarga, cabecera) = abierta.Value;
+                if (EsCopia && recarga.Entrada.Autorizacion.Length > 40) { _cargaError = "No se permite copiar un comprobante electrónico."; return; }
+                _f = FormularioCompraEstado.DesdeOc(recarga, cabecera, EsCopia);
+                _avisosCarga = recarga.Avisos;
+                _contabilizada = !EsCopia && cabecera.Recibida;
+            }
+            else
+            {
+                var tipo = TipoQuery switch { "02" => TipoDocumentoCompra.NotaDeVenta, "03" => TipoDocumentoCompra.Liquidacion, _ => TipoDocumentoCompra.Factura };
+                _f = FormularioCompraEstado.Nueva(tipo);
+            }
+            _soloLectura = _contabilizada || !_permisos.Registrar;
+            if (_f.Modo != ModoFormulario.Existente || _f.NumeroRetencionExistente is null)
+            {
+                var (_, oc, ret) = await _servicio.NumeracionAsync(_ruc);
+                _f.NumeroOcPrevisto = oc;
+                _f.NumeroRetencionPrevisto = ret;
+            }
+            Recalcular();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo abrir el formulario de compra");
+            _cargaError = "No se pudo leer Sage 50: " + ex.Message;
+        }
+    }
+
+    /// <summary>Subida manual del XML (fuera de la ventana del WS): se valida contra la clave de la URL y se vuelve a cargar.</summary>
+    private async Task SubirXml(InputFileChangeEventArgs e)
+    {
+        if (_recibidos is null || _ruc is null || Clave is null) return;
+        _errorSubida = null;
+        try
+        {
+            using var lector = new StreamReader(e.File.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024), System.Text.Encoding.UTF8);
+            var contenido = await lector.ReadToEndAsync();
+            var g = await _recibidos.SubirAsync(_ruc, contenido, _usuario, Clave, _aceptarOtroReceptor);
+            if (g.Resultado is PsaWeb.Recibidos.ResultadoGuardadoXml.Rechazado)
+            {
+                _errorSubida = g.Motivo;
+                return;
+            }
+            _faltaXml = false;
+            await CargarAsync();
+        }
+        catch (IOException ex)
+        {
+            _errorSubida = "No se pudo leer el archivo: " + ex.Message;
+        }
+    }
+
+    private void AlternarResumen()
+    {
+        if (_f is null || _ctx is null) return;
+        _f.AlternarResumen(_ctx.Catalogo);
+        Recalcular();
+    }
+
+    private void Recalcular()
+    {
+        if (_f is null || _ctx is null) return;
+        _impuestos = _f.Impuestos(_ctx.Catalogo, out var errores);
+        _erroresImpuestos = errores;
+        _retenciones = _f.Retenciones(_ctx.Catalogo);
+    }
+
+    private void CambiarTipo(ChangeEventArgs e)
+    {
+        if (_f is null || !Enum.TryParse<TipoDocumentoCompra>(e.Value?.ToString(), out var t)) return;
+        _f.Tipo = t;
+        _f.Sustento = t == TipoDocumentoCompra.NotaDeVenta ? SustentoCompra.Costo : SustentoCompra.Credito;
+    }
+
+    private void CambiarFormaPago(ChangeEventArgs e)
+    {
+        if (_f is null || _ctx is null || !int.TryParse(e.Value?.ToString(), out var id)) return;
+        _f.CambiarFormaPago(id, _ctx.Catalogo);
+        Recalcular();
+    }
+
+    private void AgregarLinea()
+    {
+        _f?.AgregarLinea(_f.Proveedor?.CuentaGasto);
+        if (_f?.FormaPagoId is { } id && _ctx is not null && _ctx.Catalogo.FormaPago(id) is { TieneRetencion: false })
+        {
+            PreparacionCompra.AplicarNoRetencion(_f.Detalles, id, _ctx.Catalogo);
+        }
+        if (_f is not null) _f.LineasModificadas = true;
+        Recalcular();
+    }
+
+    private void QuitarLinea(LineaDetalle d)
+    {
+        _f?.Detalles.Remove(d);
+        if (_f is not null) _f.LineasModificadas = true;
+        Recalcular();
+    }
+
+    private void PonerCantidad(LineaDetalle d, object? v)
+    {
+        if (!TryDecimal(v, out var n) || n <= 0) return;
+        d.Cantidad = n;
+        _f!.Recalcular(d);
+        Recalcular();
+    }
+
+    private void PonerPrecio(LineaDetalle d, object? v)
+    {
+        if (!TryDecimal(v, out var n) || n < 0) return;
+        d.PrecioUnitario = n;
+        _f!.Recalcular(d);
+        Recalcular();
+    }
+
+    private void PonerPropina(ChangeEventArgs e)
+    {
+        if (_f is null || !TryDecimal(e.Value, out var n) || n < 0) return;
+        _f.Propina = Math.Round(n, 2);
+        Recalcular();
+    }
+
+    private void CambiarIva(LineaDetalle d, object? v)
+    {
+        if (_f is null || _ctx is null || v?.ToString() is not { Length: > 0 } codigo) return;
+        _f.CambiarIva(d, codigo, _ctx.Catalogo);
+        Recalcular();
+    }
+
+    /// <summary>Ítem de stock elegido: su cuenta de inventario (<c>dgvBillDetails_CellEndEdit</c>).</summary>
+    private void PonerItem(LineaDetalle d, object? v)
+    {
+        var id = v?.ToString()?.Trim();
+        d.ItemId = string.IsNullOrEmpty(id) ? null : id;
+        var item = d.ItemId is null ? null : _ctx?.Catalogo.ItemsDetalle.FirstOrDefault(x => x.Id == d.ItemId);
+        if (item is { Clase: 1, CuentaInventario: { } cuenta }) d.CuentaId = cuenta;
+        else if (d.CuentaId is null && _f?.Proveedor?.CuentaGasto is { Length: > 0 } gasto) d.CuentaId = gasto;
+        if (_f is not null) _f.LineasModificadas = true;
+    }
+
+    private void PonerRetencion(LineaDetalle d, object? v, bool fuente)
+    {
+        var id = v?.ToString();
+        if (string.IsNullOrEmpty(id)) id = null;
+        if (fuente) d.RetencionFuenteId = id; else d.RetencionIvaId = id;
+        Recalcular();
+    }
+
+    private async Task BuscarConEnter(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarProveedor();
+    }
+
+    private async Task BuscarProveedor()
+    {
+        if (_servicio is null || _ruc is null || string.IsNullOrWhiteSpace(_buscarId)) return;
+        _encontrados = await _servicio.ProveedoresPorIdentificacionAsync(_ruc, _buscarId);
+    }
+
+    private void ElegirProveedor(ProveedorSage p)
+    {
+        if (_f is null) return;
+        _f.Proveedor = ProveedorEdicion.Desde(p);
+        foreach (var d in _f.Detalles.Where(x => string.IsNullOrEmpty(x.CuentaId))) d.CuentaId = p.CuentaGasto;
+        Recalcular();
+    }
+
+    private async Task NuevoProveedor()
+    {
+        if (_f is null) return;
+        _f.Proveedor = ProveedorEdicion.Nuevo(_buscarId);
+        await ProponerId();
+    }
+
+    private async Task ProponerId()
+    {
+        if (_servicio is null || _ruc is null || _f?.Proveedor is not { EsNuevo: true } p) return;
+        var (propuesto, _) = await _servicio.IdProveedorAsync(_ruc, string.IsNullOrWhiteSpace(p.NombreCompleto) ? p.Identificacion : p.NombreCompleto, null);
+        p.Id = propuesto;
+        _idUsado = false;
+    }
+
+    private void CambiarProveedor()
+    {
+        if (_f is null) return;
+        _f.Proveedor = null;
+        _encontrados = null;
+        _idUsado = false;
+    }
+
+    private string ExteriorValor(int i)
+    {
+        var v = ExteriorArray();
+        return i < v.Length ? v[i] : string.Empty;
+    }
+
+    private void ExteriorPoner(int i, object? valor)
+    {
+        if (_f?.Proveedor is not { } p) return;
+        var v = ExteriorArray();
+        v[i] = valor?.ToString() ?? string.Empty;
+        p.DatosExterior = JsonSerializer.Serialize(v);
+    }
+
+    private string[] ExteriorArray()
+    {
+        try
+        {
+            if (JsonSerializer.Deserialize<string[]>(_f?.Proveedor?.DatosExterior ?? "") is { Length: 7 } arr) return arr;
+        }
+        catch (JsonException) { }
+        return new string[7].Select(_ => string.Empty).ToArray();
+    }
+
+    private async Task Guardar()
+    {
+        if (_servicio is null || _ruc is null || _f is null || _ctx is null) return;
+        _guardando = true;
+        _errorGuardar = null;
+        try
+        {
+            if (_f.Proveedor is { EsNuevo: true } nuevo)
+            {
+                var (_, usado) = await _servicio.IdProveedorAsync(_ruc, nuevo.NombreCompleto, nuevo.Id);
+                _idUsado = usado;
+                if (usado) return;
+            }
+            _f.PropagarCuentaGasto();
+            Recalcular();
+            var entrada = _f.Entrada(_ruc, _ctx.Catalogo);
+            if (entrada is null) { _errorGuardar = "Elija o cree el proveedor."; return; }
+            _resultado = await _servicio.GuardarAsync(_ruc, _usuario, entrada, _f.NumeroOcAutomatico, _f.NumeroRetencionAutomatico, _confirmado,
+                huellaOrigen: _huellaXml);
+            _errorGuardar = _resultado.Error;
+            if (_resultado.TrabajoId is { } id)
+            {
+                _trabajo = await _servicio.TrabajoAsync(id);
+                IniciarSondeo(id);
+                // Código del proveedor → ítem de stock elegido: se recuerda para la próxima factura (VendorConfiguration).
+                if (_f.Factura is { } factura && _recibidos is not null)
+                {
+                    await _recibidos.AprenderItemsAsync(_ruc, factura.Emisor.Ruc, _f.Detalles, _ctx.Catalogo);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo guardar la compra");
+            _errorGuardar = "No se pudo guardar: " + ex.Message;
+        }
+        finally
+        {
+            _guardando = false;
+        }
+    }
+
+    private void IniciarSondeo(long id)
+    {
+        _sondeo?.Dispose();
+        _sondeo = new System.Threading.Timer(async _ =>
+        {
+            try
+            {
+                var t = await _servicio!.TrabajoAsync(id);
+                _trabajo = t;
+                if (t is null || EstadosTrabajo.EsFinal(t.Estado)) _sondeo?.Dispose();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Sondeo del trabajo {Id}", id);
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private string ClaseTrabajo => _trabajo?.Estado switch
+    {
+        EstadosTrabajo.Hecho => "psa-notice--ok",
+        EstadosTrabajo.Error or EstadosTrabajo.Cancelado => "psa-notice--danger",
+        _ => "",
+    };
+
+    private string TextoTrabajo
+    {
+        get
+        {
+            if (_trabajo is null) return string.Empty;
+            switch (_trabajo.Estado)
+            {
+                case EstadosTrabajo.Hecho:
+                    var r = _trabajo.ResultadoJson is null ? null : JsonSerializer.Deserialize<ResultadoGuardarOc>(_trabajo.ResultadoJson);
+                    return r is null ? "Guardada en Sage." : $"{r.Mensaje} Nº de retención: {(r.NumeroRetencion.Length > 0 ? r.NumeroRetencion : "—")}. Proveedor: {r.Proveedor}.";
+                case EstadosTrabajo.Error:
+                    return "Sage no registró la compra: " + _trabajo.Error;
+                case EstadosTrabajo.Cancelado:
+                    return "El trabajo se canceló.";
+                default:
+                    return _trabajo.Intentos > 0 && _trabajo.Error is { } err
+                        ? $"En cola (se reintentará): {err}"
+                        : $"Enviado al Sage Bridge (trabajo #{_trabajo.Id}): {(_trabajo.Estado == EstadosTrabajo.EnProceso ? "escribiendo en Sage…" : "en cola…")}";
+            }
+        }
+    }
+
+    private static bool TryDecimal(object? v, out decimal n) =>
+        decimal.TryParse(v?.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out n);
+
+    private static string Num(decimal d) => d.ToString("0.######", CultureInfo.InvariantCulture);
+    private static string Dinero(decimal d) => d.ToString("N2", Es);
+
+    public void Dispose() => _sondeo?.Dispose();
+}

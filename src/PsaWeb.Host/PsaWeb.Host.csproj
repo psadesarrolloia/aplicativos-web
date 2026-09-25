@@ -33,6 +33,8 @@
     <ProjectReference Include="..\PsaWeb.Conciliacion\PsaWeb.Conciliacion.csproj" />
     <ProjectReference Include="..\..\modules\PsaWeb.Modules.ConciliacionSri\PsaWeb.Modules.ConciliacionSri.csproj" />
     <ProjectReference Include="..\PsaWeb.SageBridge.Cola\PsaWeb.SageBridge.Cola.csproj" />
+    <ProjectReference Include="..\..\modules\PsaWeb.Modules.Compras\PsaWeb.Modules.Compras.csproj" />
+    <ProjectReference Include="..\PsaWeb.Recibidos\PsaWeb.Recibidos.csproj" />
   </ItemGroup>
 
   <!-- Antes de compilar, cierra cualquier instancia colgada del Host de una sesión

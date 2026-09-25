@@ -16,9 +16,13 @@
     <!-- El SDK de .NET agrega «+<hash del commit>» a la versión informativa: cada commit cambiaría el .exe y Sage pediría
          autorizarlo de nuevo (pasó en la F3). El anfitrión no lleva el commit; la DLL de lógica sí. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- Tampoco SourceLink: el PDB embebido llevaba la URL con el commit y el .exe cambiaba igual (F4). Sin consultas a git
+         ni PDB dentro del .exe, el binario depende solo del código de este proyecto. -->
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+    <EnableSourceLink>false</EnableSourceLink>
     <!-- Sin rutas de la máquina de compilación dentro del .exe: la misma fuente da el mismo binario. -->
     <PathMap>$(MSBuildProjectDirectory)=.</PathMap>
-    <DebugType>embedded</DebugType>
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>

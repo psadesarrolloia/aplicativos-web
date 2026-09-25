@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- Módulo Compras (Ola 2): registro de compras en Sage 50 por el Sage Bridge. Lee Sage por ODBC (solo SELECT) y
+       escribe encolando trabajos GuardarOc; nunca carga el SDK. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.18" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="9.0.18" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PsaWeb.Shared\PsaWeb.Shared.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Sage50\PsaWeb.Sage50.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Compras\PsaWeb.Compras.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Seguridad\PsaWeb.Seguridad.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.SageBridge.Cola\PsaWeb.SageBridge.Cola.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Recibidos\PsaWeb.Recibidos.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Conciliacion\PsaWeb.Conciliacion.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PsaWeb.Modules.Compras.Tests" />
+  </ItemGroup>
+
+</Project>

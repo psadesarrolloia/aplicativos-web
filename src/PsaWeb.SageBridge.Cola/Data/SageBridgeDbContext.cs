@@ -12,6 +12,7 @@ public class SageBridgeDbContext(DbContextOptions<SageBridgeDbContext> options) 
     public DbSet<TrabajoSage> Trabajos => Set<TrabajoSage>();
     public DbSet<LatidoBridge> Latidos => Set<LatidoBridge>();
     public DbSet<EmpresaBridge> Empresas => Set<EmpresaBridge>();
+    public DbSet<AuditoriaRegistroSage> Auditoria => Set<AuditoriaRegistroSage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -27,6 +28,13 @@ public class SageBridgeDbContext(DbContextOptions<SageBridgeDbContext> options) 
         });
         builder.Entity<LatidoBridge>().ToTable("LatidosBridge");
         builder.Entity<EmpresaBridge>().ToTable("EmpresasBridge");
+        builder.Entity<AuditoriaRegistroSage>(a =>
+        {
+            a.ToTable("AuditoriaRegistrosSage");
+            a.HasIndex(x => new { x.Ruc, x.Documento });
+            a.HasIndex(x => x.TrabajoId);
+            a.HasIndex(x => x.FechaUtc);
+        });
     }
 }
 

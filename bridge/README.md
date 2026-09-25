@@ -63,7 +63,7 @@ Un rechazo de negocio (nº ya usado, OC ya convertida en compra, `Validate()` de
 ## El anfitrión no debe cambiar
 
 `PsaWeb.SageBridge.exe` se compila sin el commit en la versión (`IncludeSourceRevisionInInformationalVersion=false`): el mismo código da
-el mismo binario en cualquier commit (SHA-256 `B3A05872…`). Si el hash cambia, Sage vuelve a pedir la autorización en cada empresa.
+el mismo binario en cualquier commit (SHA-256 `99C8E111…`; tampoco SourceLink ni PDB: el PDB embebido llevaba el commit). Si el hash cambia, Sage vuelve a pedir la autorización en cada empresa.
 
 ## Desarrollo
 

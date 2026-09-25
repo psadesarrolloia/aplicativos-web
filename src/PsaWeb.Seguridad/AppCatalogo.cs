@@ -9,6 +9,7 @@ public static class Categorias
 {
     public const string Caja = "Caja";
     public const string Cartera = "Cartera";
+    public const string Compras = "Compras";
     public const string Bancos = "Bancos";
     public const string Impuestos = "Impuestos";
     public const string ComprobantesElectronicos = "Comprobantes Electrónicos Emitidos";
@@ -16,7 +17,7 @@ public static class Categorias
 
     public static readonly IReadOnlyList<string> Orden = new[]
     {
-        Caja, Cartera, Bancos, Impuestos, ComprobantesElectronicos, Inventario,
+        Caja, Cartera, Compras, Bancos, Impuestos, ComprobantesElectronicos, Inventario,
     };
 }
 
@@ -62,6 +63,19 @@ public static class AppCatalogo
             "Facturas cobradas por recibos de cobro, agrupadas por cliente (ex reporte de Access).",
             "🧮", "/cartera/comisiones", Categorias.Cartera,
             Array.Empty<string>()),
+
+        // Ola 2. Provisional (GateProvisional): mientras el área no cargue qupurchinv/mkpurchinv
+        // (docs/sql/permisos-compras-ventas.sql) también la habilitan las llaves de retenciones de compra
+        // (ServicioCompras.PermisosProvisionales). Al aplicar el script: dejar solo VerCompras y RegistrarCompras.
+        new("compras", "Compras",
+            "Registra en Sage 50 las compras (facturas, notas de venta y liquidaciones) por el Sage Bridge.",
+            "🛒", "/compras", Categorias.Compras,
+            new[] { Permisos.VerCompras, Permisos.RegistrarCompras, Permisos.VerRetenciones, Permisos.HacerRetencion }),
+
+        new("compras-recibidos", "Facturas recibidas del SRI",
+            "Registra en Sage las facturas recibidas desde su XML (bandeja de documentos recibidos).",
+            "📨", "/compras/recibidos", Categorias.Compras,
+            new[] { Permisos.VerCompras, Permisos.RegistrarCompras, Permisos.VerRetenciones, Permisos.HacerRetencion }),
 
         // Provisional (GateProvisional): sin código propio hasta que el área cargue quRptChq en
         // allowAction. Revertir a new[] { Permisos.VerReporteCheques } cuando esté el código.

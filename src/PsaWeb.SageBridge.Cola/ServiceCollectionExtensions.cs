@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
 
         services.AddDbContextFactory<SageBridgeDbContext>(o => o.UseSqlServer(cs));
         services.AddSingleton<IColaSage, ColaSage>();
+        services.AddSingleton<IAuditoriaSage, AuditoriaSage>();
         return services;
     }
 }

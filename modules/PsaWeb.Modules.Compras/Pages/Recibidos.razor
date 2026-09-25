@@ -1,0 +1,287 @@
+@page "/compras/recibidos"
+@namespace PsaWeb.Modules.Compras.Pages
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Seguridad
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ILogger<Recibidos> Logger
+@implements IDisposable
+
+<PageTitle>Documentos recibidos — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Documentos recibidos del SRI" Subtitle="@_empresaActual?.Nombre">
+    <a class="psa-linkbtn" href="/compras">← Órdenes de compra</a>
+</PsaPageHeader>
+
+@if (_servicio is null || _recibidos is not { Disponible: true })
+{
+    <div class="psa-notice psa-notice--danger">No está configurado el almacén de XML recibidos (requiere PsaWebPlataforma).</div>
+}
+else if (_ruc is null)
+{
+    <div class="psa-notice">Elija una empresa para trabajar.</div>
+}
+else if (_permisos is { Ver: false })
+{
+    <div class="psa-notice psa-notice--danger">No tiene permiso para ver las compras de esta empresa.</div>
+}
+else
+{
+    <PsaCard Title="Comprobantes recibidos">
+        <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap">
+            <label class="psa-field">
+                <span class="psa-field__label">Tipo</span>
+                <select class="psa-input" @bind="_tipo">
+                    <option value="@ServicioRecibidos.TipoFactura">Facturas</option>
+                    <option value="@ServicioRecibidos.TipoNotaCredito">Notas de crédito</option>
+                </select>
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Emitidos desde</span>
+                <input type="date" class="psa-input" @bind="_desde" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Hasta</span>
+                <input type="date" class="psa-input" @bind="_hasta" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Estado</span>
+                <select class="psa-input" @bind="_filtroEstado">
+                    <option value="">Todos</option>
+                    <option value="@EstadoRecibido.FaltaXml">Falta XML</option>
+                    <option value="@EstadoRecibido.Pendiente">Pendiente</option>
+                    <option value="@EstadoRecibido.Guardado">Guardado</option>
+                    <option value="@EstadoRecibido.Registrado">Registrado</option>
+                </select>
+            </label>
+            <PsaButton Variant="secondary" OnClick="Consultar" Disabled="_ocupado">@(_ocupado ? "Trabajando…" : "Consultar")</PsaButton>
+            @if (_lista?.Any(x => x.Estado == EstadoRecibido.FaltaXml) == true && _permisos?.Registrar == true)
+            {
+                <PsaButton Variant="ghost" OnClick="DescargarFaltantes" Disabled="_ocupado">Descargar XML faltantes del SRI</PsaButton>
+            }
+        </div>
+
+        @if (_tipo == ServicioRecibidos.TipoNotaCredito)
+        {
+            <div class="psa-notice" style="margin-top: 1rem">El registro de notas de crédito de compra llega en la F7 (archivo de importación de Sage); por ahora solo se listan.</div>
+        }
+        @if (_mensaje is not null)
+        {
+            <div class="psa-notice psa-notice--ok" style="margin-top: 1rem">@_mensaje</div>
+        }
+        @if (_error is not null)
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-top: 1rem">@_error</div>
+        }
+
+        @if (_lista is not null)
+        {
+            <div class="psa-grid psa-grid--stats" style="margin-top: 1rem">
+                <PsaStat Label="Falta XML" Value="@Contar(EstadoRecibido.FaltaXml)" State="@(Contar(EstadoRecibido.FaltaXml) != "0" ? "warn" : "neutral")" />
+                <PsaStat Label="Pendientes" Value="@Contar(EstadoRecibido.Pendiente)" State="@(Contar(EstadoRecibido.Pendiente) != "0" ? "warn" : "ok")" />
+                <PsaStat Label="Guardados (OC)" Value="@Contar(EstadoRecibido.Guardado)" />
+                <PsaStat Label="Registrados" Value="@Contar(EstadoRecibido.Registrado)" State="ok" />
+            </div>
+            <table class="psa-table psa-table--interactiva" style="margin-top: 1rem">
+                <thead>
+                    <tr><th>Estado</th><th>Emisión</th><th>Emisor</th><th>RUC</th><th>Comprobante</th><th style="text-align: right">Total</th><th>OC</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var d in Filtrados)
+                    {
+                        <tr>
+                            <td>
+                                <span class="psa-estado @Clase(d.Estado)" title="@d.MotivoSinXml">@Nombre(d.Estado)</span>
+                                @if (d.EstadoSri is { } es && es.Contains("ANUL", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="psa-estado psa-estado--bad">Anulado</span>
+                                }
+                            </td>
+                            <td>@d.FechaEmision.ToString("dd/MM/yyyy", Es)</td>
+                            <td>@d.Emisor</td>
+                            <td>@d.RucEmisor</td>
+                            <td title="@d.ClaveAcceso">@d.Serie</td>
+                            <td style="text-align: right">@(d.Total?.ToString("N2", Es))</td>
+                            <td>
+                                @if (d.PostOrder is { } po)
+                                {
+                                    <a class="psa-linkbtn" href="/compras/@po">@d.ReferenciaOc</a>
+                                }
+                            </td>
+                            <td>
+                                @if (d.Tipo == ServicioRecibidos.TipoFactura && d.Estado != EstadoRecibido.Registrado)
+                                {
+                                    <a class="psa-linkbtn" href="/compras/recibidos/factura/@d.ClaveAcceso">
+                                        @(d.Estado switch { EstadoRecibido.FaltaXml => "Subir XML", EstadoRecibido.Guardado => "Actualizar", _ => "Registrar" })
+                                    </a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (_lista.Count == 0)
+            {
+                <p class="psa-muted" style="margin-top: .8rem">
+                    No hay comprobantes recibidos en el período. Suba el reporte del SRI con la extensión (Conciliación) o pegue las claves abajo.
+                </p>
+            }
+        }
+    </PsaCard>
+
+    @if (_permisos?.Registrar == true)
+    {
+        <PsaCard Title="Desde texto">
+            <p class="psa-muted">
+                Pegue texto que contenga claves de acceso (49 dígitos): por ejemplo el TXT del reporte del SRI. Se descarga el XML de cada una
+                (el SRI lo entrega ~15 días después de la emisión) y aparecen en la bandeja.
+            </p>
+            <textarea class="psa-input" style="width: 100%; min-height: 6rem" @bind="_texto" @bind:event="oninput"></textarea>
+            <div class="psa-row" style="gap: 1rem; align-items: center; margin-top: .6rem">
+                <PsaButton Variant="primary" OnClick="ProcesarTexto" Disabled="@(_ocupado || ClavesTexto.Count == 0)">
+                    @(_ocupado ? $"Descargando {_avance} de {ClavesTexto.Count}…" : $"Descargar {ClavesTexto.Count} clave(s)")
+                </PsaButton>
+            </div>
+        </PsaCard>
+    }
+}
+
+@code {
+    private static readonly CultureInfo Es = CultureInfo.GetCultureInfo("es-EC");
+    private ServicioCompras? _servicio;
+    private ServicioRecibidos? _recibidos;
+    private EmpresaActualService? _empresaActual;
+    private string? _ruc;
+    private string _usuario = "web";
+    private PermisosCompras? _permisos;
+    private string _tipo = ServicioRecibidos.TipoFactura;
+    private DateTime _desde = DateTime.Today.AddDays(-15);
+    private DateTime _hasta = DateTime.Today;
+    private string _filtroEstado = string.Empty;
+    private IReadOnlyList<DocumentoRecibido>? _lista;
+    private string _texto = string.Empty;
+    private string? _mensaje;
+    private string? _error;
+    private bool _ocupado;
+    private int _avance;
+
+    private IReadOnlyList<string> ClavesTexto => ServicioRecibidos.ClavesDelTexto(_texto);
+
+    private IEnumerable<DocumentoRecibido> Filtrados => (_lista ?? []).Where(d =>
+        string.IsNullOrEmpty(_filtroEstado) || d.Estado.ToString() == _filtroEstado);
+
+    private string Contar(EstadoRecibido e) => (_lista?.Count(x => x.Estado == e) ?? 0).ToString(Es);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _servicio = Sp.GetService<ServicioCompras>();
+        _recibidos = Sp.GetService<ServicioRecibidos>();
+        _empresaActual = Sp.GetService<EmpresaActualService>();
+        if (_empresaActual is not null) _empresaActual.Cambio += AlCambiarEmpresa;
+        _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        await AplicarEmpresa();
+    }
+
+    private async void AlCambiarEmpresa()
+    {
+        await AplicarEmpresa();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AplicarEmpresa()
+    {
+        _ruc = _empresaActual?.Ruc;
+        _lista = null;
+        if (_ruc is null || _servicio is null || _recibidos is not { Disponible: true }) return;
+        _permisos = await _servicio.PermisosAsync(_usuario, _ruc);
+        if (_permisos.Ver) await Consultar();
+    }
+
+    private async Task Consultar()
+    {
+        if (_recibidos is null || _ruc is null) return;
+        _ocupado = true;
+        _error = null;
+        try
+        {
+            _lista = await _recibidos.BandejaAsync(_ruc, DateOnly.FromDateTime(_desde), DateOnly.FromDateTime(_hasta), _tipo);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Bandeja de recibidos de {Ruc}", _ruc);
+            _error = "No se pudo armar la bandeja: " + ex.Message;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task DescargarFaltantes()
+    {
+        var claves = _lista?.Where(x => x.Estado == EstadoRecibido.FaltaXml).Select(x => x.ClaveAcceso).ToList() ?? [];
+        await Descargar(claves);
+    }
+
+    private async Task ProcesarTexto()
+    {
+        var claves = ClavesTexto;
+        await Descargar(claves);
+        _texto = string.Empty;
+        // Mostrar el período de lo cargado.
+        var fechas = claves.Select(PsaWeb.Recibidos.ServicioDescargaXml.FechaEmision).OfType<DateOnly>().ToList();
+        if (fechas.Count > 0)
+        {
+            _desde = fechas.Min().ToDateTime(TimeOnly.MinValue) < _desde ? fechas.Min().ToDateTime(TimeOnly.MinValue) : _desde;
+            _hasta = fechas.Max().ToDateTime(TimeOnly.MinValue) > _hasta ? fechas.Max().ToDateTime(TimeOnly.MinValue) : _hasta;
+        }
+        await Consultar();
+    }
+
+    private async Task Descargar(IReadOnlyList<string> claves)
+    {
+        if (_recibidos is null || _ruc is null || claves.Count == 0) return;
+        _ocupado = true;
+        _mensaje = _error = null;
+        _avance = 0;
+        try
+        {
+            var avance = new Progress<int>(n => { _avance = n; InvokeAsync(StateHasChanged); });
+            var r = await _recibidos.DescargarAsync(_ruc, claves, _usuario, avance);
+            _mensaje = $"XML descargados: {r.Descargadas} · ya estaban: {r.YaEstaban} · el SRI ya no los entrega (subir a mano): {r.FueraDeVentana}" +
+                       (r.Errores > 0 ? $" · errores: {r.Errores}" : "") + (r.Rechazadas > 0 ? $" · rechazados (de otra empresa o no válidos): {r.Rechazadas}" : "");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Descarga de XML recibidos de {Ruc}", _ruc);
+            _error = "No se pudo descargar: " + ex.Message;
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+        if (_lista is not null) await Consultar();
+    }
+
+    private static string Nombre(EstadoRecibido e) => e switch
+    {
+        EstadoRecibido.FaltaXml => "Falta XML",
+        EstadoRecibido.Pendiente => "Pendiente",
+        EstadoRecibido.Guardado => "Guardado",
+        _ => "Registrado",
+    };
+
+    private static string Clase(EstadoRecibido e) => e switch
+    {
+        EstadoRecibido.FaltaXml => "psa-estado--bad",
+        EstadoRecibido.Pendiente => "psa-estado--warn",
+        _ => "psa-estado--ok",
+    };
+
+    public void Dispose()
+    {
+        if (_empresaActual is not null) _empresaActual.Cambio -= AlCambiarEmpresa;
+    }
+}

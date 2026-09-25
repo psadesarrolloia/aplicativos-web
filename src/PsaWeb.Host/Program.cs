@@ -79,6 +79,8 @@ if (plataformaConfigurada)
     builder.Services.AddConciliacion(builder.Configuration);
     // Ola 2: cola del Sage Bridge (la web encola; el servicio PsaSageBridge escribe en Sage). Misma base física.
     builder.Services.AddSageBridgeCola(builder.Configuration);
+    // Ola 2: XML de documentos recibidos (almacén §13.1 del plan + descarga por el WS del SRI en segundo plano).
+    PsaWeb.Recibidos.ServiceCollectionExtensions.AddRecibidos(builder.Services, builder.Configuration);
 }
 
 // El módulo de Conciliación SRI (procesador de verificación + worker + página)
@@ -88,6 +90,12 @@ var conciliacionSriActiva = plataformaConfigurada && peachEbillsConfigurado;
 if (conciliacionSriActiva)
 {
     builder.Services.AddConciliacionSri(builder.Configuration);
+}
+
+// Ola 2: módulo Compras (lee Sage por ODBC, catálogos de PeachEBills, escribe encolando en el Sage Bridge).
+if (plataformaConfigurada && peachEbillsConfigurado)
+{
+    PsaWeb.Modules.Compras.ComprasModule.AddCompras(builder.Services);
 }
 
 // --- Autenticación -----------------------------------------------------------
@@ -202,6 +210,13 @@ if (plataformaConfigurada)
         await bridgeDb.Database.MigrateAsync();
         await bridgeDb.DisposeAsync();
         app.Logger.LogInformation("Sage Bridge (cola): migraciones aplicadas.");
+
+        var recibidosDb = await scope.ServiceProvider
+            .GetRequiredService<IDbContextFactory<PsaWeb.Recibidos.Data.RecibidosDbContext>>()
+            .CreateDbContextAsync();
+        await recibidosDb.Database.MigrateAsync();
+        await recibidosDb.DisposeAsync();
+        app.Logger.LogInformation("Documentos recibidos (XML): migraciones aplicadas.");
     }
 
     if (app.Environment.IsDevelopment())
@@ -268,7 +283,8 @@ app.MapRazorComponents<App>()
         typeof(PsaWeb.Modules.Reportes.ModuleInfo).Assembly,
         typeof(PsaWeb.Modules.ComprobantesElectronicos.ComprobantesElectronicosModule).Assembly,
         typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly,
-        typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly);
+        typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly,
+        typeof(PsaWeb.Modules.Compras.ModuleInfo).Assembly);
 
 // Descarga del reporte «Cierre de Caja» en Excel. Re-consulta con las mismas
 // fechas para que el archivo coincida siempre con lo que se ve en pantalla.
@@ -721,6 +737,16 @@ app.MapPost("/conciliacion-sri/api/comprobantes", async (
         try
         {
             var resultado = await repositorio.GuardarReporteAsync(body.Ruc, body.ContenidoReporte, usuarioId, cancellationToken);
+            // Ola 2 (§4.4): se baja enseguida, detrás, el XML de las claves del reporte que todavía no lo tienen (el WS lo entrega
+            // solo ~15 días). Facturas, notas de crédito y retenciones.
+            if (http.RequestServices.GetService<PsaWeb.Recibidos.ColaDescargaXml>() is { } colaXml)
+            {
+                var claves = PsaWeb.Conciliacion.Data.LectorReporteComprobantesSri.Parsear(body.ContenidoReporte, body.Ruc).Filas
+                    .Select(f => f.ClaveAcceso)
+                    .Where(c => PsaWeb.Recibidos.ServicioDescargaXml.CodigoTipo(c) is "01" or "04" or "07")
+                    .ToList();
+                colaXml.Encolar(new PsaWeb.Recibidos.PedidoDescargaXml(body.Ruc, claves, usuario.UserName ?? usuarioId));
+            }
             return Results.Ok(resultado);
         }
         catch (FormatoReporteInvalidoException ex)

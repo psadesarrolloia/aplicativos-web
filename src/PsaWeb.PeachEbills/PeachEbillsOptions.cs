@@ -23,4 +23,10 @@ public sealed class PeachEbillsOptions
     /// Sage locales. Vacío = usar el <c>servername</c> de la fila tal cual.
     /// </summary>
     public string? SageServerNameOverride { get; set; }
+
+    /// <summary>
+    /// Solo desarrollo: <c>"RUC=dbq"</c> para apuntar un RUC a otra compañía (p. ej. la copia de prueba de la Ola 2),
+    /// igual que <c>BasesPorRuc</c> del Sage Bridge: así la web lee la misma base en la que el Bridge escribe.
+    /// </summary>
+    public string[]? DbqPorRuc { get; set; }
 }

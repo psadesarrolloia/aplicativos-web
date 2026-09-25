@@ -24,6 +24,7 @@ public sealed class PeachConnStringResolver
 {
     private readonly IDbContextFactory<PeachEbillsContext> _contextFactory;
     private readonly string? _serverNameOverride;
+    private readonly Dictionary<string, string> _dbqPorRuc = new(StringComparer.Ordinal);
 
     public PeachConnStringResolver(
         IDbContextFactory<PeachEbillsContext> contextFactory,
@@ -32,6 +33,11 @@ public sealed class PeachConnStringResolver
         _contextFactory = contextFactory;
         var o = options?.Value.SageServerNameOverride;
         _serverNameOverride = string.IsNullOrWhiteSpace(o) ? null : o.Trim();
+        foreach (var par in options?.Value.DbqPorRuc ?? [])
+        {
+            var i = par.IndexOf('=');
+            if (i > 0) _dbqPorRuc[par[..i].Trim()] = par[(i + 1)..].Trim();
+        }
     }
 
     public async Task<string> ResolverCadenaOdbcAsync(string ruc, CancellationToken cancellationToken = default)
@@ -54,8 +60,13 @@ public sealed class PeachConnStringResolver
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.Ruc == ruc, cancellationToken);
 
-        return row ?? throw new InvalidOperationException(
-            $"No hay cadena de conexión ODBC para el RUC {ruc} en la tabla PeachConnString.");
+        if (row is null)
+        {
+            throw new InvalidOperationException($"No hay cadena de conexión ODBC para el RUC {ruc} en la tabla PeachConnString.");
+        }
+        // AsNoTracking: se puede reemplazar la base sin tocar PeachEBills (solo desarrollo, DbqPorRuc).
+        if (_dbqPorRuc.TryGetValue(ruc, out var dbq)) row.Dbq = dbq;
+        return row;
     }
 
     private static string Construir(PeachConnString row, string pwd, string? serverNameOverride)

@@ -32,6 +32,10 @@ public static class Permisos
     public const string HacerRetencionesLote = "mkTwhBatch";
     public const string AutorizarAnulacionRetencion = "auCanceTwh";
 
+    // Compras (Ola 2) — códigos nuevos (docs/sql/permisos-compras-ventas.sql copia los roles de qupurchtwh/mkpurchtwh).
+    public const string VerCompras = "qupurchinv";
+    public const string RegistrarCompras = "mkpurchinv";
+
     // ATS
     public const string VerAts = "quats";
 

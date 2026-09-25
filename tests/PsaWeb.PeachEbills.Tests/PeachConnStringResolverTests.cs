@@ -56,6 +56,18 @@ public class PeachConnStringResolverTests
         Assert.True(info.UsaServidor);
     }
 
+    [SkippableFact]
+    public async Task DbqPorRuc_apunta_un_ruc_a_otra_base_solo_en_la_cadena()
+    {
+        Skip.IfNot(LocalDbAvailable(), "PeachEBills local no disponible.");
+        var options = new DbContextOptionsBuilder<PeachEbillsContext>().UseSqlServer(LocalConnectionString).Options;
+        var resolver = new PeachConnStringResolver(new PooledFactory(options),
+            Microsoft.Extensions.Options.Options.Create(new PeachEbillsOptions { DbqPorRuc = ["1791741951001=copiaprueba"] }));
+
+        Assert.Contains("dbq=copiaprueba", await resolver.ResolverCadenaOdbcAsync("1791741951001"));
+        Assert.Contains("dbq=pp20252026", await CreateResolver().ResolverCadenaOdbcAsync("1791741951001")); // la fila no cambió
+    }
+
     /// <summary>IDbContextFactory mínimo para las pruebas.</summary>
     private sealed class PooledFactory(DbContextOptions<PeachEbillsContext> options)
         : IDbContextFactory<PeachEbillsContext>

@@ -1,0 +1,190 @@
+@page "/compras"
+@namespace PsaWeb.Modules.Compras.Pages
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Seguridad
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ILogger<Compras> Logger
+@implements IDisposable
+
+<PageTitle>Compras — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Compras" Subtitle="@Subtitulo">
+    <a class="psa-linkbtn" href="/compras/recibidos">Documentos recibidos del SRI →</a>
+</PsaPageHeader>
+
+@if (_servicio is null)
+{
+    <div class="psa-notice psa-notice--danger">El módulo Compras no está configurado (requiere Sage 50, PeachEBills y la cola del Sage Bridge).</div>
+}
+else if (_ruc is null)
+{
+    <div class="psa-notice">Elija una empresa para trabajar.</div>
+}
+else if (_permisos is { Ver: false })
+{
+    <div class="psa-notice psa-notice--danger">No tiene permiso para ver las compras de esta empresa.</div>
+}
+else
+{
+    <PsaCard Title="Órdenes de compra registradas">
+        <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap">
+            <label class="psa-field">
+                <span class="psa-field__label">Tipo</span>
+                <select class="psa-input" @bind="_tipo">
+                    <option value="@TipoDocumentoCompra.Factura">Factura</option>
+                    <option value="@TipoDocumentoCompra.NotaDeVenta">Nota de venta</option>
+                    <option value="@TipoDocumentoCompra.Liquidacion">Liquidación de compra</option>
+                </select>
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Desde</span>
+                <input type="date" class="psa-input" @bind="_desde" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Hasta</span>
+                <input type="date" class="psa-input" @bind="_hasta" />
+            </label>
+            <PsaButton Variant="secondary" OnClick="Consultar" Disabled="_cargando">@(_cargando ? "Consultando…" : "Consultar")</PsaButton>
+            @if (_permisos?.Registrar == true)
+            {
+                <PsaButton Variant="primary" OnClick="Nueva">Nueva @NombreTipo(_tipo).ToLowerInvariant()</PsaButton>
+            }
+        </div>
+
+        @if (_error is not null)
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-top: 1rem">@_error</div>
+        }
+
+        @if (_lista is not null)
+        {
+            <div class="psa-row" style="margin-top: 1rem; gap: 1rem; align-items: center">
+                <input class="psa-input" style="max-width: 22rem" placeholder="Filtrar por proveedor, RUC, factura u OC" @bind="_filtro" @bind:event="oninput" />
+                <span class="psa-muted">@Filtradas.Count() de @_lista.Count</span>
+            </div>
+            <table class="psa-table psa-table--interactiva" style="margin-top: .6rem">
+                <thead>
+                    <tr><th>Nº OC</th><th>Estado</th><th>Fecha</th><th>Proveedor</th><th>RUC / Id.</th><th>Factura</th><th>Retención</th><th>Autorización</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var oc in Filtradas)
+                    {
+                        <tr @onclick="() => Abrir(oc)" style="cursor: pointer">
+                            <td>@oc.Referencia</td>
+                            <td>
+                                <span class="psa-estado @(oc.Estado == EstadoOc.Contabilizado ? "psa-estado--ok" : "psa-estado--warn")">
+                                    @(oc.Estado == EstadoOc.Contabilizado ? "Contabilizado" : "Guardado")
+                                </span>
+                            </td>
+                            <td>@oc.Fecha.ToString("dd/MM/yyyy", Es)</td>
+                            <td>@oc.Proveedor</td>
+                            <td>@oc.Identificacion</td>
+                            <td>@oc.Factura</td>
+                            <td>@oc.Retencion</td>
+                            <td class="psa-muted" title="@oc.Autorizacion">@(oc.EsElectronica ? "Electrónica" : oc.Autorizacion)</td>
+                            <td @onclick:stopPropagation="true">
+                                @if (_permisos?.Registrar == true && !oc.EsElectronica)
+                                {
+                                    <button class="psa-linkbtn" @onclick="() => Copiar(oc)" title="Nueva compra con estos datos">Copiar</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (_lista.Count == 0)
+            {
+                <p class="psa-muted" style="margin-top: .8rem">No hay órdenes de compra de ese tipo en el rango.</p>
+            }
+        }
+    </PsaCard>
+}
+
+@code {
+    private static readonly CultureInfo Es = CultureInfo.GetCultureInfo("es-EC");
+    private ServicioCompras? _servicio;
+    private EmpresaActualService? _empresaActual;
+    private string? _ruc;
+    private string _usuario = "web";
+    private PermisosCompras? _permisos;
+    private TipoDocumentoCompra _tipo = TipoDocumentoCompra.Factura;
+    private DateTime _desde = DateTime.Today.AddDays(-8);
+    private DateTime _hasta = DateTime.Today;
+    private IReadOnlyList<OcResumen>? _lista;
+    private string _filtro = string.Empty;
+    private string? _error;
+    private bool _cargando;
+
+    private string? _baseSage;
+    private string Subtitulo => (_empresaActual?.Nombre is { } n ? $"Registro de compras en Sage 50 — {n}" : "Registro de compras en Sage 50")
+        + (_baseSage is { } b ? $" · base de Sage: {b}" : "");
+
+    private IEnumerable<OcResumen> Filtradas => (_lista ?? []).Where(o => string.IsNullOrWhiteSpace(_filtro)
+        || $"{o.Referencia} {o.Proveedor} {o.Identificacion} {o.Factura} {o.Retencion}".Contains(_filtro.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        _servicio = Sp.GetService<ServicioCompras>();
+        _empresaActual = Sp.GetService<EmpresaActualService>();
+        if (_empresaActual is not null) _empresaActual.Cambio += AlCambiarEmpresa;
+        _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        await AplicarEmpresa();
+    }
+
+    private async void AlCambiarEmpresa()
+    {
+        await AplicarEmpresa();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AplicarEmpresa()
+    {
+        _ruc = _empresaActual?.Ruc;
+        _lista = null;
+        _error = null;
+        if (_ruc is null || _servicio is null) return;
+        _permisos = await _servicio.PermisosAsync(_usuario, _ruc);
+        _baseSage = await _servicio.BaseSageAsync(_ruc);
+        if (_permisos.Ver) await Consultar();
+    }
+
+    private async Task Consultar()
+    {
+        if (_servicio is null || _ruc is null) return;
+        if (_hasta < _desde) { _error = "La fecha «hasta» es anterior a «desde»."; return; }
+        _cargando = true;
+        _error = null;
+        try
+        {
+            _lista = await _servicio.ListarAsync(_ruc, _desde, _hasta, _tipo);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo listar las compras de {Ruc}", _ruc);
+            _error = "No se pudo leer Sage 50: " + ex.Message;
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Nueva() => Nav.NavigateTo($"/compras/nueva?tipo={TiposDocumentoCompra.Codigo(_tipo)}");
+    private void Abrir(OcResumen oc) => Nav.NavigateTo($"/compras/{oc.PostOrder}");
+    private void Copiar(OcResumen oc) => Nav.NavigateTo($"/compras/{oc.PostOrder}/copiar");
+
+    internal static string NombreTipo(TipoDocumentoCompra t) => t switch
+    {
+        TipoDocumentoCompra.Factura => "Factura",
+        TipoDocumentoCompra.NotaDeVenta => "Nota de venta",
+        _ => "Liquidación de compra",
+    };
+
+    public void Dispose()
+    {
+        if (_empresaActual is not null) _empresaActual.Cambio -= AlCambiarEmpresa;
+    }
+}
