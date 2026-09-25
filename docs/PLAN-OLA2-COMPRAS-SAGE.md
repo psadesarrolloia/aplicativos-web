@@ -380,3 +380,125 @@ purgar después con un job anual. El XML sigue existiendo en el portal del SRI; 
   (HAR); el asistente no inicia sesión ni maneja credenciales.
 - Recomendación: construir §13.1 y la subida manual en **F5** (se necesitan igual) y **medir** cuántos documentos quedan fuera de la ventana.
   Si el volumen justifica la automatización, se agrega §13.3 como **F5b** (solo extensión + endpoint; el resto ya existe).
+
+---
+
+## 14. Informe de la F0 (en curso)
+
+Spike descartable (consola .NET FW 4.8 x86 en el scratchpad de la sesión, **fuera del repo**), SDK 2023.0.0.222 del GAC de PREDATOR,
+clave de aplicación del exe leída en tiempo de ejecución (nunca impresa ni copiada).
+
+### 14.1 Resultados (2026-09-25)
+- **F0-a (parcial)**: el SDK **abre sesión desde una consola sin Sage abierto** (`Begin` + `CompanyList`: 31 compañías en PREDATOR). Falta
+  probarlo como servicio con la cuenta dedicada.
+- **Hallazgo — errores que envenenan el proceso**: tras un error de base (Btrieve 12, carpeta inexistente de «CPTDC 2024-2025»), **todas** las
+  llamadas siguientes del mismo proceso fallan con «You must call SetDefaultDatabase…», **aun con sesiones nuevas**. Consecuencia para el
+  Bridge (F1): ante un error de base de datos del SDK, **reciclar el proceso** (proceso de trabajo hijo supervisado, o reinicio controlado del
+  servicio) en vez de reintentar en el mismo proceso.
+- **Hallazgo — nombre de base**: el `DatabaseName` del SDK (p. ej. `cptdc220242025`) no coincide con el DBQ que usa el ODBC local de PREDATOR
+  (alias `CPTDCECUADORSA202520` agregado a mano en `dbnames.cfg`). En el server el exe usa `PeachConnString.dbq` para ambos. El Bridge debe
+  tomar el nombre del SDK de `PeachConnString.dbq` y no asumir que coincide con un alias local.
+- **F0-e**: las compañías locales (CPTDC, Roller Dance, SANCEV, Efemedio, DGRV) traen `APIACCSS.DAT` del respaldo y responden
+  `VerifyAccess = NoCredentials` (valores posibles: None, Pending, Denied, Granted, CorruptedOrTampered, LoginRestricted, CompanyLocked,
+  NoCredentials): la clave del exe está autorizada **con credenciales de usuario de Sage**. El Bridge necesita autorización **sin login**
+  («Always allow»), que se concede una vez por compañía desde Sage; el asistente no maneja credenciales.
+
+### 14.2 Copia de prueba y autorización (2026-09-25)
+- Copia creada por el usuario: **«PUEBAS CPTDC ECUADOR S A 2025-2026»**, base SDK `cptdcecuadorsa202525`, carpeta `cptecusa` (respaldo al
+  23/09, más reciente que la fixture local). El spike tiene **lista blanca**: solo pide acceso / escribe en esa base y ese nombre.
+  La compañía tiene **seguridad de usuarios** (roles, claves).
+- Aviso de Sage 2023 («Third Party Application Access»): muestra **aplicación = clave + nombre del .exe**, autor, «sin certificado», y las
+  opciones *Always allow access / Only allow access this time / Always deny access / Remind me later*. Se eligió **Always allow access**.
+- **Hallazgo clave — la autorización va atada al ejecutable de entrada**: recompilar el `.exe` (cambia su hash) devolvió
+  `VerifyAccess = NoCredentials` en la misma compañía. El usuario confirma que hoy **cada actualización del exe exige re-autorizar cada
+  empresa**. Prueba de la salida: anfitrión fijo `SpikeHost.exe` que carga la lógica desde `SpikeLogica.dll` → se aprobó una vez, se cambió
+  **solo la DLL** (hash distinto) y el acceso **siguió en `Granted`**.
+  **Decisión de diseño para F1**: el Bridge = **anfitrión mínimo y estable** (servicio, sin lógica) + **DLLs de lógica** actualizables sin
+  re-autorizar. El anfitrión solo cambia en casos excepcionales (y entonces se re-autoriza una vez por empresa). Firma de código con
+  certificado = mejora opcional a evaluar (el aviso lo pide para «verificar al desarrollador»).
+- La documentación del SDK (kit 2018 instalado, `Sage.Peachtree.API.XML`) define `NoCredentials` como «la aplicación no tiene credenciales
+  con la compañía; usar `RequestAccess` para crearlas» y `Open` usa «credenciales basadas en el entorno de la aplicación».
+
+### 14.3 F0-b — OC creada por SDK = OC del exe (✅)
+OC-8903 (PostOrder 104846, creada por el exe) re-creada como **OC-8904** (104864) con el mismo orden de llamadas que `LoadPurchaseOrder`,
+factura y retención de prueba `999-999-000000001`. Comparación ODBC de **todas** las columnas (168 de `JrnlHdr`, 47 de `JrnlRow`, 8 filas):
+iguales salvo identidad (PostOrder, GUIDs, nº interno, fechas de grabado), los datos de prueba, el estado de recepción y dos detalles:
+- Fila 0 (CxP): el exe/worker deja el nombre del proveedor **cortado a 30** (todas las OC con nombre largo lo muestran así: probable límite
+  de `VendorName` del import COM); el SDK deja el nombre completo. Cosmético.
+- `CcStoredAcctRef` / `DrctDpstGUID1-4`: ceros en las del exe, espacios en las del SDK. Campos de tarjeta / depósito directo; cosmético.
+Numeración: el spike calculó `OC-8904` con el máximo **numérico** del prefijo (§6.3).
+
+### 14.4 F0-c — compra por `AddOrderLine` vs compra del worker COM (✅ con 3 puntos para F6)
+OC-8904 convertida por SDK en la compra 104865 con los campos del worker (factura = `ShipToAddress1`, fecha de la OC, vencimiento =
+`GoodThruDate`, términos, ShipVia, ShipTo 1/2/State, AP 20000, solo líneas con cantidad pendiente → 4 líneas). Contra la compra del worker
+(104847): **montos, cantidades, cuentas, fechas, enlace a la OC (`LinkToAnotherTrx`) y número de factura iguales**. Diferencias a resolver
+en F6:
+1. **`IncludeInInvLedger`** en las líneas: 1 (worker; las 1.353 líneas de compras del worker de sep-2026 lo tienen) vs 0 (SDK). No lo lee
+   ningún módulo web ni el legado; hay que medir su efecto con una compra de un **ítem de stock** (Kardex/inventario) en la copia.
+2. **`DiscountDate`**: vacío (worker) vs calculado por los términos del proveedor (SDK) → fijarlo explícitamente.
+3. **`POSOIsClosed` por fila** de la OC recibida: 1 (worker) vs 0 (SDK); la cabecera queda cerrada en ambos. Revisar en el reporte de OC
+   abiertas de Sage.
+
+### 14.5 F0-d — NC de compra por archivo de importación (✅)
+Plantilla: export de Sage 2023 *Accounts Payable › Purchase Journal* (53 columnas, con *Include headings*), que trae una NC real
+(`200-111-000000018`: filas negativas aplicadas por `Apply to Invoice Distribution`, más `AUT-SRI` sin aplicar). Cinco intentos sobre la
+compra de prueba, importados a mano por el usuario en la copia:
+
+| Variante | Resultado |
+|---|---|
+| Copia fiel de la NC real (`AUT-SRI` cantidad 0, sin aplicar) | ❌ «Line 4 · Quantity». **Un error en una línea descarta toda la NC** (no quedan NC a medias) |
+| 1 · solo C1 + IVA aplicadas | Entra y se aplica, pero montos **×100** |
+| 2 · + `AUT-SRI` cantidad −1 sin aplicar | Entra, montos ×100 |
+| 3 · + `AUT-SRI` cantidad 0 con nº de factura | ❌ «Apply to Invoice Distribution» |
+| 4 · dinero con punto (`200.00`) | Entra, montos ×100 |
+| **5 · todo en formato regional** (`"-1,00"`, `"200,00"`, `"-200,00"`) | ✅ **Exacta**: 200 + 30, aplicada a la compra (`LinkToAnotherTrx`), `JournalEx 12`, estructura igual a la NC real |
+
+Reglas para F7:
+- Sage **recalcula el precio unitario** (monto ÷ cantidad) y lee **cantidad, precio y monto con la configuración regional de la sesión
+  que importa** (PREDATOR: es-ES, coma decimal). El **export** de Sage escribe el monto con punto: no es reimportable tal cual.
+  → el CSV se genera con la cultura de la sesión de importación (configurable por empresa; se verifica en el server en F8).
+- Fechas `d/M/yy` (misma regla regional). Líneas negativas; `Apply to Invoice Number` + `Apply to Invoice Distribution` = nº de línea de
+  la compra; `AUT-SRI` **con cantidad −1**, sin nº de factura y distribución 0 (con cantidad 0 el import lo rechaza).
+- La fila 0 (CxP) también queda con el nombre del proveedor cortado a 30 (confirma que es el límite del import, como en el worker).
+- Quedaron en la copia NC de prueba `999-999-000000003/4/6` (montos ×100) y `…007` (correcta), todas aplicadas a la compra de prueba.
+
+### 14.6 F0-a — SDK como servicio de Windows con cuenta local dedicada (✅)
+Servicio temporal `PsaSpikeF0` (anfitrión `SpikeServicio.exe` + la misma `SpikeLogica.dll`) con la cuenta local estándar
+`svc-sagebridge-f0` (miembro de Usuarios, derecho «Iniciar sesión como servicio»), creada por el usuario con los scripts de la F0.
+- Corre en **sesión 0, no interactiva**; `PeachtreeSession.Begin` funciona.
+- Primera corrida: `NoCredentials` → `RequestAccess = Pending` (queda en `APIACCSS.DAT`). **Sage abierto por otra cuenta de Windows no
+  muestra el aviso; aparece al volver a abrir la compañía.** Tras aprobar: `Granted`, compañía abierta en **8,7 s**, 16.123 OC leídas.
+- **La autorización es por ejecutable Y por cuenta de Windows**: el mismo SDK con otro `.exe` o con otra cuenta pide aprobación propia.
+- Permisos: en PREDATOR no hizo falta ninguno extra (las carpetas de Sage dan *Modificar* a Usuarios autenticados). Revisar en el server.
+- **Procedimiento de alta de una empresa en el Bridge (F8)**: con el servicio instalado, el Bridge pide acceso a la empresa → alguien
+  abre esa empresa en Sage → *Always allow access*. Una sola vez por empresa mientras no cambie el anfitrión.
+- Rendimiento: abrir una compañía cuesta **~9–12 s** → el Bridge agrupa los trabajos por empresa y la cierra al terminar el lote.
+
+### 14.7 F0-f / F0-g — licencia y backup con una sesión SDK abierta (✅)
+El spike mantuvo la copia abierta por SDK 8 min (12:05:09–12:13:10), leyendo cada 30 s, mientras el usuario operaba Sage:
+- **Licencias**: *User Security* siguió mostrando **37 licenses remaining** → la sesión SDK **no consume licencia** de usuario. Pero
+  Sage abrió *User Security* **solo lectura** («other users are accessing this company»): la sesión SDK cuenta como usuario conectado.
+- **Backup**: *File › Back Up* arrancó unos segundos y falló con **«Another user or application is processing data in Sage 50. Please ask
+  all users to log out…»**. Las lecturas del SDK siguieron OK durante el intento y la compañía se cerró bien al final.
+- Consecuencias para el Bridge (F1): **no mantener compañías abiertas en reposo** (abrir → procesar el lote → cerrar); **ventana de
+  mantenimiento** configurable que coincida con los backups automáticos de cada empresa (hoy 22–06 h), durante la cual el Bridge no
+  abre compañías; y ante un trabajo que llega en esa ventana, queda en cola con el aviso correspondiente.
+
+### 14.8 Cierre de la F0 (2026-09-25)
+| Prueba | Resultado |
+|---|---|
+| F0-a SDK sin Sage abierto / como servicio con cuenta dedicada | ✅ (sesión 0; autorización por .exe **y** por cuenta; aviso al reabrir la compañía) |
+| F0-b OC por SDK = OC del exe | ✅ (solo diferencias cosméticas) |
+| F0-c OC → compra por `AddOrderLine` = worker COM | ✅ con 3 puntos para F6 (`IncludeInInvLedger`, `DiscountDate`, `POSOIsClosed` por fila) |
+| F0-d NC de compra por CSV de importación | ✅ con formato regional de la sesión que importa; `AUT-SRI` con cantidad −1 |
+| F0-e autorización | ✅ atada al .exe de entrada → **anfitrión fijo + DLLs** (probado) |
+| F0-f licencia | ✅ no consume licencia; sí cuenta como usuario conectado |
+| F0-g backup | ✅ el backup falla con la compañía abierta → abrir/cerrar por lote + ventana de mantenimiento |
+
+Requisitos nuevos para F1 surgidos de la F0: anfitrión mínimo estable + DLLs de lógica; reciclar el proceso de trabajo ante errores de base
+del SDK (§14.1); cuenta local dedicada fija; `VerifyAccess` en la misma sesión antes de `Open`; abrir/cerrar la compañía por lote;
+ventana de mantenimiento por empresa; `DatabaseName` desde `PeachConnString.dbq`.
+
+Datos de prueba que quedaron en la copia (a limpiar restaurándola): OC-8904 (104864), compra 104865 (`999-999-000000001`) y las NC
+`999-999-000000003/4/6/7`. En PREDATOR queda instalado el servicio temporal `PsaSpikeF0` con la cuenta `svc-sagebridge-f0`
+(`C:\PSA-F0\servicio\03-limpiar-F0.ps1` lo borra).
