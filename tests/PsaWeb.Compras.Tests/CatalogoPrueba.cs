@@ -60,6 +60,6 @@ internal static class CatalogoPrueba
     internal static CatalogoCompras Crear() => LectorCatalogoCompras.Armar(Items, "10000", PeachEbills);
 
     internal static ProveedorSage Proveedor(string cuentaGasto = "60505", string email = "compras@proveedor.test", string tipo = "04") =>
-        new("PROVEEDOR PRUEBA", "123", tipo, "PROVEEDOR PRUEBA", "", "", "", "", "DIRECCION 1", "", "1799999999001",
+        new("PROVEEDOR PRUEBA", "123", tipo, "PROVEEDOR PRUEBA", "", "", "", "", "", "DIRECCION 1", "", "1799999999001",
             email, "", "OC-", cuentaGasto, false);
 }

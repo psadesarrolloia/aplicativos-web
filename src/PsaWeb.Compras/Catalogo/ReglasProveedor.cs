@@ -19,7 +19,7 @@ public static class ReglasProveedor
         var (nombre, cf0) = PartirNombre(factura.Emisor.RazonSocial);
         var (dir1, dir2) = PartirDireccion(factura.Emisor.DireccionMatriz);
         var (tipo, pais, cf4) = Identificacion(factura.Emisor.Ruc);
-        return new ProveedorSage(id, null, tipo, nombre, cf0, string.Empty, string.Empty, cf4, dir1, dir2, pais, email,
+        return new ProveedorSage(id, null, tipo, nombre, cf0, string.Empty, string.Empty, string.Empty, cf4, dir1, dir2, pais, email,
             string.Empty, Telefono2(factura.Emisor.ObligadoContabilidad, factura.Emisor.ContribuyenteEspecial), cuentaGasto, false);
     }
 

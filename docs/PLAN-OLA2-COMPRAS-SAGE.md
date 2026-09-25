@@ -575,3 +575,50 @@ Tests: 49 nuevos (lector, preparación, armador, retenciones, validaciones, prov
 - Numeración de OC (máximo numérico) y de retención (`twhNumNext` + `CheckForTwhNumberAlreadyUsed`) — necesitan leer Sage al guardar.
 - `LoadVendor` (crear/actualizar el proveedor por SDK) antes de la OC; `VendorConfiguration` nuevas/modificadas al guardar.
 - Contrato del trabajo `CrearOc` (payload = `OcArmada` + proveedor) y su manejador en el Bridge.
+
+---
+
+## 17. F3 — Escritura de la OC por el Sage Bridge (implementada 2026-09-25)
+
+### 17.1 Qué se construyó
+| Pieza | Ubicación | Notas |
+|---|---|---|
+| Contrato `GuardarOc` | `src/PsaWeb.SageBridge.Contratos/GuardarOc.cs` | `PayloadGuardarOc` (OC armada + proveedor + numeración), `ResultadoGuardarOc`. Propiedades en **orden alfabético** (el Bridge lee con `DataContractJsonSerializer`, la web escribe con System.Text.Json; un test lo exige). Fechas como texto |
+| Numeración | `NumeracionCompras` (Contratos, pura) | OC: máximo **numérico** del prefijo + 1 (`OC-10000` tras `OC-9999`). Retención: máximo de la serie + 1, con `startNumerationTwh` como mínimo |
+| Manejador | `bridge/.../ManejadorGuardarOc.cs` | Port de `LoadVendor` (crea o actualiza los campos que actualiza el `.exe`, reactiva) + `LoadPurchaseOrder` (cabecera y líneas en el mismo orden y con el mismo orden de asignación). Numera al guardar leyendo Sage por ODBC (`OdbcSage`: misma fuente que la web, `PeachConnString` con la contraseña descifrada) |
+| Web → Bridge | `src/PsaWeb.Compras/Bridge/SolicitudGuardarOc.cs` | `OcArmada` + proveedor → payload y clave de idempotencia `oc|proveedor|factura|huella`: mismo contenido = mismo trabajo (doble clic); contenido distinto = trabajo nuevo (actualización) |
+| Errores | `RechazoTrabajoException` → Error sin reintentos; `OdbcException` → reintentar sin reciclar el proceso | |
+
+### 17.2 Correcciones (§8)
+| | Qué | Decisión |
+|---|---|---|
+| C6 | Actualizar: el `.exe` borraba la OC antes de armar la nueva y le daba un **nº de retención nuevo** | En el lugar: se carga la OC, se reemplazan las líneas (`RemoveLine`/`AddLine`) y se guarda una vez; conserva PostOrder, nº de OC y nº de retención. Las distribuciones quedan renumeradas (`DistNumber` sigue el contador de la OC); no afecta la conversión por SDK de la F6 |
+| C7 | `Validate()` fallido sin mensaje | El trabajo queda en Error con los problemas de Sage |
+| C8 | Nº de retención duplicado no se validaba | Se rechaza (y un nº de OC escrito a mano que ya existe) |
+| — | OC ya recibida (convertida en compra) | No se toca: «ya se convirtió en compra (contabilizada)», como el botón deshabilitado del `.exe` |
+| — | Proveedor nuevo con un ID que ya usa otro proveedor | Se rechaza (7c); si el ID existe con la misma identificación (reintento), se actualiza |
+
+### 17.3 Hallazgo: el anfitrión cambiaba con cada commit
+El SDK de .NET agrega `+<commit>` a la versión informativa: cada commit cambiaba el hash de `PsaWeb.SageBridge.exe` y Sage pedía
+autorizarlo de nuevo. Corregido con `IncludeSourceRevisionInInformationalVersion=false` en el anfitrión (verificado: dos commits distintos →
+mismo binario, SHA-256 `B3A05872…`). El usuario re-aprobó el acceso una vez en la copia (2026-09-25).
+
+### 17.4 Cierre: las OC escritas por el Bridge = las del `.exe`
+`tests/PsaWeb.Compras.Tests/Validacion/EscrituraOcCopiaTests` (**escribe en la copia**; solo con `PSAWEB_TEST_F3_ESCRIBIR=1` y el Bridge en
+consola con `SoloBases` = la copia; habilita la empresa mientras dura y la deshabilita al final). Toma una OC real por perfil (forma de pago,
+retención de IVA, resumida, más de 3 líneas, propina, impuestos) — **22 OC** —, la arma desde el XML con factura de prueba
+`999-998-<PostOrder>`, la encola y compara por ODBC **todas** las columnas de `JrnlHdr` y de cada `JrnlRow` con la del `.exe`.
+
+**Resultado (2026-09-25): 22/22 sin diferencias inesperadas** (OC-8905 … OC-8926, retenciones 001-001-000025978 … 25999, 7 proveedores
+actualizados por la corrección C5). Diferencias esperadas y excluidas con su motivo: datos de prueba (nº de OC, factura, retención),
+identidad y grabado (`rGUIDa-d`, `JrnlKey_TrxNumber`, `LastPostedAt`, `LastUpdateCounter`), recepción (las del `.exe` ya las convirtió el
+worker: `POSOIsClosed`, `QtyReceived`, `StockingQtyReceived`, `AmountReceived`) y el nombre del proveedor cortado a 30 en la fila de CxP por
+el worker (§14.3). Además: **actualizar en el lugar** OK en 2 OC (mismo PostOrder, nº de OC y de retención) y **rechazos** OK (nº de OC ya
+existente; nº de retención ya usado por otra OC). Volver a correr el arnés no escribe (trabajos idempotentes).
+
+Datos de prueba que quedaron en la copia: OC-8905…8926 (facturas `999-998-…`), trabajos 29–54 en `TrabajosSage`.
+Tests: 913 en verde en la solución (12 saltados).
+
+### 17.5 Pendiente
+- F4: módulo Compras (manual) — encola `GuardarOc`, muestra el resultado; permisos y auditoría.
+- F6: convertir OC → compra en el Bridge (`PurchaseOrderSync`).

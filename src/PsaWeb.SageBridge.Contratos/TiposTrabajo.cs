@@ -15,7 +15,13 @@ public static class TiposTrabajo
     /// </summary>
     public const string ProbarEmpresa = "ProbarEmpresa";
 
-    public static IReadOnlyList<string> Todos { get; } = new[] { ProbarEmpresa };
+    /// <summary>
+    /// Crea o actualiza (en el lugar, un solo guardado) la Purchase Order de una factura de compra, con su proveedor y su
+    /// numeración (§6.1 del plan). Payload <see cref="PayloadGuardarOc"/>, resultado <see cref="ResultadoGuardarOc"/>.
+    /// </summary>
+    public const string GuardarOc = "GuardarOc";
+
+    public static IReadOnlyList<string> Todos { get; } = new[] { ProbarEmpresa, GuardarOc };
 
     /// <summary>Tipos que no escriben en Sage y por eso se procesan aunque la empresa no esté habilitada.</summary>
     public static bool PermitidoSinHabilitar(string tipo) => tipo == ProbarEmpresa;

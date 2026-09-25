@@ -8,8 +8,8 @@
     <OutputType>Library</OutputType>
     <AssemblyName>PsaWeb.SageBridge.Logica</AssemblyName>
     <RootNamespace>PsaWeb.SageBridge.Logica</RootNamespace>
-    <Version>0.1.0</Version>
-    <InformationalVersion>0.1.0-F1</InformationalVersion>
+    <Version>0.2.0</Version>
+    <InformationalVersion>0.2.0-F3</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>

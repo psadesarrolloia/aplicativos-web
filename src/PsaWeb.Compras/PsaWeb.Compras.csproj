@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PsaWeb.Sage50\PsaWeb.Sage50.csproj" />
     <ProjectReference Include="..\PsaWeb.PeachEbills\PsaWeb.PeachEbills.csproj" />
+    <ProjectReference Include="..\PsaWeb.SageBridge.Contratos\PsaWeb.SageBridge.Contratos.csproj" />
   </ItemGroup>
 
   <ItemGroup>

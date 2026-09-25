@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PsaWeb.Compras\PsaWeb.Compras.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.SageBridge.Cola\PsaWeb.SageBridge.Cola.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -168,7 +168,7 @@ public sealed class Trabajador
             return ManejarErrorDeLote(lote, ex, "abrir la compañía");
         }
 
-        var contexto = new ContextoLote(compania, id, empresa, reloj.Elapsed.TotalSeconds);
+        var contexto = new ContextoLote(compania, id, empresa, reloj.Elapsed.TotalSeconds, _cfg);
         _log($"{id.CompanyName} abierta en {contexto.SegundosApertura:0.0} s.");
         try
         {
@@ -217,6 +217,12 @@ public sealed class Trabajador
             var resultado = manejador.Ejecutar(contexto, trabajo);
             _cola.Completar(trabajo.Id, _instancia, resultado);
             _log($"#{trabajo.Id} {trabajo.Tipo}: hecho.");
+            return CodigoNormal;
+        }
+        catch (RechazoTrabajoException ex)
+        {
+            _log($"#{trabajo.Id} {trabajo.Tipo}: rechazado. {ex.Message}");
+            _cola.Fallar(trabajo.Id, _instancia, ex.Message);
             return CodigoNormal;
         }
         catch (Exception ex)

@@ -33,6 +33,13 @@ public static class ClasificadorErroresSage
         var tipo = tipoExcepcion ?? string.Empty;
         var texto = mensaje ?? string.Empty;
 
+        // Lecturas por ODBC del Bridge (numeración, OC existente): el driver dice «[Zen]» en todos sus errores, pero no
+        // envenena el proceso como el SDK. Se reintenta más tarde (p. ej. el motor está en backup).
+        if (tipo == "OdbcException")
+        {
+            return AccionAnteError.Reintentar;
+        }
+
         if (Contiene(texto, "Btrieve") || Contiene(texto, "MicroKernel") || Contiene(texto, "SetDefaultDatabase")
             || Contiene(texto, "[Zen]") || Contiene(texto, "Pervasive"))
         {

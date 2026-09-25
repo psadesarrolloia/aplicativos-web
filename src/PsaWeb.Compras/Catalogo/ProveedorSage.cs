@@ -12,6 +12,7 @@ public sealed record ProveedorSage(
     string Nombre,
     string CustomField0,
     string CustomField1,
+    string CustomField2,
     string CustomField3,
     string CustomField4,
     string Direccion1,

@@ -13,6 +13,9 @@
     <FileVersion>1.0.0.0</FileVersion>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <InformationalVersion>1.0.0</InformationalVersion>
+    <!-- El SDK de .NET agrega «+<hash del commit>» a la versión informativa: cada commit cambiaría el .exe y Sage pediría
+         autorizarlo de nuevo (pasó en la F3). El anfitrión no lleva el commit; la DLL de lógica sí. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Sin rutas de la máquina de compilación dentro del .exe: la misma fuente da el mismo binario. -->
     <PathMap>$(MSBuildProjectDirectory)=.</PathMap>
     <DebugType>embedded</DebugType>

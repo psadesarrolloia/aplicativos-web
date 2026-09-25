@@ -89,7 +89,7 @@ public static class LectorCatalogoCompras
     }
 
     private const string SqlProveedores = """
-        SELECT v.VendorID, v.VendorRecordNumber, v.OurAccountWithThem, v.Name, v.CustomField0, v.CustomField1,
+        SELECT v.VendorID, v.VendorRecordNumber, v.OurAccountWithThem, v.Name, v.CustomField0, v.CustomField1, v.CustomField2,
                v.CustomField3, v.CustomField4, v.Email, v.PhoneNumber, v.PhoneNumber2, v.IsInactive,
                a.AddressLine1, a.AddressLine2, a.Country, c.AccountID AS CuentaGasto
         FROM Vendors v, Address a, Chart c
@@ -131,6 +131,7 @@ public static class LectorCatalogoCompras
                 Nombre: Texto(r, "Name"),
                 CustomField0: Texto(r, "CustomField0"),
                 CustomField1: Texto(r, "CustomField1"),
+                CustomField2: Texto(r, "CustomField2"),
                 CustomField3: Texto(r, "CustomField3"),
                 CustomField4: Texto(r, "CustomField4"),
                 Direccion1: Texto(r, "AddressLine1"),

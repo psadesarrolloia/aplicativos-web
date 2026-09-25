@@ -111,6 +111,7 @@ public sealed record OcArmada(
     string ShipVia,
     string NumeroFactura,
     string? NumeroRetencion,
+    bool LlevaRetencion,
     string EstadoSustento,
     string? Zip,
     string CuentaPorPagar,

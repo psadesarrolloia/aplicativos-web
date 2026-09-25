@@ -9,18 +9,20 @@ namespace PsaWeb.SageBridge.Logica;
 /// <summary>Datos de la compañía abierta para el lote en curso.</summary>
 public sealed class ContextoLote
 {
-    public ContextoLote(Company empresa, CompanyIdentifier id, EmpresaSage empresaSage, double segundosApertura)
+    public ContextoLote(Company empresa, CompanyIdentifier id, EmpresaSage empresaSage, double segundosApertura, Configuracion configuracion)
     {
         Empresa = empresa;
         Identificador = id;
         EmpresaSage = empresaSage;
         SegundosApertura = segundosApertura;
+        Configuracion = configuracion;
     }
 
     public Company Empresa { get; }
     public CompanyIdentifier Identificador { get; }
     public EmpresaSage EmpresaSage { get; }
     public double SegundosApertura { get; }
+    public Configuracion Configuracion { get; }
 }
 
 /// <summary>Ejecuta un tipo de trabajo sobre la compañía abierta y devuelve el resultado (JSON).</summary>
@@ -59,5 +61,5 @@ public sealed class ManejadorProbarEmpresa : IManejadorTrabajo
 public static class Manejadores
 {
     public static IReadOnlyDictionary<string, IManejadorTrabajo> Todos { get; } =
-        new IManejadorTrabajo[] { new ManejadorProbarEmpresa() }.ToDictionary(m => m.Tipo);
+        new IManejadorTrabajo[] { new ManejadorProbarEmpresa(), new ManejadorGuardarOc() }.ToDictionary(m => m.Tipo);
 }

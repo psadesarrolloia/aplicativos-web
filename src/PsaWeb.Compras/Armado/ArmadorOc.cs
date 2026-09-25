@@ -364,6 +364,7 @@ public static class ArmadorOc
             ShipVia: TiposDocumentoCompra.Descripcion(e.TipoDocumento),
             NumeroFactura: e.NumeroFactura,
             NumeroRetencion: retenciones is null ? null : e.NumeroRetencion,
+            LlevaRetencion: retenciones is not null,
             EstadoSustento: e.Sustento == SustentoCompra.Credito ? "01" : "02",
             Zip: e.Origen switch { OrigenCompra.Manual => "Manual", OrigenCompra.Externa => "Externo", _ => null },
             CuentaPorPagar: CuentaPorPagar,

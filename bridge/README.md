@@ -51,6 +51,20 @@ solo abre esas bases; en PREDATOR, la copia de prueba).
 
 La autorización es por **ejecutable y cuenta de Windows**: el servicio corre siempre con la misma cuenta local dedicada.
 
+## Trabajos
+
+| Tipo | Qué hace |
+|---|---|
+| `ProbarEmpresa` | Abre y cierra la compañía (solo lectura); deja pendiente la solicitud de acceso si falta. Corre aunque la empresa no esté habilitada. |
+| `GuardarOc` | Crea o actualiza **en el lugar** la Purchase Order de una factura de compra, con su proveedor y la numeración (OC y retención) calculada al guardar. Lee Sage por ODBC (cadena de `PeachConnString`, como la web) solo para numerar y buscar la OC existente. |
+
+Un rechazo de negocio (nº ya usado, OC ya convertida en compra, `Validate()` de Sage) deja el trabajo en Error sin reintentos.
+
+## El anfitrión no debe cambiar
+
+`PsaWeb.SageBridge.exe` se compila sin el commit en la versión (`IncludeSourceRevisionInInformationalVersion=false`): el mismo código da
+el mismo binario en cualquier commit (SHA-256 `B3A05872…`). Si el hash cambia, Sage vuelve a pedir la autorización en cada empresa.
+
 ## Desarrollo
 
 ```powershell
