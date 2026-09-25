@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ANFITRIÓN del Sage Bridge: el .exe que Sage 50 autoriza («Third Party Application Access»).
+       La F0 probó que la autorización va atada a ESTE ejecutable (y a la cuenta de Windows): si cambia su hash, hay
+       que volver a autorizarlo en cada empresa. Por eso es mínimo y estable: no referencia el SDK ni SQL; supervisa
+       al proceso trabajador (él mismo con \-\-trabajador) y delega todo en PsaWeb.SageBridge.Logica.dll, que se
+       actualiza libremente. NO agregar lógica ni dependencias acá: cualquier cambio obliga a re-autorizar. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>PsaWeb.SageBridge</AssemblyName>
+    <RootNamespace>PsaWeb.SageBridge</RootNamespace>
+    <Version>1.0.0</Version>
+    <FileVersion>1.0.0.0</FileVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
+    <!-- Sin rutas de la máquina de compilación dentro del .exe: la misma fuente da el mismo binario. -->
+    <PathMap>$(MSBuildProjectDirectory)=.</PathMap>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.ServiceProcess" />
+  </ItemGroup>
+
+</Project>

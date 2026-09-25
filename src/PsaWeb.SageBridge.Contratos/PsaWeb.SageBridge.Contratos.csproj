@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Contratos y reglas puras del Sage Bridge. netstandard2.0 porque lo usan el Host (.NET 9) y el Bridge
+       (.NET Framework 4.8, el único que carga el SDK de Sage). Sin dependencias. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -22,6 +22,7 @@ using Microsoft.EntityFrameworkCore;
 using PsaWeb.Conciliacion;
 using PsaWeb.Conciliacion.Data;
 using PsaWeb.Modules.ConciliacionSri;
+using PsaWeb.SageBridge.Cola;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,6 +77,8 @@ if (plataformaConfigurada)
     // /mi-cuenta/extension solo tienen sentido si hay plataforma (token de API
     // atado a un usuario de Identity).
     builder.Services.AddConciliacion(builder.Configuration);
+    // Ola 2: cola del Sage Bridge (la web encola; el servicio PsaSageBridge escribe en Sage). Misma base física.
+    builder.Services.AddSageBridgeCola(builder.Configuration);
 }
 
 // El módulo de Conciliación SRI (procesador de verificación + worker + página)
@@ -192,6 +195,13 @@ if (plataformaConfigurada)
         var reportesDb = scope.ServiceProvider.GetRequiredService<PsaWeb.Modules.Reportes.Comun.ReportesDbContext>();
         await reportesDb.Database.MigrateAsync();
         app.Logger.LogInformation("Reportes (Cartera / Bancos): migraciones aplicadas.");
+
+        var bridgeDb = await scope.ServiceProvider
+            .GetRequiredService<IDbContextFactory<PsaWeb.SageBridge.Cola.Data.SageBridgeDbContext>>()
+            .CreateDbContextAsync();
+        await bridgeDb.Database.MigrateAsync();
+        await bridgeDb.DisposeAsync();
+        app.Logger.LogInformation("Sage Bridge (cola): migraciones aplicadas.");
     }
 
     if (app.Environment.IsDevelopment())

@@ -1,0 +1,10 @@
+{
+  "Instancia": "principal",
+  "PlataformaConnectionString": "Server=SERWEBPSA01;Database=PsaWebPlataforma;Integrated Security=True",
+  "PeachEbillsConnectionString": "Server=SERWEBPSA01;Database=PeachEBills;Integrated Security=True",
+  "ClaveAplicacionProtegida": "(salida de: PsaWeb.SageBridge.exe --proteger-clave, corrido EN ESTE servidor)",
+  "VentanaPorDefecto": "22:00-06:00",
+  "IntervaloSondeoSegundos": 10,
+  "LeaseMinutos": 15,
+  "MaximoTrabajosPorLote": 20
+}

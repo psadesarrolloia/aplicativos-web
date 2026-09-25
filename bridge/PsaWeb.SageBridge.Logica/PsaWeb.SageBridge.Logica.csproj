@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Lógica del Sage Bridge: SDK de Sage 50, cola en PsaWebPlataforma (ADO.NET) y manejadores de trabajos.
+       La carga el anfitrión (PsaWeb.SageBridge.exe) por reflexión: esta DLL se puede actualizar sin re-autorizar
+       el Bridge en Sage (la autorización va atada al .exe, F0 §14.2). Solo dependencias del propio .NET Framework
+       (sin System.Text.Json: exigiría binding redirects en el .exe). -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <AssemblyName>PsaWeb.SageBridge.Logica</AssemblyName>
+    <RootNamespace>PsaWeb.SageBridge.Logica</RootNamespace>
+    <Version>0.1.0</Version>
+    <InformationalVersion>0.1.0-F1</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SDK de Sage 50 2023 (x86). Está en el GAC de los equipos con Sage instalado: no se copia a la salida. -->
+    <Reference Include="Sage.Peachtree.API">
+      <HintPath>C:\Program Files (x86)\Sage\Peachtree\API\Sage.Peachtree.API.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Data" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Security" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\PsaWeb.SageBridge.Contratos\PsaWeb.SageBridge.Contratos.csproj" />
+  </ItemGroup>
+
+</Project>

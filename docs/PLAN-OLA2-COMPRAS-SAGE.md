@@ -88,8 +88,8 @@ Navegador ─► PsaWeb.Host (.NET 9, x86, IIS)
   «En cola — se procesa a las 06:00».
 - **Modo consola** del mismo ejecutable para desarrollo en PREDATOR (`PsaWeb.SageBridge.exe --consola`).
 - **Secretos**: `thirdPartyApplicationKey` y cadenas de conexión solo en la config del servidor (protegida con DPAPI / variables de
-  entorno), nunca en git. Se reutiliza la clave de aplicación del exe (ver F0-e: si la autorización «Allow Access» es por clave de
-  aplicación, las empresas ya autorizadas para el exe no requieren repetirla).
+  entorno), nunca en git. Se reutiliza la clave de aplicación del exe, pero la F0 mostró que la autorización de Sage va atada al
+  **ejecutable y a la cuenta de Windows** (§14.2, §14.6): cada empresa se autoriza una vez para el anfitrión del Bridge.
 
 ### 3.1 Tabla `TrabajosSage` (PsaWebPlataforma, migración EF desde el Host)
 
@@ -502,3 +502,32 @@ ventana de mantenimiento por empresa; `DatabaseName` desde `PeachConnString.dbq`
 Datos de prueba que quedaron en la copia (a limpiar restaurándola): OC-8904 (104864), compra 104865 (`999-999-000000001`) y las NC
 `999-999-000000003/4/6/7`. En PREDATOR queda instalado el servicio temporal `PsaSpikeF0` con la cuenta `svc-sagebridge-f0`
 (`C:\PSA-F0\servicio\03-limpiar-F0.ps1` lo borra).
+
+---
+
+## 15. F1 — Sage Bridge base (implementada 2026-09-25)
+
+### 15.1 Qué se construyó
+| Pieza | Ubicación | Notas |
+|---|---|---|
+| Contratos y reglas puras | `src/PsaWeb.SageBridge.Contratos` (netstandard2.0) | `TiposTrabajo` (F1: `ProbarEmpresa`), `EstadosTrabajo`, `VentanaMantenimiento` (cruza medianoche), `ClasificadorErroresSage` (textos reales de la F0), `PoliticaReintentos` (5 intentos: 2/5/10/20 min), `ResultadoProbarEmpresa` |
+| Cola (dueña del esquema) | `src/PsaWeb.SageBridge.Cola` (net9, EF) | Tablas `TrabajosSage` (índice único Ruc+Tipo+ClaveIdempotencia), `LatidosBridge`, `EmpresasBridge`; migración `Inicial` aplicada al arrancar el Host. `IColaSage`: encolar idempotente, listar, resumen, cancelar (solo en cola), reintentar (solo Error/Cancelado), config por empresa |
+| Anfitrión | `bridge/PsaWeb.SageBridge` (net48 x86, `.exe`) | Servicio `PsaSageBridge` / `--consola` / supervisor; lanza **el mismo .exe** con `--trabajador <pid>` y lo relanza (código 3 = reciclar al instante; caída = 5 s…2 min). Sin SDK ni SQL. Compilación determinista (verificado: mismo hash al recompilar) |
+| Lógica | `bridge/PsaWeb.SageBridge.Logica` (net48 x86, DLL) | Ciclo: empresa con el trabajo listo más antiguo fuera de su ventana → lote con lease → `VerifyAccess` + `Open` una vez → manejadores → `Close` siempre. Empresas no habilitadas: solo `ProbarEmpresa` (que deja la solicitud de acceso pendiente). `SoloBases` como candado de desarrollo. Clave de Sage con DPAPI (`--proteger-clave`). JSON con el serializador del Framework (sin paquetes: el .exe no necesita binding redirects) |
+| Administración | `/admin/sage-bridge` (Host, solo `Plataforma:Admins`) | Latido, empresas (Probar / Habilitar solo con acceso Granted / ventana / nota), trabajos recientes con Cancelar/Reintentar; refresco cada 5 s. Pestaña agregada en Usuarios y Auditoría |
+| Tests | `tests/PsaWeb.SageBridge.Tests` (29), `tests/PsaWeb.Host.Tests` (2, primer test de páginas del Host, x86) | Solución completa en verde |
+
+### 15.2 Validación en PREDATOR (copia de prueba, solo lectura en Sage)
+- `ProbarEmpresa` con `.exe` nuevo → solicitud pendiente (`AccesoSage = Pending`); tras aprobar en Sage → **Granted**, abierta en
+  1,1 s (Sage abierto por el usuario), 1.088 cuentas leídas, cerrada. **La aprobación del .exe cubre al trabajador hijo.**
+- `SoloBases` rechazó una empresa fuera de la lista sin tocar Sage.
+- Ventana de mantenimiento sobre la hora actual: el trabajo quedó en cola; al quitarla, se procesó.
+- Error de base (Btrieve 12 sobre una carpeta inexistente): trabajo reprogramado (+2 min), trabajador reciclado al instante, el
+  trabajo siguiente se procesó bien en el proceso nuevo. Un error de base permanente termina en Error al agotar los intentos.
+- Matar el supervisor: el trabajador lo detecta y se detiene ordenadamente.
+- Recompilar solo la DLL: el `.exe` conserva su hash y su autorización.
+
+### 15.3 Pendiente para fases siguientes
+- Correr el Bridge como servicio con la cuenta dedicada (F0-a ya lo validó con el spike; se hace con el anfitrión real en F8 o antes si
+  se prefiere) y login SQL de esa cuenta en `PsaWebPlataforma`/`PeachEBills`.
+- Encolado de trabajos que escriben (F3): la web solo debe encolar en empresas habilitadas.

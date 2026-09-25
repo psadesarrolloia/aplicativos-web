@@ -1,0 +1,19 @@
+<Project>
+
+  <!-- Sage Bridge: .NET Framework 4.8, 32 bits (el SDK de Sage 50 y el driver Zen son x86).
+       Reemplaza al Directory.Build.props de la raíz (net9.0) para los proyectos de esta carpeta.
+       Todos los proyectos compilan a la MISMA carpeta (bin\<Config>\): el anfitrión carga la lógica desde ahí. -->
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <OutputPath>$(MSBuildThisFileDirectory)bin\$(Configuration)\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <Company>Paredes Santos y Asociados</Company>
+    <Product>PSA Sage Bridge</Product>
+  </PropertyGroup>
+
+</Project>

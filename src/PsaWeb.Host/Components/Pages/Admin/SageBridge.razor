@@ -1,0 +1,309 @@
+@page "/admin/sage-bridge"
+@using System.Text.Json
+@using Microsoft.Extensions.Options
+@using PsaWeb.Identidad
+@using PsaWeb.PeachEbills.Data
+@using PsaWeb.SageBridge.Cola
+@using PsaWeb.SageBridge.Cola.Data
+@using PsaWeb.SageBridge.Contratos
+@implements IDisposable
+@inject IOptions<PlataformaOptions> Opciones
+@inject IColaSage Cola
+@inject IServiceProvider Servicios
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Sage Bridge — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Administración"
+               Subtitle="Sage Bridge: el servicio que escribe en Sage 50. Estado, empresas habilitadas y cola de trabajos." />
+
+<div class="psa-subnav">
+    <NavLink class="psa-nav__link" href="/admin/usuarios">Usuarios</NavLink>
+    <NavLink class="psa-nav__link" href="/admin/auditoria">Auditoría</NavLink>
+    <NavLink class="psa-nav__link" href="/admin/sage-bridge">Sage Bridge</NavLink>
+</div>
+
+@if (!_esAdmin)
+{
+    <PsaCard Title="Sin acceso">
+        <p class="psa-notice psa-notice--danger">Tu usuario no tiene acceso a la administración.</p>
+    </PsaCard>
+}
+else if (_latidos is null)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else
+{
+    <PsaCard Title="Estado del servicio">
+        @if (_latidos.Count == 0)
+        {
+            <p class="psa-notice psa-notice--danger">El Bridge nunca se conectó: no hay latidos registrados.</p>
+        }
+        else
+        {
+            <div style="overflow-x:auto">
+            <table class="psa-table">
+                <thead><tr><th>Instancia</th><th>Estado</th><th>Último latido</th><th>Qué hace</th><th>Cuenta de Windows</th><th>Versiones (anfitrión / lógica)</th></tr></thead>
+                <tbody>
+                    @foreach (var l in _latidos)
+                    {
+                        var vivo = EstadoBridge.EstaVivo(l, DateTime.UtcNow);
+                        <tr>
+                            <td>@l.Instancia</td>
+                            <td><span class="psa-evt psa-evt--@(vivo ? "ok" : "bad")">@(vivo ? "activo" : "sin latido")</span></td>
+                            <td>@l.UltimoLatidoUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            <td>@l.Estado @(l.EmpresaAbierta is null ? "" : $"(abierta: {l.EmpresaAbierta})")</td>
+                            <td>@l.Usuario</td>
+                            <td class="psa-muted">@l.VersionAnfitrion / @l.VersionLogica</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+        }
+    </PsaCard>
+
+    <PsaCard Title="Empresas">
+        <p class="psa-muted" style="margin-top:0">
+            Para dar de alta una empresa: <b>Probar</b> → si Sage aún no autorizó al Bridge, abrir esa empresa en Sage
+            (o cerrarla y volver a abrirla) y elegir <i>Always allow access</i> → <b>Probar</b> otra vez → cuando el acceso
+            sea <b>Granted</b>, <b>Habilitar</b>. La ventana de mantenimiento (HH:mm-HH:mm) debe cubrir el backup automático
+            de Sage: en ese horario el Bridge no abre la empresa. Vacía = la ventana por defecto del Bridge.
+        </p>
+        @if (_msgEmpresa is not null)
+        {
+            <p class="psa-notice @(_empresaOk ? "" : "psa-notice--danger")">@_msgEmpresa</p>
+        }
+        <div style="overflow-x:auto">
+        <table class="psa-table">
+            <thead><tr><th>RUC</th><th>Empresa</th><th>Acceso en Sage</th><th>Habilitada</th><th>Ventana</th><th>Nota</th><th>Acciones</th></tr></thead>
+            <tbody>
+                @foreach (var f in _empresas)
+                {
+                    <tr>
+                        <td>@f.Ruc</td>
+                        <td>@f.Nombre</td>
+                        <td>
+                            @if (f.Acceso is null)
+                            {
+                                <span class="psa-muted">sin probar</span>
+                            }
+                            else
+                            {
+                                <span class="psa-evt psa-evt--@(f.Acceso == "Granted" ? "ok" : "bad")">@f.Acceso</span>
+                                <span class="psa-muted">@f.AccesoVerificado?.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                            }
+                        </td>
+                        <td>
+                            <input type="checkbox" @bind="f.Habilitada" disabled="@(f.Acceso != "Granted" && !f.Habilitada)"
+                                   title="@(f.Acceso == "Granted" ? "" : "Se habilita cuando la prueba da acceso Granted")" />
+                        </td>
+                        <td><input class="psa-input" style="width:8rem" @bind="f.Ventana" placeholder="por defecto" /></td>
+                        <td><input class="psa-input" style="width:12rem" @bind="f.Nota" /></td>
+                        <td>
+                            <button type="button" class="psa-linkbtn" @onclick="() => Guardar(f)">Guardar</button>
+                            <button type="button" class="psa-linkbtn" @onclick="() => Probar(f.Ruc)">Probar</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+    </PsaCard>
+
+    <PsaCard Title="Trabajos recientes">
+        <div class="psa-row" style="align-items:flex-end;margin-bottom:.5rem">
+            <label class="psa-field"><span class="psa-field__lbl">Estado</span>
+                <select class="psa-input" @bind="_filtroEstado" @bind:after="CargarTrabajos">
+                    <option value="">(todos)</option>
+                    <option value="@EstadosTrabajo.EnCola">En cola</option>
+                    <option value="@EstadosTrabajo.EnProceso">En proceso</option>
+                    <option value="@EstadosTrabajo.Hecho">Hecho</option>
+                    <option value="@EstadosTrabajo.Error">Error</option>
+                    <option value="@EstadosTrabajo.Cancelado">Cancelado</option>
+                </select>
+            </label>
+            <span class="psa-muted">Se actualiza solo cada 5 s.</span>
+        </div>
+        <div style="overflow-x:auto">
+        <table class="psa-table">
+            <thead><tr><th class="num">#</th><th>Creado</th><th>RUC</th><th>Tipo</th><th>Estado</th><th class="num">Intentos</th><th>Por</th><th>Detalle</th><th>Acciones</th></tr></thead>
+            <tbody>
+                @if (_trabajos.Count == 0)
+                {
+                    <tr><td colspan="9" class="psa-muted">Sin trabajos.</td></tr>
+                }
+                @foreach (var t in _trabajos)
+                {
+                    <tr>
+                        <td class="num">@t.Id</td>
+                        <td>@t.CreadoUtc.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                        <td>@t.Ruc</td>
+                        <td>@t.Tipo</td>
+                        <td><span class="psa-evt psa-evt--@ClaseEstado(t.Estado)">@t.Estado</span></td>
+                        <td class="num">@t.Intentos</td>
+                        <td>@t.CreadoPor</td>
+                        <td class="psa-muted" style="max-width:32rem">@Detalle(t)</td>
+                        <td>
+                            @if (t.Estado == EstadosTrabajo.EnCola)
+                            {
+                                <button type="button" class="psa-linkbtn" @onclick="() => Cancelar(t.Id)">Cancelar</button>
+                            }
+                            @if (t.Estado is EstadosTrabajo.Error or EstadosTrabajo.Cancelado)
+                            {
+                                <button type="button" class="psa-linkbtn" @onclick="() => Reintentar(t.Id)">Reintentar</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+    </PsaCard>
+}
+
+@code {
+    private bool _esAdmin;
+    private string _usuario = "";
+    private IReadOnlyList<LatidoBridge>? _latidos;
+    private List<FilaEmpresa> _empresas = new();
+    private IReadOnlyList<TrabajoSage> _trabajos = Array.Empty<TrabajoSage>();
+    private string _filtroEstado = "";
+    private string? _msgEmpresa;
+    private bool _empresaOk;
+    private Timer? _refresco;
+
+    internal sealed class FilaEmpresa
+    {
+        public string Ruc { get; set; } = "";
+        public string Nombre { get; set; } = "";
+        public bool Habilitada { get; set; }
+        public string? Ventana { get; set; }
+        public string? Nota { get; set; }
+        public string? Acceso { get; set; }
+        public DateTime? AccesoVerificado { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _usuario = state.User.Identity?.Name ?? "";
+        _esAdmin = Opciones.Value.EsAdmin(_usuario);
+        if (!_esAdmin) return;
+
+        await CargarEmpresas();
+        await CargarEstado();
+        _refresco = new Timer(_ => _ = InvokeAsync(async () =>
+        {
+            try { await CargarEstado(); StateHasChanged(); } catch { /* la página pudo cerrarse */ }
+        }), null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    /// <summary>Latido, trabajos y el acceso de cada empresa (no pisa lo que el usuario está editando).</summary>
+    private async Task CargarEstado()
+    {
+        _latidos = await Cola.LatidosAsync();
+        await CargarTrabajos();
+        var config = (await Cola.EmpresasAsync()).ToDictionary(e => e.Ruc);
+        foreach (var f in _empresas)
+        {
+            if (config.TryGetValue(f.Ruc, out var e))
+            {
+                f.Acceso = e.AccesoSage;
+                f.AccesoVerificado = e.AccesoVerificadoUtc;
+            }
+        }
+        foreach (var e in config.Values.Where(e => _empresas.All(f => f.Ruc != e.Ruc)))
+        {
+            _empresas.Add(Fila(e, e.Ruc));
+        }
+    }
+
+    private async Task CargarTrabajos() =>
+        _trabajos = await Cola.ListarAsync(new FiltroTrabajos(Estado: string.IsNullOrEmpty(_filtroEstado) ? null : _filtroEstado, Maximo: 50));
+
+    private async Task CargarEmpresas()
+    {
+        var config = (await Cola.EmpresasAsync()).ToDictionary(e => e.Ruc);
+        var activas = Servicios.GetService<IEmpresasActivasRepository>() is { } repo
+            ? await repo.ObtenerAsync()
+            : Array.Empty<EmpresaActiva>();
+        _empresas = activas
+            .Select(a => config.TryGetValue(a.Ruc, out var e) ? Fila(e, a.Nombre) : new FilaEmpresa { Ruc = a.Ruc, Nombre = a.Nombre })
+            .Concat(config.Values.Where(e => activas.All(a => a.Ruc != e.Ruc)).Select(e => Fila(e, e.Ruc)))
+            .OrderBy(f => f.Nombre)
+            .ToList();
+    }
+
+    private static FilaEmpresa Fila(EmpresaBridge e, string nombre) => new()
+    {
+        Ruc = e.Ruc, Nombre = nombre, Habilitada = e.Habilitada, Ventana = e.Ventana, Nota = e.Nota,
+        Acceso = e.AccesoSage, AccesoVerificado = e.AccesoVerificadoUtc,
+    };
+
+    private async Task Guardar(FilaEmpresa f)
+    {
+        try
+        {
+            var e = await Cola.GuardarEmpresaAsync(f.Ruc, f.Habilitada, f.Ventana, f.Nota, _usuario);
+            f.Ventana = e.Ventana;
+            _empresaOk = true;
+            _msgEmpresa = $"{f.Nombre}: guardada ({(e.Habilitada ? "habilitada" : "no habilitada")}, ventana {e.Ventana ?? "por defecto"}).";
+        }
+        catch (ArgumentException ex)
+        {
+            _empresaOk = false;
+            _msgEmpresa = ex.Message;
+        }
+    }
+
+    private async Task Probar(string ruc)
+    {
+        var r = await Cola.EncolarAsync(ruc, TiposTrabajo.ProbarEmpresa, null, $"probar-{Guid.NewGuid():N}", _usuario);
+        _empresaOk = true;
+        _msgEmpresa = $"Prueba encolada (trabajo #{r.Trabajo.Id}). El resultado aparece abajo en unos segundos si el Bridge está activo.";
+        await CargarTrabajos();
+    }
+
+    private async Task Cancelar(long id)
+    {
+        await Cola.CancelarAsync(id, _usuario);
+        await CargarTrabajos();
+    }
+
+    private async Task Reintentar(long id)
+    {
+        await Cola.ReintentarAsync(id, _usuario);
+        await CargarTrabajos();
+    }
+
+    private static string ClaseEstado(string estado) => estado switch
+    {
+        EstadosTrabajo.Hecho => "ok",
+        EstadosTrabajo.Error => "bad",
+        _ => "neutral",
+    };
+
+    internal static string Detalle(TrabajoSage t)
+    {
+        if (!string.IsNullOrEmpty(t.Error)) return t.Error;
+        if (t.Tipo == TiposTrabajo.ProbarEmpresa && !string.IsNullOrEmpty(t.ResultadoJson))
+        {
+            try
+            {
+                var r = JsonSerializer.Deserialize<ResultadoProbarEmpresa>(t.ResultadoJson);
+                if (r is not null)
+                {
+                    return r.Abierta
+                        ? $"{r.Compania}: acceso {r.Acceso}, abierta en {r.SegundosApertura:0.0} s, {r.CuentasLeidas} cuentas. {r.Mensaje}"
+                        : $"{r.Compania}: acceso {r.Acceso}. {r.Mensaje}";
+                }
+            }
+            catch (JsonException) { }
+        }
+        return t.ResultadoJson ?? "";
+    }
+
+    public void Dispose() => _refresco?.Dispose();
+}
