@@ -359,6 +359,9 @@ público, sin tocar nada de esto) — decisión explícita, no pendiente urgente
   viejo (pre-shell), solo como referencia histórica.
 - `docs/VALIDAR-CONTRA-SAGE50.md` — cómo apuntar el dev en PREDATOR contra
   una Sage real en vez de datos de muestra.
+- `docs/PLAN-OLA2-COMPRAS-SAGE.md` — **Ola 2** (escritura en Sage): módulos Compras (+ NC de compra) y Retenciones en
+  venta recibidas, y el Sage Bridge (reemplaza «Nueva», «Desde Reporte SRI» y «Retenciones en Venta» del exe y el worker
+  COM `PSComInvoiceGenerate`). Plan, sin implementar.
 - `docs/PLAN-REPORTES-ACCESS.md` — plan, validación y decisiones de los reportes de Access (PWC, Comisiones, Cheques);
   `docs/sql/permisos-reportes-access.sql` — permisos `quRpt*` (pendiente de aplicar).
 
