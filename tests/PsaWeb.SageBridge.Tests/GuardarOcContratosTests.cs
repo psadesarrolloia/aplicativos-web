@@ -51,6 +51,9 @@ public class ContratosGuardarOcTests
     [InlineData(typeof(LineaOcContrato))]
     [InlineData(typeof(ProveedorContrato))]
     [InlineData(typeof(ResultadoGuardarOc))]
+    [InlineData(typeof(PayloadConvertirOcs))]
+    [InlineData(typeof(CompraConvertida))]
+    [InlineData(typeof(ResultadoConvertirOcs))]
     public void Las_propiedades_estan_en_orden_alfabetico(Type tipo)
     {
         var nombres = tipo.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.MetadataToken).Select(p => p.Name).ToList();

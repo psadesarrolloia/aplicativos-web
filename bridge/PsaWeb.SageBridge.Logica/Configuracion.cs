@@ -45,6 +45,18 @@ public sealed class Configuracion
 
     [DataMember] public int MaximoTrabajosPorLote { get; set; } = 20;
 
+    /// <summary>
+    /// Conversión OC → compra (F6, reemplazo del worker COM): cada cuántos minutos se programa por empresa habilitada, fuera de
+    /// su ventana. 0 = no se programa (solo la encadenada al guardar una OC y la pedida a mano).
+    /// </summary>
+    [DataMember] public int ConversionMinutos { get; set; } = 5;
+
+    /// <summary>Tras guardar una OC, encolar su conversión (el worker lo hacía en ~30 s).</summary>
+    [DataMember] public bool ConvertirAlGuardar { get; set; } = true;
+
+    /// <summary>Antigüedad máxima de las OC a convertir (el worker: <c>LimithMonths</c>).</summary>
+    [DataMember] public int ConversionMesesAtras { get; set; } = 12;
+
     /// <summary>SOLO DESARROLLO: nombre del servidor de Sage a usar en vez del de <c>PeachConnString</c>.</summary>
     [DataMember(EmitDefaultValue = false)] public string? ServidorSageOverride { get; set; }
 
@@ -68,6 +80,9 @@ public sealed class Configuracion
         IntervaloSondeoSegundos = 10;
         LeaseMinutos = 15;
         MaximoTrabajosPorLote = 20;
+        ConversionMinutos = 5;
+        ConvertirAlGuardar = true;
+        ConversionMesesAtras = 12;
     }
 
     public static Configuracion Cargar(string dirBase)

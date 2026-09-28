@@ -85,6 +85,52 @@ public sealed class OdbcSage : IDisposable
         return rd.Read() ? $"{Texto(rd.GetValue(0))} (factura {Texto(rd.GetValue(1))})" : null;
     }
 
+    /// <summary>
+    /// OC pendientes de convertir en compra: el mismo filtro que el worker COM (<c>Commons.QueryForPurchaseOrdersNotInInvoice</c>):
+    /// alguna fila con ítem y cantidad sin recibir, <c>ShipToAddress1</c> (nº de factura) no vacío, no <c>ANULAD%</c>, emitida desde
+    /// <paramref name="desde"/>.
+    /// </summary>
+    public List<OcPendiente> OcsPendientesDeCompra(DateTime desde)
+    {
+        var lista = new List<OcPendiente>();
+        using var cmd = Comando(
+            "SELECT DISTINCT h.PostOrder, h.Reference, h.TransactionDate, h.GoodThruDate, h.ShipVia, h.ShipToAddress1, h.ShipToAddress2, " +
+            "h.ShipToState, h.CustVendId, v.VendorID, ap.AccountID " +
+            "FROM JrnlHdr h, JrnlRow r, LineItem l, Vendors v, Chart ap " +
+            "WHERE h.PostOrder = r.PostOrder AND r.ItemRecordNumber = l.ItemRecordNumber AND h.CustVendId = v.VendorRecordNumber " +
+            "AND h.GLAcntNumber = ap.GLAcntNumber AND h.JrnlKey_Journal = 10 AND h.JournalEx = 18 " +
+            "AND ROUND(r.StockingQtyReceived, 2) < ROUND(r.Quantity, 2) AND LENGTH(h.ShipToAddress1) > 0 " +
+            "AND NOT (h.Description LIKE 'ANULAD%') AND h.TransactionDate >= ?", desde.Date);
+        using var rd = cmd.ExecuteReader();
+        while (rd.Read())
+        {
+            lista.Add(new OcPendiente
+            {
+                PostOrder = Convert.ToInt32(rd.GetValue(0)),
+                Referencia = Texto(rd.GetValue(1)),
+                Fecha = Convert.ToDateTime(rd.GetValue(2)),
+                FechaRegistro = rd.IsDBNull(3) ? (DateTime?)null : Convert.ToDateTime(rd.GetValue(3)),
+                ShipVia = Texto(rd.GetValue(4)),
+                Direccion1 = Texto(rd.GetValue(5)),
+                Direccion2 = Texto(rd.GetValue(6)),
+                Estado = Texto(rd.GetValue(7)),
+                VendorRecord = Convert.ToInt32(rd.GetValue(8)),
+                VendorId = Texto(rd.GetValue(9)),
+                CuentaPorPagar = Texto(rd.GetValue(10)),
+            });
+        }
+        return lista;
+    }
+
+    /// <summary>La compra que recibe esa OC (<c>INV_POSOOrderNumber</c> = nº de OC, mismo proveedor), como la busca el worker.</summary>
+    public int? CompraDeOc(string referenciaOc, int vendorRecord)
+    {
+        using var cmd = Comando("SELECT PostOrder FROM JrnlHdr WHERE JrnlKey_Journal = 4 AND INV_POSOOrderNumber = ? AND CustVendId = ? ORDER BY PostOrder DESC",
+            referenciaOc, vendorRecord);
+        var r = cmd.ExecuteScalar();
+        return r is null or DBNull ? null : Convert.ToInt32(r);
+    }
+
     public bool ExisteReferenciaOc(string referencia)
     {
         using var cmd = Comando($"SELECT COUNT(*) FROM JrnlHdr WHERE {FiltroOc} AND Reference = ?", referencia);
@@ -105,9 +151,12 @@ public sealed class OdbcSage : IDisposable
         var cmd = new OdbcCommand(sql, _cn);
         foreach (var p in parametros)
         {
-            cmd.Parameters.Add(p is int n
-                ? new OdbcParameter { OdbcType = OdbcType.Int, Value = n }
-                : new OdbcParameter { OdbcType = OdbcType.VarChar, Value = p });
+            cmd.Parameters.Add(p switch
+            {
+                int n => new OdbcParameter { OdbcType = OdbcType.Int, Value = n },
+                DateTime d => new OdbcParameter { OdbcType = OdbcType.Date, Value = d },
+                _ => new OdbcParameter { OdbcType = OdbcType.VarChar, Value = p },
+            });
         }
         return cmd;
     }
@@ -134,6 +183,62 @@ public sealed class OdbcSage : IDisposable
     }
 
     public void Dispose() => _cn.Dispose();
+}
+
+/// <summary>Cabecera de una OC pendiente de convertir (lo que el worker copiaba a la compra).</summary>
+public sealed class OcPendiente
+{
+    public int PostOrder { get; set; }
+    public string Referencia { get; set; } = string.Empty;
+    public DateTime Fecha { get; set; }
+    public DateTime? FechaRegistro { get; set; }
+    public string ShipVia { get; set; } = string.Empty;
+    public string Direccion1 { get; set; } = string.Empty;
+    public string Direccion2 { get; set; } = string.Empty;
+    public string Estado { get; set; } = string.Empty;
+    public int VendorRecord { get; set; }
+    public string VendorId { get; set; } = string.Empty;
+    public string CuentaPorPagar { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// <c>PeachEBills.PurchaseOrderSync</c> (OC → compra por RUC): lo que el worker escribía y de lo que depende el módulo web de
+/// Retenciones para las pendientes.
+/// </summary>
+public sealed class SincronizacionCompras
+{
+    private readonly string _cs;
+
+    public SincronizacionCompras(string peachEbillsConnectionString) => _cs = peachEbillsConnectionString;
+
+    public HashSet<int> OcsSincronizadas(string ruc)
+    {
+        var r = new HashSet<int>();
+        using var cn = new SqlConnection(_cs);
+        cn.Open();
+        using var cmd = new SqlCommand("SELECT POPostOrder FROM PurchaseOrderSync WHERE RUCTransmitter = @ruc", cn);
+        cmd.Parameters.AddWithValue("@ruc", ruc);
+        using var rd = cmd.ExecuteReader();
+        while (rd.Read())
+        {
+            if (int.TryParse(rd.GetString(0).Trim(), out var po)) r.Add(po);
+        }
+        return r;
+    }
+
+    /// <summary>Anota OC → compra (idempotente: no duplica la OC).</summary>
+    public void Anotar(string ruc, int postOrderOc, int postOrderCompra)
+    {
+        using var cn = new SqlConnection(_cs);
+        cn.Open();
+        using var cmd = new SqlCommand(
+            @"IF NOT EXISTS (SELECT 1 FROM PurchaseOrderSync WHERE RUCTransmitter = @ruc AND POPostOrder = @po)
+                INSERT INTO PurchaseOrderSync (POPostOrder, PIPostOrder, RUCTransmitter) VALUES (@po, @pi, @ruc)", cn);
+        cmd.Parameters.AddWithValue("@ruc", ruc);
+        cmd.Parameters.AddWithValue("@po", postOrderOc.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        cmd.Parameters.AddWithValue("@pi", postOrderCompra.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        cmd.ExecuteNonQuery();
+    }
 }
 
 /// <summary>El trabajo no se puede hacer con esos datos (validación de negocio o de Sage): queda en Error, sin reintentos.</summary>

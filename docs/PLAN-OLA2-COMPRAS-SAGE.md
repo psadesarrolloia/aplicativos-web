@@ -679,3 +679,36 @@ digitador edita (sin volver a partir nombre/dirección/`PhoneNumber2`).
 - 932 tests en verde en la solución.
 - **Pendiente para el despliegue** (decisión del usuario): lote real de un día de CPTDC registrado desde la bandeja, y medir cuántos
   documentos quedan fuera de la ventana del WS (`DescargasXmlFallidas`) para decidir la **F5b** (descarga por la extensión).
+
+## 20. F6 — OC → compra por el Sage Bridge (implementada 2026-09-25)
+
+### 20.1 Qué se construyó
+| Pieza | Ubicación | Notas |
+|---|---|---|
+| Trabajo `ConvertirOcs` | `Contratos/ConvertirOcs.cs` (payload opcional `PostOrders`, resultado con convertidas/errores/pendientes/solo anotadas) + `Logica/ManejadorConvertirOcs.cs` | Reemplazo del worker COM (§6.2). Filtro idéntico (`OdbcSage.OcsPendientesDeCompra`: fila con ítem sin recibir, `ShipToAddress1` no vacío, no `ANULAD%`, últimos `ConversionMesesAtras` = 12 meses, sin fila en `PurchaseOrderSync`). Compra por SDK: `PurchaseInvoice` + `AddOrderLine` por cada línea con ítem pendiente; mismos campos que el worker (factura = `ShipToAddress1`, fecha OC, vencimiento `GoodThruDate`, términos, ShipVia, envío 1/2/estado, CxP de la OC, `DiscountDate` vacía, precio unitario a 5 decimales) |
+| `PurchaseOrderSync` | `SincronizacionCompras` (PeachEBills) | Se anota **en el mismo trabajo** (idempotente); si la compra ya existía (reintento, o la hizo el worker) solo se anota. El worker lo hacía en el tick siguiente |
+| Programación | `Trabajador.ProgramarConversiones` / `EncolarConversion` + `ColaSql.EncolarSiNoHayPendiente` | Cada `ConversionMinutos` (5; 0 = apagado) por empresa **habilitada** y fuera de su ventana de mantenimiento, y **al terminar cada `GuardarOc`** (`ConvertirAlGuardar`). Nunca dos `ConvertirOcs` en cola/proceso por empresa |
+| Errores | por OC | Un error de negocio/SDK en una OC queda en `Errores` y no frena a las demás (se reintenta en la próxima corrida); ODBC/compañía ocupada/Btrieve se propagan al trabajo (reintento/reciclado normal) |
+
+Mejoras frente al worker: abre **la compañía del RUC** (el worker escribía en la empresa que estuviera abierta en Sage), no requiere Sage
+abierto ni sesión RDP, respeta la ventana de mantenimiento por empresa y deja resultado auditable en `TrabajosSage`. Lógica `0.3.0-F6`;
+el anfitrión no cambió (hash `99C8E111…`, sin re-autorizar en Sage).
+
+### 20.2 Validación (copia de prueba)
+- Arnés `ConversionOcCopiaTests` (`PSAWEB_TEST_F6_CONVERTIR=1` + Bridge en consola): convierte las 22 OC de prueba de la F3 y compara
+  **todas** las columnas de `JrnlHdr`/`JrnlRow` con la compra que el worker hizo de la OC original. **22/22 sin diferencias no
+  explicadas**; `PurchaseOrderSync` anotado para las 22; una segunda corrida no encuentra pendientes.
+- Diferencias explicadas: datos de prueba (factura, OC, retención, enlace a la OC y sus distribuciones renumeradas en las OC actualizadas
+  en el lugar); compras del worker **editadas después por contabilidad** (cuenta y nombre; `LastUpdateCounter` > 1) o ya pagadas; la fila
+  0 lleva el nombre completo del proveedor (el worker lo cortaba a 30: corrección, no pierde dato).
+- Precio unitario: la importación COM lo dejaba a 5 decimales (el monto no cambia). Se replica (`Math.Round(…, 5)`) para que Retenciones/ATS
+  lean lo mismo que hoy. Las 22 primeras conversiones de prueba son anteriores a ese ajuste.
+- **Programación periódica**: con la empresa habilitada, el Bridge encoló solo un `ConvertirOcs` (#87) y convirtió OC-8927.
+- **Ítem de inventario** (OC-8927, CS-001): la compra crea la capa de costo en `InventoryCosts` (tipo 10, diario 4, cantidad 1, $20) con
+  el mismo patrón que las compras del worker → cantidad y costo del inventario correctos.
+- **F0-c cerrados**: `DiscountDate` = vacía como el worker. `POSOIsClosed`: la cabecera de la OC queda cerrada (=1) igual que con el
+  worker; por fila el worker deja 1 y el SDK 0 (la recepción por fila, `StockingQtyReceived`, es igual y es lo que usan el filtro y la web).
+  `IncludeInInvLedger`: el SDK no lo expone y deja **0** en las filas de compra (el worker 1; todas las 25 467 filas históricas de ítems no
+  inventariables lo tienen en 1). No lo lee ningún módulo web ni el legado; el inventario no se afecta (ver arriba). **Queda por mirar en
+  Sage** si el reporte *Item Ledger* lista estas compras (C3, CS-001, sep-2026, facturas `999-998-…`/`999-999-000111222`).
+- Sin probar en vivo: el encolado al terminar un `GuardarOc` (misma ruta de código que el periódico) → en el despliegue.

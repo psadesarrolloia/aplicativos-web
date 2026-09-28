@@ -162,6 +162,27 @@ public sealed class ColaSql
                VALUES (@ruc, 0, @acc, SYSUTCDATETIME(), 'SageBridge', SYSUTCDATETIME());",
         P("@ruc", ruc), P("@acc", Cortar(acceso, 30)));
 
+    /// <summary>
+    /// Encola un trabajo del propio Bridge (conversión OC → compra) si la empresa no tiene ya uno de ese tipo en cola o en
+    /// proceso. Devuelve si lo encoló.
+    /// </summary>
+    public bool EncolarSiNoHayPendiente(string ruc, string tipo, string? payloadJson, string clave, string creadoPor)
+    {
+        try
+        {
+            return Ejecutar(
+                @"INSERT INTO TrabajosSage (Ruc, Tipo, Estado, ClaveIdempotencia, PayloadJson, Intentos, CreadoPor, CreadoUtc)
+                  SELECT @ruc, @tipo, 'EnCola', @clave, @payload, 0, @por, SYSUTCDATETIME()
+                  WHERE NOT EXISTS (SELECT 1 FROM TrabajosSage WITH (UPDLOCK, HOLDLOCK)
+                                    WHERE Ruc = @ruc AND Tipo = @tipo AND Estado IN ('EnCola', 'EnProceso'))",
+                P("@ruc", ruc), P("@tipo", tipo), P("@clave", clave), P("@payload", payloadJson), P("@por", creadoPor)) > 0;
+        }
+        catch (SqlException ex) when (ex.Number is 2601 or 2627)
+        {
+            return false; // misma clave ya usada
+        }
+    }
+
     public void ProbarConexion()
     {
         using var cn = Abrir();

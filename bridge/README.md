@@ -57,6 +57,10 @@ La autorización es por **ejecutable y cuenta de Windows**: el servicio corre si
 |---|---|
 | `ProbarEmpresa` | Abre y cierra la compañía (solo lectura); deja pendiente la solicitud de acceso si falta. Corre aunque la empresa no esté habilitada. |
 | `GuardarOc` | Crea o actualiza **en el lugar** la Purchase Order de una factura de compra, con su proveedor y la numeración (OC y retención) calculada al guardar. Lee Sage por ODBC (cadena de `PeachConnString`, como la web) solo para numerar y buscar la OC existente. |
+| `ConvertirOcs` | Convierte en compra (Purchase Invoice aplicada a la OC) las OC pendientes y anota `PeachEBills.PurchaseOrderSync`: reemplaza al worker COM «PO sync Invoice». Lo encola el propio Bridge cada `ConversionMinutos` (5; 0 = apagado) por empresa habilitada fuera de su ventana, y al terminar cada `GuardarOc` (`ConvertirAlGuardar`). Payload opcional `{"PostOrders":[…]}`. |
+
+**Al pasar una empresa al Bridge hay que apagar el worker COM de esa empresa** (los dos convertirían; el Bridge detecta la compra ya
+hecha y solo la anota, pero no hay que depender de eso).
 
 Un rechazo de negocio (nº ya usado, OC ya convertida en compra, `Validate()` de Sage) deja el trabajo en Error sin reintentos.
 

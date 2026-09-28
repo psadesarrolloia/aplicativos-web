@@ -26,6 +26,7 @@ public sealed class Trabajador
     private readonly DateTime _iniciadoUtc = DateTime.UtcNow;
     private readonly string _versionAnfitrion;
     private readonly string _versionLogica;
+    private DateTime _proximaConversionUtc = DateTime.MinValue;
 
     public Trabajador(Configuracion cfg, Action<string> log)
     {
@@ -50,6 +51,7 @@ public sealed class Trabajador
             try
             {
                 Latir("esperando trabajos", null);
+                ProgramarConversiones(DateTime.UtcNow, DateTime.Now);
                 var elegido = ElegirEmpresa(DateTime.UtcNow, DateTime.Now, out var soloProbar);
                 if (elegido is null)
                 {
@@ -216,7 +218,12 @@ public sealed class Trabajador
         {
             var resultado = manejador.Ejecutar(contexto, trabajo);
             _cola.Completar(trabajo.Id, _instancia, resultado);
-            _log($"#{trabajo.Id} {trabajo.Tipo}: hecho.");
+            _log($"#{trabajo.Id} {trabajo.Tipo}: hecho.{ResumenConversion(trabajo.Tipo, resultado)}");
+            if (trabajo.Tipo == TiposTrabajo.GuardarOc && _cfg.ConvertirAlGuardar)
+            {
+                EncolarConversion(trabajo.Ruc, "al guardar una OC");
+            }
+
             return CodigoNormal;
         }
         catch (RechazoTrabajoException ex)
@@ -326,6 +333,43 @@ public sealed class Trabajador
                 Mensaje = mensaje,
             }));
         }
+    }
+
+    /// <summary>
+    /// Reemplazo del timer del worker COM: cada <see cref="Configuracion.ConversionMinutos"/> encola un <c>ConvertirOcs</c> por
+    /// empresa habilitada que no esté en su ventana de mantenimiento (y que no tenga ya uno en cola). 0 = desactivado.
+    /// </summary>
+    private void ProgramarConversiones(DateTime ahoraUtc, DateTime ahoraLocal)
+    {
+        if (_cfg.ConversionMinutos <= 0 || ahoraUtc < _proximaConversionUtc) return;
+        _proximaConversionUtc = ahoraUtc.AddMinutes(_cfg.ConversionMinutos);
+        foreach (var e in _cola.LeerEmpresas().Where(e => e.Value.Habilitada && !_cfg.Ventana(e.Value.Ventana).Contiene(ahoraLocal)))
+        {
+            EncolarConversion(e.Key, "periódica");
+        }
+    }
+
+    private void EncolarConversion(string ruc, string motivo)
+    {
+        try
+        {
+            if (_cola.EncolarSiNoHayPendiente(ruc, TiposTrabajo.ConvertirOcs, null, $"auto-{DateTime.UtcNow:yyyyMMddHHmmssfff}", "SageBridge"))
+            {
+                _log($"{ruc}: conversión de OC encolada ({motivo}).");
+            }
+        }
+        catch (Exception ex)
+        {
+            _log($"{ruc}: no se pudo encolar la conversión de OC: {ex.Message}");
+        }
+    }
+
+    private static string ResumenConversion(string tipo, string resultado)
+    {
+        if (tipo != TiposTrabajo.ConvertirOcs) return string.Empty;
+        var r = Json.Leer<ResultadoConvertirOcs>(resultado);
+        return $" {r.Pendientes} pendiente(s), {r.Convertidas.Count} convertida(s), {r.SoloSincronizadas} solo anotada(s), {r.Errores.Count} error(es)." +
+               string.Concat(r.Errores.Select(e => Environment.NewLine + "  " + e));
     }
 
     private void FallarTodos(List<TrabajoTomado> lote, string error)

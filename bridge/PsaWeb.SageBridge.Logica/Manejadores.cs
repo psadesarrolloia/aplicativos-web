@@ -61,5 +61,5 @@ public sealed class ManejadorProbarEmpresa : IManejadorTrabajo
 public static class Manejadores
 {
     public static IReadOnlyDictionary<string, IManejadorTrabajo> Todos { get; } =
-        new IManejadorTrabajo[] { new ManejadorProbarEmpresa(), new ManejadorGuardarOc() }.ToDictionary(m => m.Tipo);
+        new IManejadorTrabajo[] { new ManejadorProbarEmpresa(), new ManejadorGuardarOc(), new ManejadorConvertirOcs() }.ToDictionary(m => m.Tipo);
 }

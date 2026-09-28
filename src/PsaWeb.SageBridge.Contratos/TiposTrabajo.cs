@@ -21,7 +21,14 @@ public static class TiposTrabajo
     /// </summary>
     public const string GuardarOc = "GuardarOc";
 
-    public static IReadOnlyList<string> Todos { get; } = new[] { ProbarEmpresa, GuardarOc };
+    /// <summary>
+    /// Convierte en compra (Purchase Invoice aplicada a la OC) las OC pendientes de la empresa y anota
+    /// <c>PeachEBills.PurchaseOrderSync</c>: el reemplazo del worker COM (§6.2 del plan). Lo programa el propio Bridge (periódico
+    /// y al guardar una OC). Payload opcional <see cref="PayloadConvertirOcs"/>.
+    /// </summary>
+    public const string ConvertirOcs = "ConvertirOcs";
+
+    public static IReadOnlyList<string> Todos { get; } = new[] { ProbarEmpresa, GuardarOc, ConvertirOcs };
 
     /// <summary>Tipos que no escriben en Sage y por eso se procesan aunque la empresa no esté habilitada.</summary>
     public static bool PermitidoSinHabilitar(string tipo) => tipo == ProbarEmpresa;
