@@ -712,3 +712,12 @@ el anfitrión no cambió (hash `99C8E111…`, sin re-autorizar en Sage).
   inventariables lo tienen en 1). No lo lee ningún módulo web ni el legado; el inventario no se afecta (ver arriba). **Queda por mirar en
   Sage** si el reporte *Item Ledger* lista estas compras (C3, CS-001, sep-2026, facturas `999-998-…`/`999-999-000111222`).
 - Sin probar en vivo: el encolado al terminar un `GuardarOc` (misma ruta de código que el periódico) → en el despliegue.
+
+## Punto abierto (2026-10-01): marca de inventario en las compras de `ConvertirOcs`
+
+Visto en la Liquidación de Importaciones (`PLAN-OLA2-LIQUIDACION-IMPORTACIONES.md` §15–§16): la compra del SDK aplicada a la OC
+(`AddOrderLine`) queda con `IncludeInInvLedger = 0` en la fila del ítem y **no sale en el Item Costing Report** de Sage; las del worker
+COM la tienen en 1 (en la original, últimos 12 meses: 13.437 filas de ítems no de stock y 15 de stock en 8 compras). El SDK no ofrece
+otra forma de aplicar a la OC (6 variantes probadas), y la alternativa de líneas propias rompe el vínculo OC↔compra, que en Compras es
+indispensable (decisión del usuario). **Resolver antes de apagar el worker COM en cada empresa** (p. ej. autorizar la importación COM
+del worker desde el Bridge, o mantener el worker).
