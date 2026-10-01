@@ -298,3 +298,7 @@ quedan con saldo −1.577.713,38 y −593.450,45 y los ítems con la existencia 
   20000, OC cerrada). El código de los ensayos se descartó; la consola COM queda solo en el scratchpad.
 - Datos de prueba nuevos en la copia: OC/compra 104928/104931 (031), 104929/104932 (032), 104930/104933 (033) — vinculadas con
   `IncludeInInvLedger = 0` — y 104934/104935 (030).
+- **Compras (F6) — decisión del usuario (2026-10-01): no se aplica C7.** En las compras normales el vínculo OC↔compra es
+  indispensable; la pérdida del vínculo solo se acepta en las liquidaciones de importación (pocas al mes). `ConvertirOcs` sigue con
+  `AddOrderLine` (vinculada, `IncludeInInvLedger = 0`); el efecto en los reportes por ítem de Sage queda como punto abierto de Compras,
+  a resolver antes de apagar el worker COM en cada empresa.
