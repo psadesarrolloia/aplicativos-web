@@ -62,13 +62,25 @@ else
             </table>
             </div>
         }
+        @if (!_latidos.Any(l => EstadoBridge.EstaVivo(l, DateTime.UtcNow)))
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-top:.8rem">
+                <b>El Sage Bridge no está en marcha:</b> los trabajos (OC, compras, liquidaciones) quedan en cola hasta que se inicie. Esta página
+                no lo arranca: es un programa aparte de la web.
+                <ul style="margin:.4rem 0 0 1.2rem">
+                    <li><b>Servidor:</b> iniciar el servicio de Windows <code>PsaSageBridge</code> (Servicios de Windows → PsaSageBridge → Iniciar).</li>
+                    <li><b>Desarrollo:</b> ejecutar <code>bridge\iniciar-bridge-desarrollo.cmd</code> (abre el Bridge en una consola; cerrarla lo detiene).</li>
+                </ul>
+                Al iniciarse, el estado pasa a «activo» en unos segundos.
+            </div>
+        }
     </PsaCard>
 
     <PsaCard Title="Empresas">
         <p class="psa-muted" style="margin-top:0">
             Para dar de alta una empresa: <b>Probar</b> → si Sage aún no autorizó al Bridge, abrir esa empresa en Sage
             (o cerrarla y volver a abrirla) y elegir <i>Always allow access</i> → <b>Probar</b> otra vez → cuando el acceso
-            sea <b>Granted</b>, <b>Habilitar</b>. La ventana de mantenimiento (HH:mm-HH:mm) debe cubrir el backup automático
+            sea <b>Granted</b>, marcar <b>Habilitada</b> y pulsar <b>Guardar</b> en esa fila. Además, el Bridge tiene que estar en marcha (ver «Estado del servicio»). La ventana de mantenimiento (HH:mm-HH:mm) debe cubrir el backup automático
             de Sage: en ese horario el Bridge no abre la empresa. Vacía = la ventana por defecto del Bridge.
         </p>
         @if (_msgEmpresa is not null)
