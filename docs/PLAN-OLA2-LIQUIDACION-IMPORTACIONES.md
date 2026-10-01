@@ -284,3 +284,17 @@ quedan con saldo −1.577.713,38 y −593.450,45 y los ítems con la existencia 
   debe seguir enlazada a la OC por `PurchaseOrderSync`, no por la aplicación en Sage).
 - Datos de prueba en la copia (además de §9.5): OC/compra 104920/104921 (039), 104924/104925 (038), 104926/104927 (037) y la 042
   real de la prueba del usuario (104922/104923). Las cuentas 13799–13801 quedan con saldo por la doble liquidación.
+
+## 16. Vínculo compra–OC: ensayos y decisión final (2026-10-01)
+
+- El usuario pidió primero que la compra **reciba el inventario desde la OC** (vinculada). Ensayos en la copia:
+  - SDK `AddOrderLine` en 6 combinaciones de campos (031–033-2026): las que Sage acepta quedan vinculadas (`INV_POSOOrderNumber`,
+    `LinkToAnotherTrx`) pero siempre con `IncludeInInvLedger = 0`; volver a guardar la compra no lo cambia. El SDK no tiene otra vía
+    (no hay importación ni «recibir inventario»).
+  - COM como el worker `PSComInvoiceGenerate` (importación del diario de compras con `AppliedToPO`, librería `ManagedCOM`): la consola
+    de prueba conecta al Sage abierto pero `Login.GetApplication` devuelve `E_ACCESSDENIED` (aplicación no autorizada o credenciales).
+- **Decisión del usuario (2026-10-01): se queda C7** — la compra con líneas propias (afectan el inventario y salen en el Item Costing
+  Report) y la OC se cierra. Validado otra vez con la 030-2026 (OC 104934, compra 104935: 4 ítems con `IncludeInInvLedger = 1`, AP
+  20000, OC cerrada). El código de los ensayos se descartó; la consola COM queda solo en el scratchpad.
+- Datos de prueba nuevos en la copia: OC/compra 104928/104931 (031), 104929/104932 (032), 104930/104933 (033) — vinculadas con
+  `IncludeInInvLedger = 0` — y 104934/104935 (030).
