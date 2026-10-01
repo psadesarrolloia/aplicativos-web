@@ -324,3 +324,7 @@ quedan con saldo −1.577.713,38 y −593.450,45 y los ítems con la existencia 
   «Probar» → Pending → el usuario eligió *Always allow access* → **Granted** (compañía «SANCEV CIA. LTDA.-2- 2025-2026», 391 cuentas
   leídas). SANCEV se agregó a `SoloBases` solo para la prueba (config de desarrollo restaurada) y **sigue sin habilitar** en el Bridge.
   En SERWEBPSA01 hay que repetir la autorización con la cuenta del servicio (la autorización es por ejecutable y cuenta de Windows).
+- 2026-10-01: prueba completa del usuario en la web con la **LIQ IMPORT-043-2026** (cuenta 13805): OC 104944 creada por el Bridge y compra
+  registrada desde la web con la forma definitiva (C6 cuenta por pagar de la empresa, C7 líneas propias + OC cerrada). El usuario revisó
+  todo en Sage: **OK**. Pendiente para el corte (F5): despliegue (cuando el usuario lo pida), autorizar y habilitar CPTDC y SANCEV en el
+  Bridge del servidor, permisos `quimpliq`/`mkimpliq` y guía de retiro del menú «Importaciones» del exe.
