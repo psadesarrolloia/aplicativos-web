@@ -1,0 +1,169 @@
+@page "/compras/importaciones"
+@namespace PsaWeb.Modules.Compras.Pages
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Compras.Importaciones
+@using PsaWeb.Seguridad
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ILogger<Importaciones> Logger
+@implements IDisposable
+
+<PageTitle>Liquidación de importaciones — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Liquidación de importaciones" Subtitle="@Subtitulo">
+    <a class="psa-linkbtn" href="/compras">← Compras</a>
+</PsaPageHeader>
+
+@if (_servicio is null)
+{
+    <div class="psa-notice psa-notice--danger">El módulo no está configurado (requiere Sage 50, PeachEBills y la cola del Sage Bridge).</div>
+}
+else if (_ruc is null)
+{
+    <div class="psa-notice">Elija una empresa para trabajar.</div>
+}
+else if (_permisos is { Ver: false })
+{
+    <div class="psa-notice psa-notice--danger">No tiene permiso para ver las liquidaciones de importación de esta empresa.</div>
+}
+else
+{
+    <PsaCard Title="Importaciones (cuentas IMPORTACION de Sage)">
+        <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
+            <label class="psa-field">
+                <span class="psa-field__label">Buscar</span>
+                <input class="psa-input" style="min-width: 18rem" placeholder="Cuenta, descripción, proveedor u OC" @bind="_filtro" @bind:event="oninput" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Estado</span>
+                <select class="psa-input" @bind="_estado">
+                    <option value="">Todos</option>
+                    @foreach (var e in Enum.GetValues<EstadoImportacion>())
+                    {
+                        <option value="@e">@EstadosImportacion.Texto(e)</option>
+                    }
+                </select>
+            </label>
+            <label class="psa-notice" style="display: flex; gap: .4rem; align-items: center; padding: .4rem .6rem">
+                <input type="checkbox" @bind="_inactivas" /> Ver inactivas
+            </label>
+            <PsaButton Variant="secondary" OnClick="Consultar" Disabled="_cargando">@(_cargando ? "Leyendo Sage…" : "Actualizar")</PsaButton>
+        </div>
+
+        @if (_error is not null)
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-top: 1rem">@_error</div>
+        }
+        @if (_lista is not null)
+        {
+            <p class="psa-muted" style="margin-top: .8rem">@Filtradas.Count() de @_lista.Count cuentas. La cuenta de cada importación se crea a mano en Sage («IMPORTACION nn-aaaa»).</p>
+            <table class="psa-table psa-table--interactiva">
+                <thead>
+                    <tr><th>Cuenta</th><th>Descripción</th><th>Estado</th><th>Proveedor</th><th>OC</th><th style="text-align: right">Movimientos</th><th style="text-align: right">Saldo</th><th>Último movimiento</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in Filtradas)
+                    {
+                        <tr @onclick="() => Abrir(f)" style="cursor: pointer">
+                            <td>@f.Cuenta.Cuenta</td>
+                            <td>@f.Cuenta.Descripcion @if (f.Cuenta.Inactiva) { <span class="psa-muted">(inactiva)</span> }</td>
+                            <td><span class="psa-estado @ClaseEstado(f.Estado)">@EstadosImportacion.Texto(f.Estado)</span></td>
+                            <td>@f.Proveedor</td>
+                            <td>@f.ReferenciaOc</td>
+                            <td style="text-align: right">@f.Cuenta.Movimientos</td>
+                            <td style="text-align: right">@f.Cuenta.Saldo.ToString("N2", Es)</td>
+                            <td>@f.Cuenta.Hasta?.ToString("dd/MM/yyyy", Es)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </PsaCard>
+}
+
+@code {
+    private static readonly CultureInfo Es = CultureInfo.GetCultureInfo("es-EC");
+    private ServicioLiquidaciones? _servicio;
+    private EmpresaActualService? _empresaActual;
+    private string? _ruc;
+    private string _usuario = "web";
+    private PermisosLiquidacion? _permisos;
+    private IReadOnlyList<FilaImportacion>? _lista;
+    private string _filtro = string.Empty;
+    private string _estado = string.Empty;
+    private bool _inactivas;
+    private bool _cargando;
+    private string? _error;
+
+    private string Subtitulo => _empresaActual?.Nombre is { } n
+        ? $"Prorrateo de gastos de importación a los ítems y registro de la OC y la compra en Sage 50 — {n}"
+        : "Prorrateo de gastos de importación a los ítems y registro de la OC y la compra en Sage 50";
+
+    private IEnumerable<FilaImportacion> Filtradas => (_lista ?? [])
+        .Where(f => _inactivas || !f.Cuenta.Inactiva)
+        .Where(f => _estado.Length == 0 || f.Estado.ToString() == _estado)
+        .Where(f => string.IsNullOrWhiteSpace(_filtro)
+                    || $"{f.Cuenta.Cuenta} {f.Cuenta.Descripcion} {f.Proveedor} {f.ReferenciaOc}".Contains(_filtro.Trim(), StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(f => f.Cuenta.Hasta ?? DateTime.MinValue).ThenByDescending(f => f.Cuenta.Cuenta, StringComparer.Ordinal);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _servicio = Sp.GetService<ServicioLiquidaciones>();
+        _empresaActual = Sp.GetService<EmpresaActualService>();
+        if (_empresaActual is not null) _empresaActual.Cambio += AlCambiarEmpresa;
+        _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        await AplicarEmpresa();
+    }
+
+    private async void AlCambiarEmpresa()
+    {
+        await AplicarEmpresa();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task AplicarEmpresa()
+    {
+        _ruc = _empresaActual?.Ruc;
+        _lista = null;
+        _error = null;
+        if (_ruc is null || _servicio is null) return;
+        _permisos = await _servicio.PermisosAsync(_usuario, _ruc);
+        if (_permisos.Ver) await Consultar();
+    }
+
+    private async Task Consultar()
+    {
+        if (_servicio is null || _ruc is null) return;
+        _cargando = true;
+        _error = null;
+        try
+        {
+            _lista = await _servicio.ListarAsync(_ruc);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo listar las importaciones de {Ruc}", _ruc);
+            _error = "No se pudo leer Sage 50: " + ex.Message;
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void Abrir(FilaImportacion f) => Nav.NavigateTo($"/compras/importaciones/{Uri.EscapeDataString(f.Cuenta.Cuenta)}");
+
+    internal static string ClaseEstado(EstadoImportacion e) => e switch
+    {
+        EstadoImportacion.Liquidada => "psa-estado--ok",
+        EstadoImportacion.SinDatos => "",
+        _ => "psa-estado--warn",
+    };
+
+    public void Dispose()
+    {
+        if (_empresaActual is not null) _empresaActual.Cambio -= AlCambiarEmpresa;
+    }
+}

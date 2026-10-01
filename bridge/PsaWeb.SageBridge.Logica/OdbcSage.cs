@@ -137,6 +137,43 @@ public sealed class OdbcSage : IDisposable
         return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
     }
 
+    /// <summary>Cabecera de una OC por PostOrder: referencia, fecha, proveedor y cuenta por pagar.</summary>
+    public OcPendiente? Oc(int postOrder)
+    {
+        using var cmd = Comando(
+            "SELECT h.PostOrder, h.Reference, h.TransactionDate, h.CustVendId, v.VendorID, ap.AccountID " +
+            "FROM JrnlHdr h, Vendors v, Chart ap WHERE h.CustVendId = v.VendorRecordNumber AND h.GLAcntNumber = ap.GLAcntNumber " +
+            "AND h.JrnlKey_Journal = 10 AND h.JournalEx = 18 AND h.PostOrder = ?", postOrder);
+        using var rd = cmd.ExecuteReader();
+        if (!rd.Read()) return null;
+        return new OcPendiente
+        {
+            PostOrder = Convert.ToInt32(rd.GetValue(0)),
+            Referencia = Texto(rd.GetValue(1)),
+            Fecha = Convert.ToDateTime(rd.GetValue(2)),
+            VendorRecord = Convert.ToInt32(rd.GetValue(3)),
+            VendorId = Texto(rd.GetValue(4)),
+            CuentaPorPagar = Texto(rd.GetValue(5)),
+        };
+    }
+
+    /// <summary>Compra del proveedor con esa referencia (la de una liquidación cuyas líneas no quedaron aplicadas a la OC).</summary>
+    public int? CompraPorReferencia(string referencia, int vendorRecord)
+    {
+        using var cmd = Comando("SELECT PostOrder FROM JrnlHdr WHERE JrnlKey_Journal = 4 AND JournalEx = 11 AND Reference = ? AND CustVendId = ? ORDER BY PostOrder DESC",
+            referencia, vendorRecord);
+        var r = cmd.ExecuteScalar();
+        return r is null or DBNull ? null : Convert.ToInt32(r);
+    }
+
+    /// <summary>PostOrder de la OC con esa referencia (la más reciente).</summary>
+    public int? OcPorReferencia(string referencia)
+    {
+        using var cmd = Comando($"SELECT PostOrder FROM JrnlHdr WHERE {FiltroOc} AND Reference = ? ORDER BY PostOrder DESC", referencia);
+        var r = cmd.ExecuteScalar();
+        return r is null or DBNull ? null : Convert.ToInt32(r);
+    }
+
     private List<string> Lista(string sql, params object[] parametros)
     {
         var lista = new List<string>();

@@ -362,6 +362,9 @@ público, sin tocar nada de esto) — decisión explícita, no pendiente urgente
 - `docs/PLAN-OLA2-COMPRAS-SAGE.md` — **Ola 2** (escritura en Sage): módulos Compras (+ NC de compra) y Retenciones en
   venta recibidas, y el Sage Bridge (reemplaza «Nueva», «Desde Reporte SRI» y «Retenciones en Venta» del exe y el worker
   COM `PSComInvoiceGenerate`). Plan, sin implementar.
+- `docs/PLAN-OLA2-LIQUIDACION-IMPORTACIONES.md` — **Ola 2**: Liquidación de importaciones (`FrmImportMng` del exe + la compra
+  `LIQ IMPORT` que hoy se registra a mano), dentro del módulo Compras (`/compras/importaciones`), escritura por el Sage Bridge
+  (`GuardarOcLiquidacion`, `ConvertirLiquidacion`). F0–F4 implementadas en dev (2026-09-29); pendiente prueba del usuario y corte.
 - `docs/PLAN-REPORTES-ACCESS.md` — plan, validación y decisiones de los reportes de Access (PWC, Comisiones, Cheques);
   `docs/sql/permisos-reportes-access.sql` — permisos `quRpt*` (pendiente de aplicar).
 

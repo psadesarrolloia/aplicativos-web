@@ -28,7 +28,19 @@ public static class TiposTrabajo
     /// </summary>
     public const string ConvertirOcs = "ConvertirOcs";
 
-    public static IReadOnlyList<string> Todos { get; } = new[] { ProbarEmpresa, GuardarOc, ConvertirOcs };
+    /// <summary>
+    /// Crea o actualiza (en el lugar) la OC de total 0 de una liquidación de importación. Payload
+    /// <see cref="PayloadGuardarOcLiquidacion"/>, resultado <see cref="ResultadoGuardarOcLiquidacion"/>.
+    /// </summary>
+    public const string GuardarOcLiquidacion = "GuardarOcLiquidacion";
+
+    /// <summary>
+    /// Convierte la OC de una liquidación en la compra <c>LIQ IMPORT nnn-aaaa</c> (hoy la registra contabilidad a mano). Payload
+    /// <see cref="PayloadConvertirLiquidacion"/>, resultado <see cref="ResultadoConvertirLiquidacion"/>.
+    /// </summary>
+    public const string ConvertirLiquidacion = "ConvertirLiquidacion";
+
+    public static IReadOnlyList<string> Todos { get; } = new[] { ProbarEmpresa, GuardarOc, ConvertirOcs, GuardarOcLiquidacion, ConvertirLiquidacion };
 
     /// <summary>Tipos que no escriben en Sage y por eso se procesan aunque la empresa no esté habilitada.</summary>
     public static bool PermitidoSinHabilitar(string tipo) => tipo == ProbarEmpresa;

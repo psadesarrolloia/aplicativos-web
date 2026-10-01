@@ -384,6 +384,39 @@ app.MapGet("/kardex/export", async (
     })
     .RequireAuthorization();
 
+// Ola 2: reporte Excel de una liquidación de importación (port de ApportionImportsCPTDC). Se arma con lo guardado
+// (la página exige guardar antes) y las filas de la cuenta en Sage.
+// Ruta fuera de /compras/importaciones/{cuenta}: si no, la página la tomaría como una cuenta.
+app.MapGet("/exportar/liquidacion-importacion", async (
+        string ruc,
+        string cuenta,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        IServiceProvider sp,
+        CancellationToken cancellationToken) =>
+    {
+        var servicio = sp.GetService<PsaWeb.Modules.Compras.Servicios.ServicioLiquidaciones>();
+        if (servicio is null) return Results.NotFound();
+        var nombre = usuario.Identity?.Name ?? string.Empty;
+        if (sp.GetService<PsaWeb.Seguridad.ISecurityDirectory>() is { } seguridad
+            && !(await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken)).Any(e => e.Ruc == ruc))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+        if (!(await servicio.PermisosAsync(nombre, ruc, cancellationToken)).Ver)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+        var d = await servicio.AbrirAsync(ruc, cuenta, cancellationToken);
+        if (d is null || d.LiquidacionId is null) return Results.NotFound("No hay una liquidación guardada para esa cuenta.");
+        if (d.MotivoSinReporte(d.Items, d.Gastos) is { } motivo) return Results.BadRequest(motivo);
+        var gastos = d.GastosSinLiquidacion(d.Gastos);
+        var bytes = PsaWeb.Modules.Compras.Importaciones.ReporteLiquidacion.Generar(
+            await servicio.NombreEmpresaAsync(ruc, cancellationToken), d.Cuenta, gastos, d.Items);
+        return Results.File(bytes, PsaWeb.Modules.Compras.Importaciones.ReporteLiquidacion.ContentType,
+            PsaWeb.Modules.Compras.Importaciones.ReporteLiquidacion.NombreArchivo(d.Cuenta.Cuenta));
+    })
+    .RequireAuthorization();
+
 // Descarga del reporte PWC (cuentas por cobrar) en Excel. Re-consulta con el mismo filtro y usa la
 // personalización guardada de la empresa (encabezado, cobrador, columnas).
 app.MapGet("/cartera/pwc/export", async (

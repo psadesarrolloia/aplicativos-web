@@ -16,6 +16,7 @@ public static class ComprasModule
         services.TryAddScoped<IResolverEmpresaSage, SinShellResolverEmpresaSage>();
         services.AddScoped<ServicioCompras>();
         services.AddScoped<ServicioRecibidos>();
+        services.AddScoped<ServicioLiquidaciones>();
         return services;
     }
 }

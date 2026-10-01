@@ -67,6 +67,7 @@ Medidos por ODBC (solo SELECT) en la original de CPTDC (`cptdcecuadorsa202520`) 
 | D3 | **Guardar actualiza el mismo registro** de `ImportCost` (no más versiones). |
 | D4 | Categoría **Compras**. |
 | D5 | Pruebas y escritura **solo en la copia** «PUEBAS CPTDC ECUADOR S A 2025-2026» (`cptdcecuadorsa202525`). SANCEV se habilita en el corte. |
+| D6 | (Confirmada por el usuario 2026-10-01) **La compra se registra en un segundo paso** («Registrar compra»), no junto con la OC: en 15 de 200 OC reales contabilidad corrigió la OC en Sage antes de recibirla (9 con la cantidad pasada a metros). Mientras no hay compra, la OC se corrige desde la web (actualización en el lugar, C5). |
 
 Se mantienen las reglas de la Ola 2: port fiel validado con datos reales; Bridge = anfitrión fijo (hash `99C8E111…`) + DLL de lógica;
 sin convivencia exe + web (corte con guía); commit con lista explícita; push/deploy solo a pedido.
@@ -95,7 +96,11 @@ Sage Bridge (net48 x86, mismo anfitrión)
 
 ## 4. Módulo web
 
-Rutas bajo `/compras/importaciones` (misma categoría y navegación que Compras):
+Rutas bajo `/compras/importaciones` (misma categoría y navegación que Compras). **Implementado (F3)**: la lógica quedó en
+`src/PsaWeb.Compras/Importaciones/` (no en un proyecto aparte: comparte catálogos y la referencia a PeachEBills) y las páginas, el
+lector Excel y el reporte en `modules/PsaWeb.Modules.Compras` (`Pages/Importaciones.razor`, `Pages/Importacion.razor`,
+`Importaciones/`, `Servicios/ServicioLiquidaciones.cs`); el reporte se descarga por `/exportar/liquidacion-importacion` (Host; fuera de `/compras/importaciones/{cuenta}` para que la página no la tome como cuenta).
+
 
 - **Lista**: cuentas `IMPORTACION%` de la empresa de sesión con estado (§1.7), proveedor, OC, compra, saldo, fechas. Filtro de texto
   como el exe; por defecto **activas** con opción «ver inactivas» (el exe mostraba las 499).
@@ -119,11 +124,11 @@ línea `LIQUIDACION`. Antes de guardar: validar que la referencia no exista para
 y GUID → se guardan en `ImportCost` (`postOrderId`, `postOrderStrKey`).
 
 ### 5.2 `ConvertirLiquidacion` (D1)
-Se encola al terminar 5.1 (mismo trabajo o encadenado). `PurchaseInvoice` con `AddOrderLine` de cada línea de la OC:
-`ReferenceNumber` = referencia de la OC con el primer guion cambiado por espacio (`LIQ IMPORT 041-2026`, convención §1.6), fecha =
-fecha de la OC, proveedor y cuenta AP de la OC. Idempotente: si ya existe una compra con `INV_POSOOrderNumber` = la OC, no hace nada.
-Se aceptan las diferencias ya conocidas de la F6 (`IncludeInInvLedger` 0 por SDK; la capa `InventoryCosts` sí se crea) si la F0 las
-confirma para este caso.
+Se encola al terminar 5.1 (mismo trabajo o encadenado). `PurchaseInvoice` con `ReferenceNumber` = referencia de la OC con el primer
+guion cambiado por espacio (`LIQ IMPORT 041-2026`, convención §1.6), fecha = vencimiento = descuento = fecha de la OC, términos vacíos,
+proveedor y cuenta AP de la OC (la de la importación). Las líneas de ítem van con `AddOrderLine`; la línea `LIQUIDACION` va como línea
+común (`AddPurchasesLine`) porque aplicada a la OC Sage exige cantidad, y al final se **cierra la OC** (`IsClosed`). Idempotente: si
+ya existe una compra con `INV_POSOOrderNumber` = la OC, solo cierra la OC si seguía abierta. Resultado de la F0 en §9.
 
 ### 5.3 Qué pasa si la liquidación cambia después
 Igual que el exe: una vez hay OC la liquidación queda en solo lectura. Rehacerla = borrar compra y OC en Sage (contabilidad) → la web
@@ -141,6 +146,11 @@ detecta que el PostOrder ya no existe y vuelve a «En Tránsito \*» (comportami
 | B2 | Fiel | Último ítem absorbe residuo y su % se redondea a 4 decimales (los demás a 8) | Se mantiene. |
 | B3 | Fiel | `UnitPrice = Amount / Quantity` sin redondeo | Se mantiene (la compra de Sage muestra ese precio). |
 | B4 | Fiel | «Liquidada» = saldo de la cuenta en ±0,05 | Se mantiene. |
+| C5 | Mejora | El `.exe` dejaba la liquidación en solo lectura apenas existía la OC | Editable mientras la OC no tenga compra; «Actualizar OC» la reescribe en el lugar (D6). |
+| B5 | Fiel | El % se ve a veces con 1 ulp de diferencia: `Math.Round(double, 6)` de .NET Framework no es exacto y el de .NET 9 sí | Solo pantalla; el prorrateo en dinero es idéntico (200/200). |
+| B6 | Falsea | Ya liquidada, la cuenta incluye la fila `LIQUIDACION` de la compra: con la regla del `.exe` la suma no coincidía, se perdían las marcas (200/200) y el reporte mostraba la factura y esa fila como gastos | C2 conserva las marcas; el reporte y el control de costeo excluyen la fila `LIQUIDACION` de la compra de la propia liquidación. |
+| C6 | Decisión | La OC (y la compra) llevaban como cuenta por pagar la de la importación (el `.exe` la ponía «de prueba») | Cuenta por pagar **20000** en la OC; la compra la hereda (usuario, 2026-10-01). |
+| C7 | Pierde | Compra con líneas aplicadas a la OC (`AddOrderLine`): el SDK deja la fila del ítem con `IncludeInInvLedger = 0` y **la compra no sale en el Item Costing Report** de Sage (visto por el usuario con la 042-2026) | Cada línea va como línea propia (`AddPurchasesLine`) y la OC se cierra: `IncludeInInvLedger = 1` como la manual y la compra sale en el reporte (CS-008, verificado por el usuario 2026-10-01). La compra ya no queda «aplicada» a la OC en Sage; la web la encuentra por su referencia. |
 
 ## 7. Fases
 
@@ -155,9 +165,8 @@ detecta que el PostOrder ya no existe y vuelve a «En Tránsito \*» (comportami
 
 ## 8. Riesgos
 
-- **OC total 0 / línea sin ítem por `AddOrderLine`**: no probado; F0-b lo resuelve. Plan B: compra por SDK con líneas propias (sin
-  aplicar a la OC) o dejar la compra manual para ese caso.
-- **`IncludeInInvLedger = 0`** en compras del SDK: el Kardex usa `InventoryCosts` (OK); falta revisar el reporte Item Ledger de Sage
+- **OC total 0 / línea sin ítem por `AddOrderLine`**: resuelto en la F0 (§9.3): línea común + cierre de la OC.
+- **`IncludeInInvLedger = 0`** en compras del SDK con `AddOrderLine`: resuelto en la liquidación con C7. **Sigue abierto en Compras (F6)**, ver §15. Antes: el Kardex usa `InventoryCosts` (OK); falta revisar el reporte Item Ledger de Sage
   (pendiente también de Compras).
 - **Coste de inventario**: la compra mueve el costo promedio de ítems de alto valor; cualquier error en el prorrateo se refleja en
   ventas posteriores. Mitigación: arnés F1 con 0 diferencias y confirmación explícita antes de encolar.
@@ -165,6 +174,113 @@ detecta que el PostOrder ya no existe y vuelve a «En Tránsito \*» (comportami
 - **Fechas distintas OC/compra** (12/198): la compra automática usa la fecha de la OC; si contabilidad necesita otra, se agrega el
   campo en F3.
 
-## 9. Informe de la F0
+## 9. Informe de la F0 (2026-09-28, copia de prueba)
 
-(pendiente)
+Manejadores `GuardarOcLiquidacion` y `ConvertirLiquidacion` en `PsaWeb.SageBridge.Logica` (el anfitrión no cambió: hash `99C8E111…`,
+candado `SoloBases` = copia) y arnés `tests/PsaWeb.Compras.Tests/Validacion/LiquidacionCopiaTests` (`PSAWEB_TEST_F0_LIQ=1`): rehace por
+el Bridge la OC de una liquidación real con la referencia `LIQ PRUEBA-…`, la actualiza en el lugar, la convierte en compra dos veces y
+compara todas las columnas de `JrnlHdr`/`JrnlRow` y las capas de `InventoryCosts` con las reales. Corrido sobre
+`LIQ IMPORT-041-2026` (2 ítems, cable) y `LIQ IMPORT-028-2026` (18 ítems, bombas).
+
+### 9.1 F0-a — OC de liquidación por SDK = la del `.exe` (✅)
+Sin diferencias salvo las esperadas: la real ya está recibida (`POSOisClosed`, `QtyReceived`, `AmountReceived`) y la de prueba se
+actualizó en el lugar (`DistNumber`/`LastUsedDistNumber` renumerados, como en la F3 de Compras). Total 0, línea `LIQUIDACION` sin
+ítem, cuenta AP = cuenta de la importación, cuenta de inventario del ítem: todo igual.
+
+### 9.2 F0-c — actualización en el lugar (✅)
+Mismo PostOrder y GUID; una OC ya convertida en compra se rechaza («ya se convirtió en compra: no se puede actualizar»).
+
+### 9.3 F0-b — compra por el Bridge vs compra manual (✅ con diferencias documentadas)
+- **Aplicar la línea `LIQUIDACION` a la OC no se puede por SDK**: `TransactionLineNotUsedProblem` («Quantity can't be zero»). Va como
+  línea común (misma cuenta, monto y descripción) y la OC se cierra aparte (`IsClosed = true`). Diferencia: en la manual esa fila queda
+  enlazada a la OC (`LinkToOtherTrxIndex`, `LinkJournalRowEx`) y la OC anota `AmountReceived` −total en su fila 3; en la del Bridge no.
+  La OC queda cerrada igual.
+- **Capas de costo idénticas**: `InventoryCosts` `MajorType 1` igual en cantidad, `TransAmount` y `OptAmount` (18/18 y 2/2) y el saldo
+  `MajorType 3` del día se actualiza. Asiento idéntico en cuentas y montos.
+- Cabecera igual a la manual en la 028 (cuenta AP de la importación). La manual usa 20000 en 22 de 198 compras (la 041 es una): se
+  sigue la mayoría (cuenta de la OC).
+- Diferencias de filas del SDK (mismas que las del worker/Bridge de Compras): `IncludeInInvLedger` 0 en la fila principal del ítem; en
+  las dos filas secundarias de cada ítem (costo de venta y contrapartida de inventario, monto 0) el SDK deja `Quantity`/`UnitCost` en 0
+  donde la pantalla de Sage pone la cantidad; `StockingUnitCost` con todos los decimales (la pantalla lo deja en 5).
+- Avisos de `Validate()` aceptados: fecha fuera del período actual y «Main account is not of payable type» (la cuenta de la
+  importación, igual que la manual). Solo los errores frenan.
+- Idempotencia: la segunda conversión devuelve `YaExistia` sin crear otra compra.
+
+### 9.4 Pendiente del usuario (en la copia)
+Abrir en Sage la compra `LIQ PRUEBA 028-2026` y la OC `LIQ PRUEBA-028-2026`, y revisar el **Item Ledger** y la **Inventory
+Valuation** de un ítem (p. ej. `ES-217`) y la lista de OC abiertas: confirmar que las diferencias de §9.3 no se ven (es el mismo punto
+pendiente de la F6 de Compras).
+
+### 9.5 Datos de prueba que quedan en la copia
+OC 104916 (`LIQ PRUEBA-041-2026`) y 104918 (`LIQ PRUEBA-028-2026`), cerradas; compras 104917 y 104919. Las cuentas 13803 y 13789
+quedan con saldo −1.577.713,38 y −593.450,45 y los ítems con la existencia duplicada (se liquidó dos veces la misma importación).
+
+## 10. F1 — Lógica pura (implementada 2026-09-29)
+
+- `src/PsaWeb.Compras/Importaciones/`: `Liquidacion.cs` (modelo, estados §1.7, `Prorratear` §1.4 en double como el `.exe`,
+  `CosteoCompleto`, `Conciliar` C2, referencia y número propuesto, `ArmadorOcLiquidacion`), `LectorImportaciones.cs` (ODBC, solo
+  SELECT, consultas del `.exe`) y `RepositorioLiquidaciones.cs` (PeachEBills: última liquidación, guardado en el lugar C3, anotar OC).
+- Entidades `ImportCost`, `ImportCostApportion`, `ImportCostEx` en `PsaWeb.PeachEbills` (esquema existente, sin migración; las columnas
+  CFR sin uso se guardan en 0 como el `.exe`).
+- Arnés `Validacion/ReconstruccionLiquidacionesTests` (copia de CPTDC, solo lectura): **prorrateo idéntico 200/200**; **OC idéntica
+  185/200**; las otras 15 las corrigió contabilidad en Sage después de crearlas (lista explícita en el arnés: 9 con la cantidad pasada a
+  metros con el mismo monto, ítems cambiados, un monto cambiado, línea LIQUIDACION contra cuentas renombradas o divididas).
+- `Importaciones/LiquidacionTests`: reglas puras y el prorrateo recalculado de **todas** las liquidaciones guardadas de las dos empresas
+  (incluida SANCEV) sin diferencias.
+
+## 11. F2 — Bridge (implementada 2026-09-29)
+
+- Manejadores de la F0 (`ManejadoresLiquidacion.cs`) sin cambios de diseño; el anfitrión sigue en `99C8E111…`.
+- `Validacion/LiquidacionCopiaTests` endurecido: filas de cada ítem ordenadas de forma estable y cada diferencia clasificada como
+  esperada (§9) o inesperada (falla). Corrido en la copia con 041, 028 y 039-2026: **0 diferencias inesperadas**; rechazo de actualizar
+  una OC ya contabilizada, conversión idempotente y cierre de la OC verificados. `PsaWeb.SageBridge.Tests` 47/47.
+
+## 12. F3 — Módulo web (implementada 2026-09-29, sin probar en el navegador)
+
+- Lista `/compras/importaciones` (estado, proveedor, OC, saldo; filtro, estado, inactivas) y formulario
+  `/compras/importaciones/{cuenta}`: filas de la cuenta con la marca «factura del exterior» (C2, filas nuevas marcadas y avisos),
+  ítems (a mano o desde Excel con asociación de columnas, B1), «Prorratear», «Guardar» (en el lugar), «Crear OC» / «Actualizar OC»,
+  «Registrar compra» (D6), seguimiento del trabajo del Bridge y anotación del vínculo al terminar; recuperación del vínculo por
+  referencia si la página se cerró antes.
+- Permisos `quimpliq`/`mkimpliq` con GateProvisional (mientras no se carguen, los habilitan las llaves de Compras); filas agregadas a
+  `docs/sql/permisos-compras-ventas.sql` (no aplicado). Entrada «Liquidación de importaciones» en `AppCatalogo` (Compras) y enlace
+  desde `/compras`. Auditoría en `AuditoriaRegistrosSage` (módulo `LiquidacionImportaciones`).
+- `Validacion/LecturasLiquidacionTests` (copia, solo lectura): 499 cuentas (321 liquidadas, 157 en tránsito, 18 sin movimientos);
+  C2 conserva la marca en 194 de las 200 liquidaciones que la regla del `.exe` perdía (B6); OC, compra, ítems (2.065) y proveedores
+  (2.848) leídos. Suites `Seguridad`, `Modules.Compras`, `PeachEbills`, `Modules.ComprobantesElectronicos` en verde. El Host compila
+  (a una carpeta aparte: Visual Studio tiene bloqueado su `bin`).
+
+## 13. F4 — Reporte (implementada 2026-09-29)
+
+- `modules/PsaWeb.Modules.Compras/Importaciones/ReporteLiquidacion.cs` (ClosedXML): mismo layout, fórmulas y bordes que
+  `ApportionImportsCPTDC`; título = nombre de la empresa (C1); sin la fila de la compra (B6). Prueba que reabre el `.xlsx` y verifica
+  celdas y fórmulas; reportes de 038 y 035-2026 reales generados en `%TEMP%\psa-f4-*.xlsx`.
+
+## 14. Pendiente antes del corte (F5)
+
+1. **Usuario**: probar en dev contra la copia el flujo completo en `/compras/importaciones` (lista, abrir una importación en tránsito
+   —13804…13808—, marcar la factura, cargar ítems a mano o por Excel, prorratear, guardar, crear OC, revisarla en Sage, registrar la
+   compra, reporte) y comparar el reporte con el del `.exe` de una liquidación real.
+2. **Usuario**: confirmar D6 (compra en segundo paso) o pedir la compra junto con la OC.
+3. **Usuario**: revisión de §9.4 (Item Ledger / Inventory Valuation en Sage de `LIQ PRUEBA 028-2026`).
+4. Nombre de la base de SANCEV en Sage (sondeo de solo lectura antes de habilitarla).
+
+## 15. Prueba del usuario y ajustes (2026-09-29 → 2026-10-01)
+
+- Flujo completo en la web con la **LIQ IMPORT-042-2026** (cuenta 13804, TU-004) en la copia: OC 104922 y compra 104923, cuenta en 0,
+  liquidación vinculada en PeachEBills. Ajustes que salieron de la prueba:
+  - Arnés: deja la empresa del Bridge como estaba (antes la deshabilitaba).
+  - Página: no deja encolar otra OC/compra de la misma importación mientras haya un trabajo pendiente, retoma su seguimiento al
+    recargar y avisa si no hay ningún Sage Bridge en marcha.
+  - Reporte: descarga por `/exportar/liquidacion-importacion` (la ruta anterior caía en la de la página), motivo visible cuando no se
+    puede y, ya liquidada, sin exigir el cuadre (como el `.exe`).
+  - **C6** (cuenta por pagar 20000) y **C7** (líneas propias en la compra: el Item Costing Report no mostraba la compra de la 042).
+- §9.4 resuelto: con `AddOrderLine` la compra **no** aparece en el Item Costing Report; con C7 sí (CS-008: la manual y la del Bridge
+  con la misma cantidad y costo). La compra 104923 de la 042-2026 quedó con la forma anterior: para corregirla en la copia hay que
+  borrarla en Sage y volver a registrarla desde la web («Registrar compra»).
+- **Compras (F6) — pendiente**: `ConvertirOcs` también usa `AddOrderLine`. En la original, las compras del worker COM del último año
+  tienen `IncludeInInvLedger = 1` en todas sus filas de ítem (13.437 de ítems no de stock y 15 de stock en 8 compras); las del Bridge
+  quedarían en 0 y no saldrían en los reportes por ítem de Sage. Hay que decidir y probar el mismo cambio allí (allí la compra sí
+  debe seguir enlazada a la OC por `PurchaseOrderSync`, no por la aplicación en Sage).
+- Datos de prueba en la copia (además de §9.5): OC/compra 104920/104921 (039), 104924/104925 (038), 104926/104927 (037) y la 042
+  real de la prueba del usuario (104922/104923). Las cuentas 13799–13801 quedan con saldo por la doble liquidación.

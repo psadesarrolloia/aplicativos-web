@@ -18,4 +18,15 @@ public static class ReglasCompras
     public static bool PuedeVer(IReadOnlySet<string> permisos) =>
         PuedeRegistrar(permisos) || permisos.Contains(Permisos.VerCompras)
         || (PermisosProvisionales && permisos.Contains(Permisos.VerRetenciones));
+
+    /// <summary>
+    /// Liquidación de importaciones: <c>mkimpliq</c> (guardar, crear OC y compra) / <c>quimpliq</c> (ver). GateProvisional: mientras
+    /// no estén cargadas, las habilitan las mismas llaves que Compras.
+    /// </summary>
+    public static bool PuedeRegistrarLiquidaciones(IReadOnlySet<string> permisos) =>
+        permisos.Contains(Permisos.RegistrarLiquidacionImportaciones) || (PermisosProvisionales && PuedeRegistrar(permisos));
+
+    public static bool PuedeVerLiquidaciones(IReadOnlySet<string> permisos) =>
+        PuedeRegistrarLiquidaciones(permisos) || permisos.Contains(Permisos.VerLiquidacionImportaciones)
+        || (PermisosProvisionales && PuedeVer(permisos));
 }

@@ -36,6 +36,11 @@ public static class Permisos
     public const string VerCompras = "qupurchinv";
     public const string RegistrarCompras = "mkpurchinv";
 
+    // Liquidación de importaciones (Ola 2) — códigos nuevos (el .exe no la gateaba; docs/sql/permisos-compras-ventas.sql copia
+    // los roles de qupurchtwh/mkpurchtwh).
+    public const string VerLiquidacionImportaciones = "quimpliq";
+    public const string RegistrarLiquidacionImportaciones = "mkimpliq";
+
     // ATS
     public const string VerAts = "quats";
 

@@ -2,12 +2,14 @@
    Ola 2 — Compras y Retenciones en venta recibidas — permisos en allowAction
    Base: PeachEBills   ·   Idempotente (se puede correr varias veces)
 
-   Filas NUEVAS (4), un par por módulo (§9 del plan PLAN-OLA2-COMPRAS-SAGE.md):
+   Filas NUEVAS (6), un par por módulo (§9 del plan PLAN-OLA2-COMPRAS-SAGE.md):
 
      qupurchinv   Ver compras                                  <- copia roles de qupurchtwh
      mkpurchinv   Registrar compras (incluye NC de compra)     <- copia roles de mkpurchtwh
      qutwhrec     Ver retenciones en venta recibidas           <- copia roles de qusaleinv
      mktwhrec     Registrar retenciones en venta recibidas     <- copia roles de mksaleinv
+     quimpliq     Ver liquidaciones de importación             <- copia roles de qupurchtwh
+     mkimpliq     Registrar liquidaciones de importación       <- copia roles de mkpurchtwh
 
    Mientras no se apliquen, el módulo Compras usa GateProvisional: lo habilitan también qupurchtwh/mkpurchtwh
    (ServicioCompras.PermisosProvisionales = true y la entrada «compras» de AppCatalogo). Al aplicar: poner
@@ -32,7 +34,9 @@ INSERT INTO @Nuevos (codigo, nombre, equivalente) VALUES
  (N'qupurchinv', N'Ver compras',                                  N'qupurchtwh'),
  (N'mkpurchinv', N'Registrar compras',                            N'mkpurchtwh'),
  (N'qutwhrec',   N'Ver retenciones en venta recibidas',           N'qusaleinv'),
- (N'mktwhrec',   N'Registrar retenciones en venta recibidas',     N'mksaleinv');
+ (N'mktwhrec',   N'Registrar retenciones en venta recibidas',     N'mksaleinv'),
+ (N'quimpliq',   N'Ver liquidaciones de importación',            N'qupurchtwh'),
+ (N'mkimpliq',   N'Registrar liquidaciones de importación',      N'mkpurchtwh');
 
 -- allowAction: allowCode = nvarchar(10), allowName = nvarchar(50) (medido en PeachEBills).
 IF EXISTS (SELECT 1 FROM @Nuevos WHERE LEN(codigo) > 10 OR LEN(nombre) > 50) THROW 50001, N'Una llave nueva excede el ancho de allowAction.', 1;
@@ -83,6 +87,6 @@ ORDER BY n.codigo, s.adrRol;
 DROP TABLE #Asignar;
 
 /* Rollback (solo si hiciera falta):
-   DELETE FROM adrAllowRol WHERE adrAllowCode IN (N'qupurchinv',N'mkpurchinv',N'qutwhrec',N'mktwhrec');
-   DELETE FROM allowAction WHERE allowCode IN (N'qupurchinv',N'mkpurchinv',N'qutwhrec',N'mktwhrec');
+   DELETE FROM adrAllowRol WHERE adrAllowCode IN (N'qupurchinv',N'mkpurchinv',N'qutwhrec',N'mktwhrec',N'quimpliq',N'mkimpliq');
+   DELETE FROM allowAction WHERE allowCode IN (N'qupurchinv',N'mkpurchinv',N'qutwhrec',N'mktwhrec',N'quimpliq',N'mkimpliq');
 */

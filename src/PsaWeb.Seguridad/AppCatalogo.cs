@@ -77,6 +77,14 @@ public static class AppCatalogo
             "📨", "/compras/recibidos", Categorias.Compras,
             new[] { Permisos.VerCompras, Permisos.RegistrarCompras, Permisos.VerRetenciones, Permisos.HacerRetencion }),
 
+        // Provisional (GateProvisional): mientras el área no cargue quimpliq/mkimpliq también la habilitan las llaves de Compras.
+        // Al aplicar el script: dejar solo VerLiquidacionImportaciones y RegistrarLiquidacionImportaciones.
+        new("compras-importaciones", "Liquidación de importaciones",
+            "Prorratea los gastos de una importación a sus ítems y registra la OC y la compra en Sage 50 por el Sage Bridge.",
+            "🚢", "/compras/importaciones", Categorias.Compras,
+            new[] { Permisos.VerLiquidacionImportaciones, Permisos.RegistrarLiquidacionImportaciones, Permisos.VerCompras,
+                    Permisos.RegistrarCompras, Permisos.VerRetenciones, Permisos.HacerRetencion }),
+
         // Provisional (GateProvisional): sin código propio hasta que el área cargue quRptChq en
         // allowAction. Revertir a new[] { Permisos.VerReporteCheques } cuando esté el código.
         new("cheques", "Cheques y comprobantes de egreso",

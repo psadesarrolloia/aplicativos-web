@@ -1,0 +1,537 @@
+@page "/compras/importaciones/{Cuenta}"
+@namespace PsaWeb.Modules.Compras.Pages
+@using System.Globalization
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Compras.Importaciones
+@using PsaWeb.Modules.Compras.Importaciones
+@using PsaWeb.SageBridge.Cola.Data
+@using PsaWeb.SageBridge.Contratos
+@using PsaWeb.Seguridad
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ILogger<Importacion> Logger
+@implements IDisposable
+
+<PageTitle>Liquidación @Cuenta — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="@Titulo" Subtitle="@(_d?.Cuenta.Descripcion ?? "Liquidación de importación")">
+    <a class="psa-linkbtn" href="/compras/importaciones">← Importaciones</a>
+</PsaPageHeader>
+
+@if (_servicio is null)
+{
+    <div class="psa-notice psa-notice--danger">El módulo no está configurado.</div>
+}
+else if (_ruc is null)
+{
+    <div class="psa-notice">Elija una empresa para trabajar.</div>
+}
+else if (_permisos is { Ver: false })
+{
+    <div class="psa-notice psa-notice--danger">No tiene permiso para ver las liquidaciones de importación de esta empresa.</div>
+}
+else if (_cargaError is not null)
+{
+    <div class="psa-notice psa-notice--danger">@_cargaError</div>
+}
+else if (_d is null || _cat is null)
+{
+    <p class="psa-muted">Leyendo Sage…</p>
+}
+else
+{
+    @foreach (var a in _d.Avisos)
+    {
+        <div class="psa-notice" style="margin-bottom: .6rem">@a</div>
+    }
+
+    <PsaCard Title="Importación">
+        <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
+            <div class="psa-field">
+                <span class="psa-field__label">Estado</span>
+                <span class="psa-estado @Importaciones.ClaseEstado(_d.Estado)">@EstadosImportacion.Texto(_d.Estado)</span>
+            </div>
+            <label class="psa-field">
+                <span class="psa-field__label">Proveedor ID</span>
+                <input class="psa-input" style="width: 14rem" list="liq-proveedores" value="@_proveedor" @onchange="e => { _proveedor = e.Value?.ToString()?.Trim() ?? string.Empty; Cambio(); }" disabled="@SoloLectura" />
+            </label>
+            <span class="psa-muted" style="padding-bottom: .5rem">@NombreProveedor</span>
+            <label class="psa-field">
+                <span class="psa-field__label">Fecha de la OC</span>
+                <input class="psa-input" type="date" value="@_fecha.ToString("yyyy-MM-dd")" @onchange="e => { if (DateTime.TryParse(e.Value?.ToString(), CultureInfo.InvariantCulture, out var f)) { _fecha = f; Cambio(); } }" disabled="@SoloLectura" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Referencia de la OC</span>
+                <span style="display: flex; gap: .3rem; align-items: center">
+                    <input class="psa-input" style="width: 9rem" value="@_prefijo" @onchange="e => { _prefijo = e.Value?.ToString() ?? string.Empty; Cambio(); }" disabled="@(SoloLectura || _d.Oc is not null)" />
+                    <span>-</span>
+                    <input class="psa-input" style="width: 8rem" value="@_numero" @onchange="e => { _numero = e.Value?.ToString() ?? string.Empty; Cambio(); }" disabled="@(SoloLectura || _d.Oc is not null)" />
+                </span>
+            </label>
+        </div>
+        @if (_d.Oc is { } oc)
+        {
+            <p class="psa-muted" style="margin-top: .8rem">
+                OC en Sage: <strong>@oc.Referencia</strong> (PostOrder @oc.PostOrder)@(oc.Cerrada ? ", cerrada" : "") ·
+                @(oc.PostOrderCompra is { } pc ? $"compra {oc.ReferenciaCompra} (PostOrder {pc})" : "sin compra todavía")
+            </p>
+        }
+        <datalist id="liq-proveedores">
+            @foreach (var p in _cat.Proveedores.Where(x => !x.Inactivo))
+            {
+                <option value="@p.Id">@p.Nombre</option>
+            }
+        </datalist>
+    </PsaCard>
+
+    <PsaCard Title="Valores de importación (movimientos de la cuenta en Sage)">
+        <p class="psa-muted" style="margin-bottom: .6rem">Marque la factura del exterior; el resto son gastos de nacionalización que se prorratean a los ítems.</p>
+        <div style="overflow-x: auto">
+        <table class="psa-table">
+            <thead>
+                <tr><th>Factura del exterior</th><th>Fecha</th><th>Proveedor</th><th>Referencia</th><th>Descripción</th><th style="text-align: right">Valor</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var g in _gastos)
+                {
+                    <tr>
+                        <td style="text-align: center"><input type="checkbox" checked="@(!g.EsGasto)" @onchange="e => { g.EsGasto = !(e.Value is true); Cambio(); }" disabled="@SoloLectura" /></td>
+                        <td>@g.Fecha.ToString("dd/MM/yyyy", Es)</td>
+                        <td>@g.Proveedor</td>
+                        <td>@g.Referencia</td>
+                        <td>@g.Descripcion</td>
+                        <td style="text-align: right">@g.Valor.ToString("N2", Es)</td>
+                        <td>@if (g.Nueva) { <span class="psa-estado psa-estado--warn">nueva</span> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+        <div class="psa-row" style="gap: 2rem; margin-top: .8rem; flex-wrap: wrap">
+            <span>Gastos de nacionalización: <strong>@Totales.Gastos.ToString("N2", Es)</strong></span>
+            <span>Factura de importación: <strong>@Totales.Factura.ToString("N2", Es)</strong></span>
+            <span>Importación y nacionalización: <strong>@((Totales.Gastos + Totales.Factura).ToString("N2", Es))</strong></span>
+        </div>
+    </PsaCard>
+
+    <PsaCard Title="Productos a importar">
+        <div style="overflow-x: auto">
+        <table class="psa-table">
+            <thead>
+                <tr>
+                    <th>Ítem</th><th style="min-width: 16rem">Descripción</th><th>Cantidad</th><th>Valor U</th><th>Valor subtotal</th>
+                    <th style="text-align: right">Prorrateo %</th><th style="text-align: right">Prorrateado</th><th style="text-align: right">Costo U</th><th style="text-align: right">Costo total</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var x in _items)
+                {
+                    <tr>
+                        <td><input class="psa-input psa-input--sm" style="width: 9rem" list="liq-items" value="@x.ItemId" @onchange="e => PonerItem(x, e.Value)" disabled="@SoloLectura" /></td>
+                        <td>@x.Descripcion</td>
+                        <td><input class="psa-input psa-input--sm" style="width: 7rem" type="number" step="any" value="@Num(x.Cantidad)" @onchange="e => { x.Cantidad = Doble(e.Value); Cambio(); }" disabled="@SoloLectura" /></td>
+                        <td style="text-align: right">@x.ValorUnitario.ToString("N4", Es)</td>
+                        <td><input class="psa-input psa-input--sm" style="width: 9rem" type="number" step="any" value="@Num(x.Valor)" @onchange="e => { x.Valor = Doble(e.Value); Cambio(); }" disabled="@SoloLectura" /></td>
+                        <td style="text-align: right">@x.Porcentaje.ToString("N6", Es)</td>
+                        <td style="text-align: right">@x.Prorrateo.ToString("N2", Es)</td>
+                        <td style="text-align: right">@x.CostoUnitario.ToString("N4", Es)</td>
+                        <td style="text-align: right">@x.CostoTotal.ToString("N2", Es)</td>
+                        <td>@if (!SoloLectura) { <button class="psa-linkbtn" title="Quitar" @onclick="() => { _items.Remove(x); Cambio(); }">✕</button> }</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+        <datalist id="liq-items">
+            @foreach (var i in _cat.Items.Values.Where(x => !x.Inactivo))
+            {
+                <option value="@i.Id">@i.Descripcion</option>
+            }
+        </datalist>
+        <div class="psa-row" style="gap: 2rem; margin-top: .8rem; flex-wrap: wrap">
+            <span>@_items.Count registros</span>
+            <span>Total sin costos: <strong>@_items.Sum(x => x.Valor).ToString("N2", Es)</strong></span>
+            <span>Total con costos: <strong>@_items.Sum(x => x.CostoTotal).ToString("N2", Es)</strong></span>
+        </div>
+        @if (!SoloLectura)
+        {
+            <div class="psa-row" style="gap: .8rem; margin-top: .8rem; flex-wrap: wrap; align-items: center">
+                <PsaButton Variant="ghost" OnClick="AgregarItem">+ Agregar ítem</PsaButton>
+                <label class="psa-linkbtn" style="cursor: pointer">
+                    Importar desde Excel… <InputFile OnChange="LeerExcel" accept=".xlsx" style="display: none" />
+                </label>
+                <PsaButton Variant="secondary" OnClick="Prorratear">Prorratear</PsaButton>
+            </div>
+        }
+        @if (_prorrateoError is not null)
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-top: .6rem">@_prorrateoError</div>
+        }
+        @if (_hoja is not null)
+        {
+            <div class="psa-notice" style="margin-top: .8rem">
+                <p>Asocie las columnas del archivo (@_hoja.Filas.Count filas). Los ítems de la grilla se reemplazan.</p>
+                <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
+                    @foreach (var (nombre, indice) in new[] { ("Item Id", 0), ("Cantidad", 1), ("Valor Subtotal", 2) })
+                    {
+                        <label class="psa-field">
+                            <span class="psa-field__label">@nombre</span>
+                            <select class="psa-input" value="@_mapeo[indice]" @onchange="e => _mapeo[indice] = int.TryParse(e.Value?.ToString(), out var v) ? v : -1">
+                                <option value="-1">—</option>
+                                @for (var c = 0; c < _hoja.Columnas.Count; c++)
+                                {
+                                    <option value="@c">@_hoja.Columnas[c]</option>
+                                }
+                            </select>
+                        </label>
+                    }
+                    <PsaButton Variant="primary" OnClick="CargarExcel" Disabled="@_mapeo.Any(x => x < 0)">Cargar ítems</PsaButton>
+                    <PsaButton Variant="ghost" OnClick="() => _hoja = null">Cancelar</PsaButton>
+                </div>
+            </div>
+        }
+        @foreach (var m in _mensajesExcel)
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-top: .4rem">@m</div>
+        }
+    </PsaCard>
+
+    <PsaCard Title="Guardar y registrar en Sage">
+        @foreach (var e in _errores)
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-bottom: .4rem">@e</div>
+        }
+        @if (_trabajo is not null)
+        {
+            <div class="psa-notice @ClaseTrabajo" style="margin-bottom: .6rem">@TextoTrabajo</div>
+        }
+        @if (!_bridgeVivo)
+        {
+            <div class="psa-notice psa-notice--danger" style="margin-bottom: .6rem">No hay ningún Sage Bridge en marcha: los trabajos quedan en cola hasta que se inicie (servicio PsaSageBridge o, en desarrollo, PsaWeb.SageBridge.exe --consola).</div>
+        }
+        @if (_cambios && !SoloLectura)
+        {
+            <p class="psa-muted" style="margin-bottom: .6rem">Hay cambios sin guardar.</p>
+        }
+        <div class="psa-row" style="gap: .8rem; flex-wrap: wrap">
+            @if (!SoloLectura && _permisos?.Registrar == true)
+            {
+                <PsaButton Variant="secondary" OnClick="Guardar" Disabled="@(_ocupado || TrabajoEnCurso)">Guardar</PsaButton>
+                <PsaButton Variant="primary" OnClick="CrearOc" Disabled="@(_ocupado || TrabajoEnCurso)">@(_d.Oc is null ? "Crear OC en Sage" : "Actualizar OC en Sage")</PsaButton>
+            }
+            @if (_d.Oc is { PostOrderCompra: null } && _permisos?.Registrar == true)
+            {
+                <PsaButton Variant="primary" OnClick="RegistrarCompra" Disabled="@(_ocupado || TrabajoEnCurso || _cambios)">Registrar compra</PsaButton>
+            }
+            <PsaButton Variant="ghost" OnClick="DescargarReporte" Disabled="@(MotivoSinReporte is not null)">Reporte Excel</PsaButton>
+        </div>
+        @if (MotivoSinReporte is { } motivo)
+        {
+            <p class="psa-muted" style="margin-top: .4rem">Reporte: @motivo</p>
+        }
+        <p class="psa-muted" style="margin-top: .8rem">
+            «Crear OC» guarda la liquidación y registra la OC (total 0) en Sage. Revise la OC y, si está bien, «Registrar compra» registra
+            la compra @(string.IsNullOrEmpty(_numero) ? "" : $"«{ReferenciasLiquidacion.DeCompra(Liquidaciones.Referencia(_prefijo, _numero))}»") que carga el costo al inventario.
+            Mientras no haya compra, la OC se corrige desde aquí («Actualizar OC»), no en Sage.
+        </p>
+    </PsaCard>
+}
+
+@code {
+    [Parameter] public string Cuenta { get; set; } = string.Empty;
+
+    private static readonly CultureInfo Es = CultureInfo.GetCultureInfo("es-EC");
+    private ServicioLiquidaciones? _servicio;
+    private EmpresaActualService? _empresaActual;
+    private string? _ruc;
+    private string _usuario = "web";
+    private PermisosLiquidacion? _permisos;
+    private CatalogoLiquidacion? _cat;
+    private DetalleImportacion? _d;
+    private string? _cargaError;
+
+    private List<GastoImportacion> _gastos = new();
+    private List<ItemLiquidacion> _items = new();
+    private string _proveedor = string.Empty;
+    private DateTime _fecha = DateTime.Today;
+    private string _prefijo = string.Empty;
+    private string _numero = string.Empty;
+    private bool _cambios;
+    private bool _ocupado;
+    private bool _bridgeVivo = true;
+    private string? _prorrateoError;
+    private List<string> _errores = new();
+
+    private HojaExcel? _hoja;
+    private readonly int[] _mapeo = { -1, -1, -1 };
+    private List<string> _mensajesExcel = new();
+
+    private TrabajoSage? _trabajo;
+    private System.Threading.Timer? _sondeo;
+
+    private string Titulo => $"Liquidación de importación {Cuenta}";
+    private bool SoloLectura => _d is null || !_d.Editable || _permisos?.Registrar != true;
+    private bool TrabajoEnCurso => _trabajo is not null && !EstadosTrabajo.EsFinal(_trabajo.Estado);
+    private (double Gastos, double Factura) Totales => Liquidaciones.Totales(_gastos);
+    private string NombreProveedor => _cat?.Proveedores.FirstOrDefault(x => x.Id == _proveedor)?.Nombre ?? (string.IsNullOrEmpty(_proveedor) ? "" : "(no existe en Sage)");
+    private string? MotivoSinReporte => _d is null ? "Cargando." : _cambios && !SoloLectura ? "Guarde los cambios antes de sacar el reporte." : _d.MotivoSinReporte(_items, _gastos);
+
+    // Descarga como el Kardex: navegación completa a un endpoint del Host (fuera de las rutas de las páginas).
+    private void DescargarReporte() =>
+        Nav.NavigateTo($"/exportar/liquidacion-importacion?ruc={Uri.EscapeDataString(_ruc ?? "")}&cuenta={Uri.EscapeDataString(Cuenta)}", forceLoad: true);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _servicio = Sp.GetService<ServicioLiquidaciones>();
+        _empresaActual = Sp.GetService<EmpresaActualService>();
+        if (_empresaActual is not null) _empresaActual.Cambio += AlCambiarEmpresa;
+        _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        await Cargar();
+    }
+
+    private async void AlCambiarEmpresa()
+    {
+        // La cuenta es de una empresa: al cambiar de empresa se vuelve a la lista.
+        await InvokeAsync(() => Nav.NavigateTo("/compras/importaciones"));
+    }
+
+    private async Task Cargar()
+    {
+        _ruc = _empresaActual?.Ruc;
+        _cargaError = null;
+        if (_ruc is null || _servicio is null) return;
+        try
+        {
+            _permisos = await _servicio.PermisosAsync(_usuario, _ruc);
+            if (!_permisos.Ver) return;
+            _cat = await _servicio.CatalogoAsync(_ruc);
+            _d = await _servicio.AbrirAsync(_ruc, Cuenta);
+            if (_d is null)
+            {
+                _cargaError = $"La cuenta {Cuenta} no es una cuenta IMPORTACION de esta empresa en Sage.";
+                return;
+            }
+            _gastos = _d.Gastos;
+            _items = _d.Items.Select(x => x.Copia()).ToList();
+            _proveedor = _d.ProveedorId;
+            _fecha = _d.Fecha;
+            _prefijo = _d.Prefijo;
+            _numero = _d.Numero;
+            _cambios = _d.LiquidacionId is null && _d.Editable;
+            _bridgeVivo = await _servicio.BridgeVivoAsync();
+            // Al recargar, retoma el trabajo de esta importación que siga en cola o en proceso.
+            if (!TrabajoEnCurso && await _servicio.TrabajoPendienteAsync(_ruc, Cuenta, _d.Oc?.PostOrder) is { } pendiente)
+            {
+                _trabajo = pendiente;
+                Seguir(pendiente.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo abrir la importación {Cuenta} de {Ruc}", Cuenta, _ruc);
+            _cargaError = "No se pudo leer Sage 50: " + ex.Message;
+        }
+    }
+
+    private void Cambio()
+    {
+        _cambios = true;
+        _prorrateoError = null;
+    }
+
+    private void AgregarItem()
+    {
+        _items.Add(new ItemLiquidacion());
+        Cambio();
+    }
+
+    private void PonerItem(ItemLiquidacion x, object? valor)
+    {
+        x.ItemId = valor?.ToString()?.Trim() ?? string.Empty;
+        // Como el `.exe`: la descripción sale del ítem de Sage (vacía si no existe).
+        x.Descripcion = _cat!.Items.TryGetValue(x.ItemId, out var i) ? i.Descripcion : string.Empty;
+        Cambio();
+    }
+
+    private void Prorratear()
+    {
+        _prorrateoError = Liquidaciones.Prorratear(_items, Totales.Factura, Totales.Gastos);
+        if (_prorrateoError is null) _cambios = true;
+    }
+
+    private async Task LeerExcel(InputFileChangeEventArgs e)
+    {
+        _mensajesExcel = new();
+        try
+        {
+            await using var s = e.File.OpenReadStream(10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            ms.Position = 0;
+            _hoja = ExcelDetalleLiquidacion.Leer(ms);
+            // Asociación automática por nombre, como sugerencia.
+            string[] nombres = { "Item Id", "Cantidad", "Valor Subtotal" };
+            for (var i = 0; i < 3; i++)
+            {
+                _mapeo[i] = _hoja.Columnas.ToList().FindIndex(c => string.Equals(c.Trim(), nombres[i], StringComparison.OrdinalIgnoreCase));
+            }
+        }
+        catch (Exception ex)
+        {
+            _hoja = null;
+            _mensajesExcel.Add("No se pudo leer el archivo: " + ex.Message);
+        }
+    }
+
+    private void CargarExcel()
+    {
+        if (_hoja is null || _cat is null) return;
+        var (items, mensajes) = ExcelDetalleLiquidacion.Convertir(_hoja, _mapeo[0], _mapeo[1], _mapeo[2], _cat.Items);
+        _items = items;
+        _mensajesExcel = mensajes;
+        _hoja = null;
+        Cambio();
+    }
+
+    private async Task Guardar()
+    {
+        if (_servicio is null || _ruc is null || _d is null) return;
+        _ocupado = true;
+        _errores = new();
+        try
+        {
+            var (id, errores) = await _servicio.GuardarAsync(_ruc, _usuario, Cuenta, _proveedor, Liquidaciones.Referencia(_prefijo, _numero), _fecha, _items, _gastos);
+            _errores = errores;
+            if (id is not null) await Cargar();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo guardar la liquidación {Cuenta}", Cuenta);
+            _errores = ["No se pudo guardar: " + ex.Message];
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task CrearOc()
+    {
+        if (_servicio is null || _ruc is null || _d is null) return;
+        _ocupado = true;
+        _errores = new();
+        try
+        {
+            var entrada = new EntradaOcLiquidacion(Cuenta, _proveedor, _fecha, Liquidaciones.Referencia(_prefijo, _numero), _d.Oc?.PostOrder, _items, _gastos);
+            var (trabajo, errores) = await _servicio.CrearOcAsync(_ruc, _usuario, Cuenta, entrada);
+            _errores = errores;
+            if (trabajo is { } id)
+            {
+                _cambios = false;
+                _trabajo = await _servicio.TrabajoAsync(id);
+                Seguir(id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo encolar la OC de la liquidación {Cuenta}", Cuenta);
+            _errores = ["No se pudo enviar al Sage Bridge: " + ex.Message];
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private async Task RegistrarCompra()
+    {
+        if (_servicio is null || _ruc is null || _d?.Oc is not { } oc) return;
+        _ocupado = true;
+        _errores = new();
+        try
+        {
+            var (trabajo, error) = await _servicio.RegistrarCompraAsync(_ruc, _usuario, Cuenta, oc);
+            if (error is not null) _errores = [error];
+            if (trabajo is { } id)
+            {
+                _trabajo = await _servicio.TrabajoAsync(id);
+                Seguir(id);
+            }
+        }
+        finally
+        {
+            _ocupado = false;
+        }
+    }
+
+    private void Seguir(long id)
+    {
+        _sondeo?.Dispose();
+        _sondeo = new System.Threading.Timer(async _ =>
+        {
+            try
+            {
+                var t = await _servicio!.TrabajoAsync(id);
+                _trabajo = t;
+                if (t is null || EstadosTrabajo.EsFinal(t.Estado))
+                {
+                    _sondeo?.Dispose();
+                    if (t is { Estado: EstadosTrabajo.Hecho })
+                    {
+                        if (t.Tipo == TiposTrabajo.GuardarOcLiquidacion && t.ResultadoJson is { } json
+                            && JsonSerializer.Deserialize<ResultadoGuardarOcLiquidacion>(json) is { } r)
+                        {
+                            await _servicio.AnotarOcAsync(_ruc!, Cuenta, r, _fecha);
+                        }
+                        await InvokeAsync(Cargar);
+                    }
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Sondeo del trabajo {Id}", id);
+            }
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
+    private string ClaseTrabajo => _trabajo?.Estado switch
+    {
+        EstadosTrabajo.Hecho => "psa-notice--ok",
+        EstadosTrabajo.Error or EstadosTrabajo.Cancelado => "psa-notice--danger",
+        _ => "",
+    };
+
+    private string TextoTrabajo
+    {
+        get
+        {
+            if (_trabajo is null) return string.Empty;
+            var que = _trabajo.Tipo == TiposTrabajo.ConvertirLiquidacion ? "la compra" : "la OC";
+            return _trabajo.Estado switch
+            {
+                EstadosTrabajo.Hecho => _trabajo.Tipo == TiposTrabajo.ConvertirLiquidacion
+                    ? JsonSerializer.Deserialize<ResultadoConvertirLiquidacion>(_trabajo.ResultadoJson ?? "{}")?.Mensaje ?? "Compra registrada."
+                    : JsonSerializer.Deserialize<ResultadoGuardarOcLiquidacion>(_trabajo.ResultadoJson ?? "{}")?.Mensaje ?? "OC registrada.",
+                EstadosTrabajo.Error => $"Sage no registró {que}: {_trabajo.Error}",
+                EstadosTrabajo.Cancelado => "El trabajo se canceló.",
+                _ => _trabajo.Intentos > 0 && _trabajo.Error is { } err
+                    ? $"En cola (se reintentará): {err}"
+                    : $"Enviado al Sage Bridge (trabajo #{_trabajo.Id}): {(_trabajo.Estado == EstadosTrabajo.EnProceso ? "escribiendo en Sage…" : "en cola…")}",
+            };
+        }
+    }
+
+    private static double Doble(object? v) =>
+        double.TryParse(v?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : 0;
+
+    private static string Num(double d) => d.ToString("0.########", CultureInfo.InvariantCulture);
+
+    public void Dispose()
+    {
+        _sondeo?.Dispose();
+        if (_empresaActual is not null) _empresaActual.Cambio -= AlCambiarEmpresa;
+    }
+}
