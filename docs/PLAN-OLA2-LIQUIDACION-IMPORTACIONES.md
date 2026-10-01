@@ -302,3 +302,21 @@ quedan con saldo −1.577.713,38 y −593.450,45 y los ítems con la existencia 
   indispensable; la pérdida del vínculo solo se acepta en las liquidaciones de importación (pocas al mes). `ConvertirOcs` sigue con
   `AddOrderLine` (vinculada, `IncludeInInvLedger = 0`); el efecto en los reportes por ítem de Sage queda como punto abierto de Compras,
   a resolver antes de apagar el worker COM en cada empresa.
+
+## 17. SANCEV (2026-10-01, solo lectura)
+
+- Base de Sage: carpeta `C:\Sage\Peachtree\Company\sancialu`, base ODBC `sancevcialtda2202520` (la de `PeachConnString`).
+- 44 cuentas `IMPORTACION%` (`IMPORTACION-001-2023`…, renombradas luego con sufijo: `13801-339`, `13834-340`); 24 liquidaciones con OC
+  desde 2023, prefijos variados (`IMPORT-`, `LQ IMPORT-`, `LIQ IMPORT-`, `LIQ-IMPORT-`).
+- Reconstrucción F1 contra su base: las diferencias son de datos (8 cargas de saldo inicial de dic-2022 sin gastos ni prorrateo, 4 OC de
+  saldo inicial borradas, cuentas renombradas, OC corregidas a mano en Sage), no del port.
+- Convenciones distintas de CPTDC, ahora deducidas por empresa (sin valores fijos):
+  - **Cuenta por pagar** (C6): la más usada por sus compras del último año entre las de tipo «por pagar» → CPTDC `20000`, SANCEV
+    `20000-513`.
+  - **Referencia de la compra**: según sus liquidaciones de los últimos dos años → CPTDC con espacio (`LIQ IMPORT 041-2026`), SANCEV
+    igual a la de la OC (`LIQ-IMPORT-002-2026`). La web la manda al Bridge (`PayloadConvertirLiquidacion.ReferenciaCompra`).
+  - **Referencia propuesta para la OC**: la de su última liquidación con el número cambiado (`LIQ-IMPORT-003-2026` → `LIQ-IMPORT-004-2026`).
+- Prueba `Validacion/ConvencionesSancevTests` (con `PSAWEB_TEST_RUC_COMPRAS=1791313747001` y su base). Antes de habilitar SANCEV en el
+  Bridge: autorizar el anfitrión en esa compañía (Probar → Always allow access).
+- Ojo Compras: `ArmadorOc.CuentaPorPagar` es `20000` fijo; en SANCEV esa cuenta no existe (es `20000-513`). Revisar antes de usar el
+  módulo Compras en SANCEV.

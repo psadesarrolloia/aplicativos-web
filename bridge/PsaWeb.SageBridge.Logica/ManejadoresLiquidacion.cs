@@ -124,7 +124,7 @@ public sealed class ManejadorConvertirLiquidacion : IManejadorTrabajo
         var p = Json.Leer<PayloadConvertirLiquidacion>(trabajo.PayloadJson!);
         using var odbc = OdbcSage.Abrir(contexto.Configuracion, trabajo.Ruc);
         var oc = odbc.Oc(p.PostOrder) ?? throw new RechazoTrabajoException($"La OC {p.PostOrder} no existe en Sage.");
-        var referencia = ReferenciasLiquidacion.DeCompra(oc.Referencia);
+        var referencia = string.IsNullOrWhiteSpace(p.ReferenciaCompra) ? ReferenciasLiquidacion.DeCompra(oc.Referencia) : p.ReferenciaCompra!.Trim();
         var f = contexto.Empresa.Factories;
         var proveedor = SageBusqueda.Uno(f.VendorFactory.List(), SageBusqueda.Igual("Vendor.ID", oc.VendorId))
                         ?? throw new RechazoTrabajoException($"El proveedor {oc.VendorId} no existe en Sage.");

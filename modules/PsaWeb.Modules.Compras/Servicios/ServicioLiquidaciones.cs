@@ -76,7 +76,16 @@ public sealed class DetalleImportacion
 }
 
 /// <summary>Catálogos de Sage de una empresa para el formulario (una vez por circuito).</summary>
-public sealed record CatalogoLiquidacion(IReadOnlyDictionary<string, ItemStock> Items, IReadOnlyList<ProveedorLiquidacion> Proveedores);
+/// <summary>
+/// Catálogos y convenciones de la empresa: cuenta por pagar (C6), si la compra lleva la referencia de la OC con espacio (CPTDC) o igual
+/// (SANCEV), y la referencia de su última liquidación (para proponer la siguiente).
+/// </summary>
+public sealed record CatalogoLiquidacion(IReadOnlyDictionary<string, ItemStock> Items, IReadOnlyList<ProveedorLiquidacion> Proveedores,
+    string CuentaPorPagar, bool CompraConEspacio, string? UltimaReferencia)
+{
+    /// <summary>Referencia de la compra de una OC según la convención de la empresa.</summary>
+    public string ReferenciaCompra(string referenciaOc) => CompraConEspacio ? ReferenciasLiquidacion.DeCompra(referenciaOc) : referenciaOc;
+}
 
 /// <summary>
 /// Orquesta la liquidación de importaciones (docs/PLAN-OLA2-LIQUIDACION-IMPORTACIONES.md §4–§5): lee Sage por ODBC, guarda en
@@ -107,9 +116,13 @@ public sealed class ServicioLiquidaciones(
         if (_catalogos.TryGetValue(ruc, out var c)) return c;
         await using var cn = await AbrirAsync(ruc, ct);
         var items = await LectorImportaciones.ItemsStockAsync(cn, ct);
+        await using var db = await peachEbills.CreateDbContextAsync(ct);
         c = new CatalogoLiquidacion(
             items.GroupBy(x => x.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal),
-            await LectorImportaciones.ProveedoresAsync(cn, ct));
+            await LectorImportaciones.ProveedoresAsync(cn, ct),
+            await LectorImportaciones.CuentaPorPagarAsync(cn, ct) ?? PsaWeb.Compras.Armado.ArmadorOc.CuentaPorPagar,
+            await LectorImportaciones.CompraConEspacioAsync(cn, ct),
+            await RepositorioLiquidaciones.UltimaReferenciaAsync(db, ruc, ct));
         _catalogos[ruc] = c;
         return c;
     }
@@ -169,7 +182,9 @@ public sealed class ServicioLiquidaciones(
         var estado = EstadosImportacion.Calcular(c.Movimientos, c.Saldo, g is not null, oc is not null);
         var (prefijo, numero) = oc is not null ? Liquidaciones.Separar(oc.Referencia)
             : g?.ReferenciaOc is { Length: > 0 } rg ? Liquidaciones.Separar(rg)
-            : (Liquidaciones.PrefijoPorDefecto, Liquidaciones.NumeroPropuesto(c.Descripcion) ?? string.Empty);
+            : Liquidaciones.NumeroPropuesto(c.Descripcion) is { } propuesto
+                ? Liquidaciones.Separar(Liquidaciones.ReferenciaPropuesta((await CatalogoAsync(ruc, ct)).UltimaReferencia, propuesto))
+                : (Liquidaciones.PrefijoPorDefecto, string.Empty);
         var detalle = new DetalleImportacion
         {
             Cuenta = c,
@@ -236,6 +251,7 @@ public sealed class ServicioLiquidaciones(
 
         var (id, erroresGuardar) = await GuardarAsync(ruc, usuario, cuenta, entrada.ProveedorId, entrada.Referencia, entrada.Fecha, entrada.Items, entrada.Gastos, ct);
         if (id is null) return (null, erroresGuardar);
+        payload.CuentaPorPagar = catalogo.CuentaPorPagar;
         var json = JsonSerializer.Serialize(payload);
         var huella = Huella(json);
         var encolado = await cola.EncolarAsync(ruc, TiposTrabajo.GuardarOcLiquidacion, json, $"liq-oc-{ruc}-{cuenta}-{huella[..16]}-{DateTime.UtcNow:yyyyMMddHHmm}", usuario, ct);
@@ -264,7 +280,10 @@ public sealed class ServicioLiquidaciones(
         {
             return (null, $"Ya hay un trabajo (#{pendiente.Id}) en el Sage Bridge para esta importación; espere a que termine.");
         }
-        var json = JsonSerializer.Serialize(new PayloadConvertirLiquidacion { PostOrder = oc.PostOrder });
+        var json = JsonSerializer.Serialize(new PayloadConvertirLiquidacion
+        {
+            PostOrder = oc.PostOrder, ReferenciaCompra = (await CatalogoAsync(ruc, ct)).ReferenciaCompra(oc.Referencia),
+        });
         var encolado = await cola.EncolarAsync(ruc, TiposTrabajo.ConvertirLiquidacion, json, $"liq-compra-{ruc}-{oc.PostOrder}-{DateTime.UtcNow:yyyyMMddHHmm}", usuario, ct);
         await AuditarAsync(ruc, usuario, cuenta, oc.ProveedorId, oc.Referencia, TiposTrabajo.ConvertirLiquidacion,
             encolado.Nuevo ? "Encolado" : "YaEncolado", encolado.Trabajo.Id, Huella(json), $"OC {oc.PostOrder}", ct);

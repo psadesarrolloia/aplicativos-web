@@ -65,6 +65,11 @@ public class LecturasLiquidacionTests(ITestOutputHelper salida)
             var bytes = ReporteLiquidacion.Generar("CPTDC ECUADOR S. A.", c, sinLiq, gg.Items);
             File.WriteAllBytes(Path.Combine(Path.GetTempPath(), $"psa-f4-{cuenta}.xlsx"), bytes);
         }
+        var ap = await LectorImportaciones.CuentaPorPagarAsync(cn);
+        var conEspacio = await LectorImportaciones.CompraConEspacioAsync(cn);
+        informe.AppendLine($"Cuenta por pagar: {ap}; compra con espacio: {conEspacio}.");
+        Assert.Equal("20000", ap);
+        Assert.True(conEspacio);
         var items = await LectorImportaciones.ItemsStockAsync(cn);
         var proveedores = await LectorImportaciones.ProveedoresAsync(cn);
         informe.AppendLine($"Ítems de stock: {items.Count}; proveedores: {proveedores.Count}.");

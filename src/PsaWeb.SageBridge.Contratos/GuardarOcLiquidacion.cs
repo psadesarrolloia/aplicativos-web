@@ -15,7 +15,7 @@ public sealed class PayloadGuardarOcLiquidacion
     public string CuentaImportacion { get; set; } = string.Empty;
 
     /// <summary>
-    /// Cuenta por pagar de la OC (20000, decisión del usuario 2026-10-01; la compra la hereda). Vacía = la de la importación, como el
+    /// Cuenta por pagar de la OC, la de la empresa (CPTDC 20000, SANCEV 20000-513; C6, 2026-10-01); la compra la hereda. Vacía = la de la importación, como el
     /// `.exe`.
     /// </summary>
     public string CuentaPorPagar { get; set; } = string.Empty;
@@ -67,6 +67,12 @@ public sealed class PayloadConvertirLiquidacion
 {
     /// <summary>La OC de liquidación a convertir en compra.</summary>
     public int PostOrder { get; set; }
+
+    /// <summary>
+    /// Referencia de la compra según la convención de la empresa (CPTDC: con espacio; SANCEV: igual a la de la OC). Vacía = la de la
+    /// OC con el primer guion cambiado por espacio.
+    /// </summary>
+    public string? ReferenciaCompra { get; set; }
 }
 
 /// <summary>Resultado de <see cref="TiposTrabajo.ConvertirLiquidacion"/>.</summary>

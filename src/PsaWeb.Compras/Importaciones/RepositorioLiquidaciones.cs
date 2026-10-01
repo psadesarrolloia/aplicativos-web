@@ -61,6 +61,13 @@ public static class RepositorioLiquidaciones
             }).ToList());
     }
 
+    /// <summary>Referencia de la OC de la última liquidación de la empresa (para proponer la siguiente).</summary>
+    public static async Task<string?> UltimaReferenciaAsync(PeachEbillsContext db, string ruc, CancellationToken ct = default) =>
+        (await db.ImportCost.AsNoTracking()
+            .Where(x => x.TransmitterRuc == ruc && x.PostOrderNumber != null && x.PostOrderNumber != "" && x.PostOrderId != null && x.PostOrderId != "")
+            .OrderByDescending(x => x.TransactionDate).ThenByDescending(x => x.Id)
+            .Select(x => x.PostOrderNumber).FirstOrDefaultAsync(ct))?.Trim();
+
     /// <summary>Resumen de lo guardado por cuenta (para la lista): proveedor, PostOrder y referencia de la OC.</summary>
     public static async Task<Dictionary<string, (string? Proveedor, int? PostOrder, string? Referencia)>> ResumenAsync(
         PeachEbillsContext db, string ruc, CancellationToken ct = default)

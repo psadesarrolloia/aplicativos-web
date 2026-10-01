@@ -91,6 +91,15 @@ public class LiquidacionTests
     }
 
     [Theory]
+    [InlineData("LIQ IMPORT-042-2026", "043-2026", "LIQ IMPORT-043-2026")]
+    [InlineData("LIQ-IMPORT-003-2026", "004-2026", "LIQ-IMPORT-004-2026")]
+    [InlineData("IMPORT-003*-2025", "004-2025", "IMPORT-004-2025")]
+    [InlineData(null, "001-2027", "LIQ IMPORT-001-2027")]
+    [InlineData("PO-VAR", "001-2027", "LIQ IMPORT-001-2027")]
+    public void Referencia_propuesta_sigue_la_ultima_de_la_empresa(string? ultima, string numero, string esperada) =>
+        Assert.Equal(esperada, Liquidaciones.ReferenciaPropuesta(ultima, numero));
+
+    [Theory]
     [InlineData(0, 100, false, false, EstadoImportacion.SinDatos)]
     [InlineData(3, 0.04, true, true, EstadoImportacion.Liquidada)]
     [InlineData(3, 500, false, false, EstadoImportacion.EnTransito)]

@@ -233,7 +233,7 @@ else
         }
         <p class="psa-muted" style="margin-top: .8rem">
             «Crear OC» guarda la liquidación y registra la OC (total 0) en Sage. Revise la OC y, si está bien, «Registrar compra» registra
-            la compra @(string.IsNullOrEmpty(_numero) ? "" : $"«{ReferenciasLiquidacion.DeCompra(Liquidaciones.Referencia(_prefijo, _numero))}»") que carga el costo al inventario.
+            la compra @(string.IsNullOrEmpty(_numero) ? "" : $"«{_cat.ReferenciaCompra(Liquidaciones.Referencia(_prefijo, _numero))}»") que carga el costo al inventario.
             Mientras no haya compra, la OC se corrige desde aquí («Actualizar OC»), no en Sage.
         </p>
     </PsaCard>

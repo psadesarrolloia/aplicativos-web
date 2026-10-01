@@ -235,6 +235,17 @@ public static class Liquidaciones
     }
 
     public const string PrefijoPorDefecto = "LIQ IMPORT";
+
+    /// <summary>
+    /// Referencia propuesta para la OC: la de la última liquidación de la empresa con su número cambiado por <paramref name="numero"/>
+    /// (CPTDC <c>LIQ IMPORT-042-2026</c> → <c>LIQ IMPORT-043-2026</c>; SANCEV <c>LIQ-IMPORT-003-2026</c> → <c>LIQ-IMPORT-004-2026</c>).
+    /// Sin historial o sin número al final: <see cref="PrefijoPorDefecto"/> + «-» + número.
+    /// </summary>
+    public static string ReferenciaPropuesta(string? ultima, string numero)
+    {
+        var m = Regex.Match(ultima ?? string.Empty, @"^(.*?)\d+\*?\s*-\s*\d{4}\s*$");
+        return m.Success && m.Groups[1].Value.Length > 0 ? m.Groups[1].Value + numero : $"{PrefijoPorDefecto}-{numero}";
+    }
 }
 
 /// <summary>Lo que el usuario confirma al pulsar «Crear OC y compra».</summary>
@@ -273,7 +284,6 @@ public static class ArmadorOcLiquidacion
         return (new PayloadGuardarOcLiquidacion
         {
             CuentaImportacion = e.CuentaImportacion,
-            CuentaPorPagar = PsaWeb.Compras.Armado.ArmadorOc.CuentaPorPagar,
             Fecha = e.Fecha.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             Lineas = e.Items.Select(x => new LineaOcLiquidacion
             {

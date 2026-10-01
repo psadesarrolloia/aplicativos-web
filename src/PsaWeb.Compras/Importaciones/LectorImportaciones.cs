@@ -138,6 +138,44 @@ public static class LectorImportaciones
         return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct), CultureInfo.InvariantCulture) > 0;
     }
 
+    /// <summary>
+    /// Cuenta por pagar de la empresa (C6): la que más usan sus compras del último año entre las de tipo «por pagar» (CPTDC
+    /// <c>20000</c>, SANCEV <c>20000-513</c>). Nula si no hay compras.
+    /// </summary>
+    public static async Task<string?> CuentaPorPagarAsync(OdbcConnection cn, CancellationToken ct = default)
+    {
+        await using var cmd = new OdbcCommand(
+            "SELECT c.AccountID, COUNT(*) AS N FROM JrnlHdr h, Chart c WHERE h.GLAcntNumber = c.GLAcntNumber AND h.JrnlKey_Journal = 4 " +
+            "AND h.JournalEx = 11 AND c.AccountType = 10 AND h.TransactionDate >= ? GROUP BY c.AccountID ORDER BY 2 DESC", cn);
+        cmd.Parameters.Add(new OdbcParameter { OdbcType = OdbcType.Date, Value = DateTime.Today.AddYears(-1) });
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        return await r.ReadAsync(ct) ? Texto(r, 0) : null;
+    }
+
+    /// <summary>
+    /// Convención de la referencia de la compra de una liquidación en la empresa, según sus liquidaciones de los últimos dos años: true =
+    /// la de la OC con el primer guion cambiado por espacio (CPTDC: <c>LIQ IMPORT 041-2026</c>); false = igual a la de la OC (SANCEV).
+    /// Sin historial: con espacio.
+    /// </summary>
+    public static async Task<bool> CompraConEspacioAsync(OdbcConnection cn, CancellationToken ct = default)
+    {
+        int espacio = 0, igual = 0;
+        await using var cmd = new OdbcCommand(
+            "SELECT p.Reference, h.Reference FROM JrnlHdr p, JrnlHdr h, JrnlRow r WHERE p.JrnlKey_Journal = 10 AND p.JournalEx = 18 " +
+            "AND h.JrnlKey_Journal = 4 AND h.INV_POSOOrderNumber = p.Reference AND h.CustVendId = p.CustVendId AND r.PostOrder = p.PostOrder " +
+            "AND r.ItemRecordNumber = 0 AND r.RowDescription = 'LIQUIDACION' AND p.TransactionDate >= ?", cn);
+        cmd.Parameters.Add(new OdbcParameter { OdbcType = OdbcType.Date, Value = DateTime.Today.AddYears(-2) });
+        await using var rd = await cmd.ExecuteReaderAsync(ct);
+        while (await rd.ReadAsync(ct))
+        {
+            var oc = Texto(rd, 0);
+            var compra = Texto(rd, 1);
+            if (compra == oc) igual++;
+            else if (compra == PsaWeb.SageBridge.Contratos.ReferenciasLiquidacion.DeCompra(oc)) espacio++;
+        }
+        return espacio >= igual;
+    }
+
     /// <summary>Ítems de stock (<c>ItemClass</c> 1), activos e inactivos, como el combo del `.exe`.</summary>
     public static async Task<IReadOnlyList<ItemStock>> ItemsStockAsync(OdbcConnection cn, CancellationToken ct = default)
     {
@@ -175,10 +213,11 @@ public static class LectorImportaciones
         }
         await using var c = new OdbcCommand(
             // La compra manual (y la del Bridge antes de C7) queda aplicada a la OC; la del Bridge, con la referencia de compra (C7).
-            "SELECT PostOrder, Reference FROM JrnlHdr WHERE JrnlKey_Journal = 4 AND JournalEx = 11 AND (INV_POSOOrderNumber = ? OR Reference = ?) " +
+            "SELECT PostOrder, Reference FROM JrnlHdr WHERE JrnlKey_Journal = 4 AND JournalEx = 11 AND (INV_POSOOrderNumber = ? OR Reference = ? OR Reference = ?) " +
             "AND CustVendId = ? ORDER BY PostOrder DESC", cn);
         Parametro(c, referencia);
         Parametro(c, PsaWeb.SageBridge.Contratos.ReferenciasLiquidacion.DeCompra(referencia));
+        Parametro(c, referencia);
         c.Parameters.Add(new OdbcParameter { OdbcType = OdbcType.Int, Value = vendor });
         await using var rc = await c.ExecuteReaderAsync(ct);
         return await rc.ReadAsync(ct)
