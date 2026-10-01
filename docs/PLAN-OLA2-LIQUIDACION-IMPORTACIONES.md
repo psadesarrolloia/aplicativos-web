@@ -320,3 +320,7 @@ quedan con saldo −1.577.713,38 y −593.450,45 y los ítems con la existencia 
   Bridge: autorizar el anfitrión en esa compañía (Probar → Always allow access).
 - Ojo Compras: `ArmadorOc.CuentaPorPagar` es `20000` fijo; en SANCEV esa cuenta no existe (es `20000-513`). Revisar antes de usar el
   módulo Compras en SANCEV.
+- 2026-10-01: el usuario confirmó la cuenta por pagar por empresa (SANCEV `20000-513`). Autorización del Bridge en SANCEV en PREDATOR:
+  «Probar» → Pending → el usuario eligió *Always allow access* → **Granted** (compañía «SANCEV CIA. LTDA.-2- 2025-2026», 391 cuentas
+  leídas). SANCEV se agregó a `SoloBases` solo para la prueba (config de desarrollo restaurada) y **sigue sin habilitar** en el Bridge.
+  En SERWEBPSA01 hay que repetir la autorización con la cuenta del servicio (la autorización es por ejecutable y cuenta de Windows).
