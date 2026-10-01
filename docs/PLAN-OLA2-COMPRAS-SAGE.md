@@ -721,3 +721,24 @@ COM la tienen en 1 (en la original, últimos 12 meses: 13.437 filas de ítems no
 otra forma de aplicar a la OC (6 variantes probadas), y la alternativa de líneas propias rompe el vínculo OC↔compra, que en Compras es
 indispensable (decisión del usuario). **Resolver antes de apagar el worker COM en cada empresa** (p. ej. autorizar la importación COM
 del worker desde el Bridge, o mantener el worker).
+
+### Resuelto (2026-10-01): compra mixta en `ConvertirOcs`
+
+- Alcance medido en producción (últimos 12 meses): compras con OC que llevan ítems de inventario — CPTDC 64 de 4.564 (1,4 %), **SANCEV
+  506 de 1.583 (32 %)**.
+- El vínculo OC↔compra (`INV_POSOOrderNumber`) lo usan Retenciones (fecha de emisión = `GoodThruDate` de la OC), ATS (anulados) y el
+  estado «Contabilizado» de la lista de Compras: no se puede perder.
+- Solución (aprobada por el usuario): **compra mixta**. Si la OC trae ítems de inventario (stock, sub-ítem, serializado o ensamblado; el
+  tipo se obtiene cargando el ítem), esas líneas van como líneas propias de la compra (`AddPurchasesLine`) y Sage las marca para los
+  reportes de inventario; el resto (IVA, retenciones, servicios) sigue aplicado a la OC, de modo que la compra **conserva su vínculo**;
+  al final se cierra la OC. Las OC sin ítems de inventario no cambian.
+- Validación en la copia: clon de la OC-8021 y después `Validacion/CompraMixtaCopiaTests` (`PSAWEB_TEST_COMPRA_MIXTA=1`), que copia la
+  OC-8021 como la web (OC-8929), la guarda con `GuardarOc`, la convierte y la compara con la compra del worker COM: vinculada, OC
+  cerrada, mismas filas contables, filas de inventario con `IncludeInInvLedger = 1`, mismas capas de `InventoryCosts`. El usuario vio
+  la compra en el **Item Costing Report** (CP-001/MD-001). Retenciones lee la compra igual que la del worker (mismo sustento, fecha de
+  emisión desde la OC y líneas de retención).
+- Sigue igual que en la F6: las filas que no son de inventario (IVA, retenciones) quedan con `IncludeInInvLedger = 0` (el worker COM las
+  deja en 1); no afecta reportes de inventario.
+- Datos de prueba en la copia: OC 104936/104938 (`PR-102441…`) con compras 104937/104939, y OC-8928/OC-8929 con sus compras.
+- Nota: `LectorOcsRealesTests` falla porque espera alguna OC «Guardado» entre el 11 y el 23-09 (las de prueba de la F3, ya convertidas
+  por la F6): dato de prueba que cambió, no relacionado.

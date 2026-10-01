@@ -20,6 +20,9 @@ namespace PsaWeb.SageBridge.Logica;
 ///   <item>Como el worker, las filas sin ítem (las «.» y la contrapartida de la retención asumida) no pasan a la compra.</item>
 ///   <item><c>DiscountDate</c> vacía y precio unitario a 5 decimales, como las del worker (F0-c, F6).</item>
 ///   <item>La fila 0 (cuenta por pagar) lleva el nombre completo del proveedor (el worker lo cortaba a 30).</item>
+///   <item>Compra mixta: las líneas con ítem de inventario van como líneas propias (no aplicadas a la OC) para que salgan en los
+///   reportes de inventario de Sage, y la OC se cierra; el resto sigue aplicado, así la compra conserva su vínculo con la OC
+///   (PLAN-OLA2-COMPRAS-SAGE, punto abierto de 2026-10-01).</item>
 /// </list>
 /// Un error en una OC no frena a las demás: queda en <see cref="ResultadoConvertirOcs.Errores"/> y se reintenta la próxima vez.
 /// </summary>
@@ -105,12 +108,31 @@ public sealed class ManejadorConvertirOcs : IManejadorTrabajo
         compra.ShipToAddress.Address.Address2 = oc.Direccion2;
         compra.ShipToAddress.Address.State = oc.Estado;
 
+        // Compra mixta (2026-10-01): si la OC trae ítems de inventario, esas líneas van como líneas propias de la compra
+        // (AddPurchasesLine) para que Sage las marque para los reportes de inventario (aplicadas a la OC el SDK deja
+        // IncludeInInvLedger = 0); el resto (IVA, retenciones, servicios) sigue aplicado a la OC, así la compra conserva su vínculo
+        // (INV_POSOOrderNumber) para Retenciones y ATS. Al final se cierra la OC (las de inventario quedan sin recibir en ella).
+        var mixta = false;
         var aplicadas = 0;
         foreach (var linea in po.PurchaseOrderLines)
         {
             // Filtro del worker: fila con ítem y cantidad pendiente (quedan fuera AUT-SRI, las «.» y las asumidas sin ítem).
             if (linea.InventoryItemReference is null) continue;
             if (Math.Round(linea.QuantityReceived, 2) >= Math.Round(linea.Quantity, 2)) continue;
+            if (EsInventario(empresa, linea.InventoryItemReference))
+            {
+                var x = compra.AddPurchasesLine();
+                x.InventoryItemReference = linea.InventoryItemReference;
+                x.Description = linea.Description;
+                x.Quantity = linea.Quantity;
+                x.UnitPrice = Math.Round(linea.UnitPrice, 5, MidpointRounding.AwayFromZero);
+                x.Amount = linea.Amount;
+                x.AccountReference = linea.AccountReference;
+                if (linea.JobReference is not null) x.JobReference = linea.JobReference;
+                mixta = true;
+                aplicadas++;
+                continue;
+            }
             var l = compra.AddOrderLine(linea);
             l.Quantity = linea.Quantity;
             // La importación COM del worker dejaba el precio unitario a 5 decimales (el monto no cambia): se replica para que
@@ -129,7 +151,26 @@ public sealed class ManejadorConvertirOcs : IManejadorTrabajo
             throw new InvalidOperationException("Sage rechazó la compra: " + string.Join(" · ", problemas.Select(p => p.ToString())));
         }
         compra.Save();
+        if (mixta)
+        {
+            var abierta = Uno(f.PurchaseOrderFactory.List(), FilterExpression.AndAlso(
+                FilterExpression.Equal(FilterExpression.Property("PurchaseOrder.VendorReference"), FilterExpression.Constant(proveedor.Key)),
+                FilterExpression.Equal(FilterExpression.Property("PurchaseOrder.ReferenceNumber"), FilterExpression.Constant(oc.Referencia))));
+            if (abierta is { IsClosed: false })
+            {
+                abierta.IsClosed = true;
+                abierta.Save();
+            }
+        }
         return oc.Direccion1;
+    }
+
+    /// <summary>¿El ítem lleva inventario (stock, sub-ítem, serializado o ensamblado)?</summary>
+    private static bool EsInventario(Company empresa, EntityReference item)
+    {
+        // La referencia de la línea de la OC viene sin el tipo concreto: se carga el ítem para saberlo.
+        var cargado = empresa.Factories.InventoryItemFactory.Load(item);
+        return cargado is StockItem or SubStockItem or SerializedStockItem or AssemblyItem or SerializedAssemblyItem;
     }
 
     private static FilterExpression Igual(string propiedad, string valor) =>
