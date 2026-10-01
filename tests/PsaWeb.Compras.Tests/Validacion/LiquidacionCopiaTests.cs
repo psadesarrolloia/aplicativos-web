@@ -75,7 +75,7 @@ public class LiquidacionCopiaTests(ITestOutputHelper salida)
             Fecha = Convert.ToDateTime(cab[0], CultureInfo.InvariantCulture).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ProveedorId = T(cab[1]),
             Referencia = referenciaPrueba,
-            CuentaPorPagar = PsaWeb.Compras.Armado.ArmadorOc.CuentaPorPagar,
+            CuentaPorPagar = PsaWeb.Compras.Armado.ArmadorOc.CuentaPorPagarPorDefecto,
             Lineas = filas.Rows.Cast<DataRow>().Where(r => Convert.ToInt32(r[6], CultureInfo.InvariantCulture) > 0).Select(r => new LineaOcLiquidacion
             {
                 Item = T(r[1]), Descripcion = T(r[2]),

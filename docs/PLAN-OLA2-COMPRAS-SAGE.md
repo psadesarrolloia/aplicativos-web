@@ -742,3 +742,10 @@ del worker desde el Bridge, o mantener el worker).
 - Datos de prueba en la copia: OC 104936/104938 (`PR-102441…`) con compras 104937/104939, y OC-8928/OC-8929 con sus compras.
 - Nota: `LectorOcsRealesTests` falla porque espera alguna OC «Guardado» entre el 11 y el 23-09 (las de prueba de la F3, ya convertidas
   por la F6): dato de prueba que cambió, no relacionado.
+
+### Cuenta por pagar por empresa (2026-10-01)
+
+La cuenta por pagar de la OC (y de la compra, que la hereda) **varía por empresa** (usuario): ya no es la constante `20000`. Se toma del
+catálogo de la empresa (`CatalogoCompras.CuentaPorPagar`, `LectorCatalogoCompras.CuentaPorPagarAsync`): la más usada por sus compras
+del último año entre las cuentas de tipo «por pagar» (CPTDC `20000`, SANCEV `20000-513`); `ArmadorOc.CuentaPorPagarPorDefecto`
+(`20000`) solo si la empresa no tiene compras. La liquidación de importaciones usa la misma consulta.

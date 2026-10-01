@@ -63,7 +63,8 @@ public sealed record ResultadoArmado(
 /// </summary>
 public static class ArmadorOc
 {
-    public const string CuentaPorPagar = "20000";
+    /// <summary>Cuenta por pagar de respaldo si la empresa no tiene compras en el último año (la de cada empresa va en el catálogo).</summary>
+    public const string CuentaPorPagarPorDefecto = "20000";
     private const int LargoDescripcion = 159;
 
     public static ResultadoArmado Armar(EntradaCompra e, CatalogoCompras catalogo)
@@ -367,7 +368,7 @@ public static class ArmadorOc
             LlevaRetencion: retenciones is not null,
             EstadoSustento: e.Sustento == SustentoCompra.Credito ? "01" : "02",
             Zip: e.Origen switch { OrigenCompra.Manual => "Manual", OrigenCompra.Externa => "Externo", _ => null },
-            CuentaPorPagar: CuentaPorPagar,
+            CuentaPorPagar: catalogo.CuentaPorPagar,
             Lineas: lineas);
         return new(oc, errores, avisos, confirmaciones);
     }

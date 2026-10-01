@@ -81,6 +81,12 @@ public sealed class CatalogoCompras
     /// <summary>Primera cuenta del plan en el orden del SDK: la cuenta de la línea <c>AUT-SRI</c>.</summary>
     public required string PrimeraCuenta { get; init; }
 
+    /// <summary>
+    /// Cuenta por pagar de la empresa (varía por empresa: CPTDC <c>20000</c>, SANCEV <c>20000-513</c>): la más usada por sus compras del
+    /// último año (<see cref="LectorCatalogoCompras.CuentaPorPagarAsync"/>).
+    /// </summary>
+    public string CuentaPorPagar { get; init; } = Armado.ArmadorOc.CuentaPorPagarPorDefecto;
+
     public required IReadOnlyList<FormaPagoRetencion> FormasPago { get; init; }
     public required IReadOnlyList<TipoPagoSri> TiposPagoSri { get; init; }
     public required IReadOnlyList<TarifaIva> TarifasIva { get; init; }

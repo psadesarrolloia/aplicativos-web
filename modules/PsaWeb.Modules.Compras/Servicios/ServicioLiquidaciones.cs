@@ -120,7 +120,7 @@ public sealed class ServicioLiquidaciones(
         c = new CatalogoLiquidacion(
             items.GroupBy(x => x.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal),
             await LectorImportaciones.ProveedoresAsync(cn, ct),
-            await LectorImportaciones.CuentaPorPagarAsync(cn, ct) ?? PsaWeb.Compras.Armado.ArmadorOc.CuentaPorPagar,
+            await LectorImportaciones.CuentaPorPagarAsync(cn, ct) ?? PsaWeb.Compras.Armado.ArmadorOc.CuentaPorPagarPorDefecto,
             await LectorImportaciones.CompraConEspacioAsync(cn, ct),
             await RepositorioLiquidaciones.UltimaReferenciaAsync(db, ruc, ct));
         _catalogos[ruc] = c;

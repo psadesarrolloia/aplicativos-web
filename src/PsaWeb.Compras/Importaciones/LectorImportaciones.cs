@@ -142,15 +142,8 @@ public static class LectorImportaciones
     /// Cuenta por pagar de la empresa (C6): la que más usan sus compras del último año entre las de tipo «por pagar» (CPTDC
     /// <c>20000</c>, SANCEV <c>20000-513</c>). Nula si no hay compras.
     /// </summary>
-    public static async Task<string?> CuentaPorPagarAsync(OdbcConnection cn, CancellationToken ct = default)
-    {
-        await using var cmd = new OdbcCommand(
-            "SELECT c.AccountID, COUNT(*) AS N FROM JrnlHdr h, Chart c WHERE h.GLAcntNumber = c.GLAcntNumber AND h.JrnlKey_Journal = 4 " +
-            "AND h.JournalEx = 11 AND c.AccountType = 10 AND h.TransactionDate >= ? GROUP BY c.AccountID ORDER BY 2 DESC", cn);
-        cmd.Parameters.Add(new OdbcParameter { OdbcType = OdbcType.Date, Value = DateTime.Today.AddYears(-1) });
-        await using var r = await cmd.ExecuteReaderAsync(ct);
-        return await r.ReadAsync(ct) ? Texto(r, 0) : null;
-    }
+    public static Task<string?> CuentaPorPagarAsync(OdbcConnection cn, CancellationToken ct = default) =>
+        PsaWeb.Compras.Catalogo.LectorCatalogoCompras.CuentaPorPagarAsync(cn, ct);
 
     /// <summary>
     /// Convención de la referencia de la compra de una liquidación en la empresa, según sus liquidaciones de los últimos dos años: true =

@@ -62,11 +62,25 @@ public static class LectorCatalogoCompras
             primeraCuenta = Convert.ToString(await cmd.ExecuteScalarAsync(cancellationToken))?.Trim() ?? string.Empty;
         }
 
-        return Armar(items, primeraCuenta, peachEbills);
+        return Armar(items, primeraCuenta, peachEbills, await CuentaPorPagarAsync(conexion, cancellationToken));
+    }
+
+    /// <summary>
+    /// Cuenta por pagar de la empresa: la que más usan sus compras del último año entre las de tipo «por pagar» (CPTDC <c>20000</c>,
+    /// SANCEV <c>20000-513</c>). Nula si no hay compras.
+    /// </summary>
+    public static async Task<string?> CuentaPorPagarAsync(OdbcConnection cn, CancellationToken ct = default)
+    {
+        await using var cmd = new OdbcCommand(
+            "SELECT c.AccountID, COUNT(*) AS N FROM JrnlHdr h, Chart c WHERE h.GLAcntNumber = c.GLAcntNumber AND h.JrnlKey_Journal = 4 " +
+            "AND h.JournalEx = 11 AND c.AccountType = 10 AND h.TransactionDate >= ? GROUP BY c.AccountID ORDER BY 2 DESC", cn);
+        cmd.Parameters.Add(new OdbcParameter { OdbcType = OdbcType.Date, Value = DateTime.Today.AddYears(-1) });
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        return await r.ReadAsync(ct) ? Convert.ToString(r.GetValue(0), System.Globalization.CultureInfo.InvariantCulture)?.Trim() : null;
     }
 
     /// <summary>Aplica los filtros del `.exe` sobre la lista completa de ítems (en el orden de <c>ORDER BY ItemID</c>).</summary>
-    public static CatalogoCompras Armar(IReadOnlyList<ItemSage> items, string primeraCuenta, CatalogoPeachEbills pe)
+    public static CatalogoCompras Armar(IReadOnlyList<ItemSage> items, string primeraCuenta, CatalogoPeachEbills pe, string? cuentaPorPagar = null)
     {
         string[] especiales = ["IMPUESTO", "COMPRA", "R-IRF", "R-IVA"];
         return new CatalogoCompras
@@ -81,6 +95,7 @@ public static class LectorCatalogoCompras
             ItemAutorizacion = items.FirstOrDefault(x => !x.Inactivo
                 && (x.Id.Equals("AUT-SRI", StringComparison.OrdinalIgnoreCase) || x.Id.Equals("AUTSRI", StringComparison.OrdinalIgnoreCase))),
             PrimeraCuenta = primeraCuenta,
+            CuentaPorPagar = string.IsNullOrWhiteSpace(cuentaPorPagar) ? Armado.ArmadorOc.CuentaPorPagarPorDefecto : cuentaPorPagar!,
             FormasPago = pe.FormasPago,
             TiposPagoSri = pe.TiposPagoSri,
             TarifasIva = pe.TarifasIva,

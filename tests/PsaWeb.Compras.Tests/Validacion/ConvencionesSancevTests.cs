@@ -18,6 +18,7 @@ public class ConvencionesSancevTests
         await using var cn = new OdbcConnection(EntornoCompras.CadenaSage);
         await cn.OpenAsync();
         Assert.Equal("20000-513", await LectorImportaciones.CuentaPorPagarAsync(cn));
+        Assert.Equal("20000-513", await PsaWeb.Compras.Catalogo.LectorCatalogoCompras.CuentaPorPagarAsync(cn));
         Assert.False(await LectorImportaciones.CompraConEspacioAsync(cn));
         var oc = await LectorImportaciones.OcPorReferenciaAsync(cn, "LIQ-IMPORT-002-2026", "ZHUHAI TELEHOF ELECT");
         Assert.NotNull(oc);

@@ -51,6 +51,18 @@ public class ArmadorOcTests
         $"{l.Tipo}|{l.ItemId}|{l.Descripcion}|{l.Cantidad:0.####}|{l.Monto:0.00}|{l.CuentaId}");
 
     [Fact]
+    public void La_cuenta_por_pagar_es_la_de_la_empresa()
+    {
+        var detalles = new List<LineaDetalle> { Linea("CON IVA", 13.04m, cantidad: 4.627m) };
+        PreparacionCompra.AplicarNoRetencion(detalles, FormaPagoRetencion.TarjetaCredito, Catalogo);
+        var entrada = Entrada(detalles, [Iva(13.04m, 1.96m)], FormaPagoRetencion.TarjetaCredito);
+
+        Assert.Equal("20000", ArmadorOc.Armar(entrada, Catalogo).Oc!.CuentaPorPagar);
+        var sancev = LectorCatalogoCompras.Armar(CatalogoPrueba.Items, "10000", CatalogoPrueba.PeachEbills, "20000-513");
+        Assert.Equal("20000-513", ArmadorOc.Armar(entrada, sancev).Oc!.CuentaPorPagar);
+    }
+
+    [Fact]
     public void Tarjeta_de_credito_usa_items_332G_y_retencion_en_cero()
     {
         var detalles = new List<LineaDetalle> { Linea("CON IVA", 13.04m, cantidad: 4.627m), Linea("TARIFA CERO", 5m, "0", 0) };
