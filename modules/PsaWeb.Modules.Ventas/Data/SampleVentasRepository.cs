@@ -37,6 +37,9 @@ internal sealed class SampleVentasRepository : IVentasRepository
             .Where(c => terminos.All(t => c.Id.ToUpperInvariant().Contains(t) || c.Nombre.ToUpperInvariant().Contains(t))).Take(maximo).ToList());
     }
 
+    public Task<IReadOnlyList<string>> VendedoresAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>>(new[] { "DIEGO PONCE", "VENDEDOR UNO", "VENDEDOR DOS", "WJ TABLEROS", "WILSON JACHO" });
+
     private static ItemVenta Item(string id, string descripcion, string categoria, decimal existencia, decimal l1, decimal l2, decimal l3, bool ensamblado = false)
     {
         var precios = new decimal[PreciosDeVenta.NivelesMaximos];

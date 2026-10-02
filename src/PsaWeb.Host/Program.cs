@@ -206,6 +206,13 @@ if (plataformaConfigurada)
         await reportesDb.Database.MigrateAsync();
         app.Logger.LogInformation("Reportes (Cartera / Bancos): migraciones aplicadas.");
 
+        var ventasDb = await scope.ServiceProvider
+            .GetRequiredService<IDbContextFactory<PsaWeb.Modules.Ventas.Prefacturas.VentasDbContext>>()
+            .CreateDbContextAsync();
+        await ventasDb.Database.MigrateAsync();
+        await ventasDb.DisposeAsync();
+        app.Logger.LogInformation("Ventas (prefacturas): migraciones aplicadas.");
+
         var bridgeDb = await scope.ServiceProvider
             .GetRequiredService<IDbContextFactory<PsaWeb.SageBridge.Cola.Data.SageBridgeDbContext>>()
             .CreateDbContextAsync();
@@ -575,6 +582,36 @@ static async Task<(bool Ok, string Nombre)> AccesoEmpresaAsync(
         : (await seguridad.EmpresasDelUsuarioAsync(nombre, cancellationToken)).FirstOrDefault(e => e.Ruc == ruc);
     return empresa is null ? (false, "") : (true, empresa.Nombre);
 }
+
+// Portal de ventas: PDF de la cotización/prefactura (descarga en el dispositivo del vendedor). Exige acceso a la empresa de la prefactura.
+app.MapGet("/ventas/prefacturas/{id:int}/pdf", async (
+        int id,
+        string? ruc,
+        System.Security.Claims.ClaimsPrincipal usuario,
+        PsaWeb.Modules.Ventas.Prefacturas.ServicioPrefacturas servicio,
+        PsaWeb.Seguridad.ISecurityDirectory? seguridad,
+        CancellationToken cancellationToken) =>
+    {
+        if (string.IsNullOrWhiteSpace(ruc))
+        {
+            return Results.BadRequest("Falta la empresa.");
+        }
+        var (ok, _) = await AccesoEmpresaAsync(ruc, usuario, seguridad, cancellationToken);
+        if (!ok)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+        var prefactura = await servicio.ObtenerAsync(ruc, id, cancellationToken);
+        if (prefactura is null)
+        {
+            return Results.NotFound("No existe esa prefactura.");
+        }
+        return Results.File(
+            PsaWeb.Ventas.Prefacturas.PrefacturaPdf.Generar(prefactura),
+            "application/pdf",
+            PsaWeb.Ventas.Prefacturas.PrefacturaPdf.NombreDeArchivo(prefactura));
+    })
+    .RequireAuthorization();
 
 app.MapGet("/bancos/cheques/pdf", async (
         string? ruc,

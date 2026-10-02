@@ -144,6 +144,11 @@ public static class AppCatalogo
             "🏷️", "/ventas/inventario", Categorias.Ventas,
             Array.Empty<string>()),
 
+        new("ventas-prefacturas", "Prefacturas",
+            "Cotizaciones con PDF y correo a Contabilidad para facturar en Sage (no escribe en Sage).",
+            "🧾", "/ventas/prefacturas", Categorias.Ventas,
+            Array.Empty<string>()),
+
         new("kardex", "Kardex",
             "Kardex de inventarios de Sage 50 (solo lectura).",
             "📦", "/kardex", Categorias.Inventario,

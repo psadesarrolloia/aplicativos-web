@@ -1,0 +1,116 @@
+@page "/admin/ventas"
+@using Microsoft.Extensions.Options
+@using PsaWeb.Identidad
+@using PsaWeb.Modules.Ventas.Prefacturas
+@using PsaWeb.Seguridad
+@using PsaWeb.Ventas.Prefacturas
+@inject IOptions<PlataformaOptions> Opciones
+@inject ServicioPrefacturas Servicio
+@inject EmpresaActualService Empresa
+@inject AuthenticationStateProvider AuthState
+@implements IDisposable
+
+<PageTitle>Ventas — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Configuración"
+               Subtitle="Portal de ventas: a quién avisar cuando un vendedor emite una prefactura, y la vigencia y el IVA por empresa." />
+
+<div class="psa-subnav">
+    <NavLink class="psa-nav__link" href="/admin/usuarios">Usuarios</NavLink>
+    <NavLink class="psa-nav__link" href="/admin/auditoria">Auditoría</NavLink>
+    <NavLink class="psa-nav__link" href="/admin/sage-bridge">Sage Bridge</NavLink>
+    <NavLink class="psa-nav__link" href="/admin/ventas">Ventas</NavLink>
+</div>
+
+@if (!_esAdmin)
+{
+    <PsaCard Title="Sin acceso">
+        <p class="psa-notice psa-notice--danger">Tu usuario no tiene acceso a la administración.</p>
+    </PsaCard>
+}
+else if (Empresa.Ruc is null)
+{
+    <PsaCard Title="Empresa"><p class="psa-notice">Elegí primero una empresa en la barra superior: la configuración es por empresa.</p></PsaCard>
+}
+else
+{
+    <PsaCard Title="@($"Prefacturas de {Empresa.Nombre}")">
+        <div class="psa-row" style="gap: 1rem; flex-wrap: wrap">
+            <label class="psa-field" style="flex: 1 1 18rem">
+                <span class="psa-field__label">Correo de Contabilidad (quien digita la factura en Sage)</span>
+                <input class="psa-input" type="email" @bind="_correo1" maxlength="200" />
+            </label>
+            <label class="psa-field" style="flex: 1 1 18rem">
+                <span class="psa-field__label">Segundo correo (opcional)</span>
+                <input class="psa-input" type="email" @bind="_correo2" maxlength="200" />
+            </label>
+        </div>
+        <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; margin-top: .8rem">
+            <label class="psa-field">
+                <span class="psa-field__label">Vigencia de la prefactura (días)</span>
+                <input class="psa-input" type="number" min="1" max="365" @bind="_vigencia" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">Código de IVA en Sage</span>
+                <input class="psa-input" @bind="_codigo" maxlength="30" />
+            </label>
+            <label class="psa-field">
+                <span class="psa-field__label">IVA (%)</span>
+                <input class="psa-input" type="number" step="any" min="0" max="100" @bind="_iva" />
+            </label>
+        </div>
+        @if (_mensaje is not null) { <p class="psa-notice" style="margin-top: .8rem">@_mensaje</p> }
+        @if (_error is not null) { <p class="psa-notice psa-notice--danger" style="margin-top: .8rem">@_error</p> }
+        <div style="margin-top: 1rem"><PsaButton Variant="primary" OnClick="Guardar">Guardar</PsaButton></div>
+        <p class="psa-muted" style="margin-top: .8rem">
+            El remitente y el servidor SMTP se configuran en el servidor (<code>Correo:*</code>). Sin SMTP la prefactura se guarda igual y se puede reenviar después.
+        </p>
+    </PsaCard>
+}
+
+@code {
+    private bool _esAdmin;
+    private string _correo1 = "";
+    private string _correo2 = "";
+    private int _vigencia = ConfiguracionVentas.VigenciaPorDefecto;
+    private string _codigo = ConfiguracionVentas.CodigoImpuestoPorDefecto;
+    private decimal _iva = ConfiguracionVentas.PorcentajeIvaPorDefecto;
+    private string? _mensaje;
+    private string? _error;
+    private string _usuario = "";
+    private string? _rucCargado;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _usuario = state.User.Identity?.Name ?? "";
+        _esAdmin = Opciones.Value.EsAdmin(_usuario);
+        Empresa.Cambio += EmpresaCambio;
+        await Cargar();
+    }
+
+    private void EmpresaCambio() => InvokeAsync(async () => { await Cargar(); StateHasChanged(); });
+
+    public void Dispose() => Empresa.Cambio -= EmpresaCambio;
+
+    private async Task Cargar()
+    {
+        if (!_esAdmin || Empresa.Ruc is null || Empresa.Ruc == _rucCargado) return;
+        _rucCargado = Empresa.Ruc;
+        _mensaje = _error = null;
+        var c = await Servicio.ConfiguracionAsync(Empresa.Ruc);
+        (_correo1, _correo2, _vigencia, _codigo, _iva) = (c.CorreoContabilidad, c.CorreoAdicional, c.VigenciaDias, c.CodigoImpuesto, c.PorcentajeIva);
+    }
+
+    private async Task Guardar()
+    {
+        _mensaje = _error = null;
+        var correos = new[] { _correo1, _correo2 }.Select(c => c?.Trim() ?? "").Where(c => c.Length > 0).ToList();
+        if (correos.Any(c => !c.Contains('@') || c.Contains(' '))) { _error = "Revisá los correos: no parecen válidos."; return; }
+        if (_vigencia is < 1 or > 365) { _error = "La vigencia debe estar entre 1 y 365 días."; return; }
+        if (_iva is < 0 or > 100) { _error = "El IVA debe estar entre 0 y 100."; return; }
+        if (string.IsNullOrWhiteSpace(_codigo)) { _error = "Indicá el código de IVA de Sage (p. ej. 4-15%)."; return; }
+        await Servicio.GuardarConfiguracionAsync(new ConfiguracionVentas(Empresa.Ruc!, _correo1, _correo2, _vigencia, _codigo, _iva), _usuario);
+        _mensaje = "Configuración guardada.";
+    }
+}

@@ -1,0 +1,221 @@
+@page "/ventas/prefacturas/{Id:int}"
+@namespace PsaWeb.Modules.Ventas.Pages
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Modules.Ventas.Prefacturas
+@using PsaWeb.Seguridad
+@using PsaWeb.Ventas.Prefacturas
+@inject ServicioPrefacturas Servicio
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ILogger<PrefacturaDetalle> Logger
+
+<PageTitle>@(_p?.NumeroTexto ?? "Prefactura") — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="@(_p is null ? "Prefactura" : $"Prefactura {_p.NumeroTexto}")"
+               Subtitle="Cotización emitida: el PDF es para el cliente; Contabilidad la digita en Sage con los datos del correo." />
+
+<div class="psa-subnav">
+    <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
+    <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
+    <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
+</div>
+
+@if (_cargando)
+{
+    <PsaCard Title="Prefactura"><p class="psa-muted">Cargando…</p></PsaCard>
+}
+else if (_p is null)
+{
+    <PsaCard Title="Prefactura"><p class="psa-notice psa-notice--danger">@(_error ?? "No existe esa prefactura en esta empresa.")</p></PsaCard>
+}
+else
+{
+    <PsaCard Title="@($"{_p.NumeroTexto} · {_p.EstadoVisible(_hoy)}")">
+        <p>
+            <strong>@_p.ClienteNombre</strong> (@_p.ClienteId) · Emitida el @FormatoVentas.Fecha(_p.FechaEmision) por @_p.CreadaPor ·
+            <strong>válida hasta el @FormatoVentas.Fecha(_p.ValidaHasta)</strong>
+            @if (_p.EstaVencida(_hoy)) { <span class="psa-notice psa-notice--danger" style="margin-left: .5rem">Vencida</span> }
+        </p>
+        <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; margin-top: .6rem">
+            <a class="psa-btn psa-btn--primary" href="@UrlPdf" download>Descargar PDF</a>
+            <PsaButton Variant="secondary" OnClick="Reenviar" Disabled="_trabajando">@(_p.CorreoEstado == EstadoCorreo.Enviado ? "Reenviar correo" : "Enviar correo")</PsaButton>
+            <PsaButton Variant="secondary" OnClick='() => Nav.NavigateTo("/ventas/prefacturas/nueva")'>Nueva prefactura</PsaButton>
+        </div>
+        @if (_mensaje is not null) { <p class="psa-notice" style="margin-top: .8rem">@_mensaje</p> }
+        @if (_error is not null) { <p class="psa-notice psa-notice--danger" style="margin-top: .8rem">@_error</p> }
+    </PsaCard>
+
+    <PsaCard Title="Correo a Contabilidad">
+        <p>
+            Estado: <strong>@TextoCorreo(_p.CorreoEstado)</strong>
+            @if (_p.CorreoDestinatarios.Length > 0) { <span> · para @_p.CorreoDestinatarios</span> }
+            @if (_p.CorreoEnviadoEn is { } cuando) { <span> · enviado el @cuando.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span> }
+        </p>
+        @if (_p.CorreoError is not null) { <p class="psa-notice psa-notice--danger">@_p.CorreoError</p> }
+    </PsaCard>
+
+    <PsaCard Title="Datos para la factura de Sage">
+        <table class="psa-table">
+            <tbody>
+                <tr><td style="width: 14rem"><strong>Customer ID</strong></td><td>@_p.ClienteId — @_p.ClienteNombre</td></tr>
+                <tr><td><strong>Sales Rep</strong></td><td>@_p.Vendedor</td></tr>
+                <tr><td><strong>Customer PO (etiqueta)</strong></td><td>@_p.Etiqueta</td></tr>
+                <tr><td><strong>Terms</strong></td><td>@(_p.Terminos.Length > 0 ? _p.Terminos : "(según el cliente)")</td></tr>
+                <tr><td><strong>Sales Tax</strong></td><td>@(_p.CodigoImpuesto.Length > 0 ? $"{_p.CodigoImpuesto} ({_p.PorcentajeIva.ToString("0.##", FormatoVentas.Ec)} %)" : "sin IVA")</td></tr>
+                <tr><td><strong>Lista de precios</strong></td><td>@_p.ListaDePrecios</td></tr>
+                @if (_p.OrdenCliente.Length > 0) { <tr><td><strong>Orden del cliente</strong></td><td>@_p.OrdenCliente</td></tr> }
+                @if (_p.DireccionEnvio.Length > 0) { <tr><td><strong>Ship To</strong></td><td>@_p.DireccionEnvio</td></tr> }
+                @if (_p.NotaCliente.Length > 0) { <tr><td><strong>Observaciones (cliente)</strong></td><td>@_p.NotaCliente</td></tr> }
+                @if (_p.NotaInterna.Length > 0) { <tr><td><strong>Notas internas</strong></td><td>@_p.NotaInterna</td></tr> }
+            </tbody>
+        </table>
+
+        <div style="overflow-x: auto; margin-top: 1rem">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>#</th><th>Ítem</th><th>Descripción</th><th class="num">Cant.</th><th class="num">Precio unit.</th><th class="num">Lista @_p.ListaDePrecios</th><th class="num">Monto</th><th class="num">Existencia</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var l in _p.Lineas)
+                    {
+                        <tr>
+                            <td>@l.Orden</td>
+                            <td><strong>@l.ItemId</strong></td>
+                            <td>@l.Descripcion</td>
+                            <td class="num">@FormatoVentas.Cantidad(l.Cantidad) @l.UnidadMedida</td>
+                            <td class="num">@FormatoVentas.Dinero(l.PrecioUnitario)@(l.PrecioManual ? " ✎" : "")</td>
+                            <td class="num">@(l.PrecioLista is { } pl ? FormatoVentas.Dinero(pl) : "sin precio")</td>
+                            <td class="num">@FormatoVentas.Dinero(l.Monto)</td>
+                            <td class="num">@(l.ExistenciaAlEmitir is { } e ? FormatoVentas.Cantidad(e) : "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div style="max-width: 22rem; margin: 1rem 0 0 auto">
+            <table class="psa-table">
+                <tbody>
+                    <tr><td>Subtotal</td><td class="num">@FormatoVentas.Dinero(_p.Subtotal)</td></tr>
+                    @if (_p.Iva > 0) { <tr><td>IVA @_p.PorcentajeIva.ToString("0.##", FormatoVentas.Ec) %</td><td class="num">@FormatoVentas.Dinero(_p.Iva)</td></tr> }
+                    <tr><td><strong>TOTAL a ver en Sage</strong></td><td class="num"><strong>@FormatoVentas.Dinero(_p.Total)</strong></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p class="psa-muted" style="margin-top: .5rem">✎ = precio ingresado manualmente, distinto del de la lista del cliente en Sage.</p>
+    </PsaCard>
+
+    <PsaCard Title="Facturación en Sage (Contabilidad)">
+        @if (_p.Estado == EstadoPrefactura.Facturada)
+        {
+            <p>Facturada en Sage con el N.º <strong>@_p.FacturaSage</strong> por @_p.FacturadaPor
+               @if (_p.FacturadaEn is { } fe) { <span> el @fe.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span> }.</p>
+        }
+        else if (_p.Estado == EstadoPrefactura.Anulada)
+        {
+            <p class="psa-muted">Esta prefactura fue anulada.</p>
+        }
+        else
+        {
+            <p class="psa-muted">Cuando la factura esté digitada en Sage, anotá su número para cerrar la prefactura.</p>
+            <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; align-items: flex-end">
+                <label class="psa-field">
+                    <span class="psa-field__label">N.º de factura en Sage</span>
+                    <input class="psa-input" placeholder="001-003-000000000" @bind="_facturaSage" @bind:event="oninput" maxlength="40" />
+                </label>
+                <PsaButton Variant="primary" OnClick="MarcarFacturada" Disabled="@(_trabajando || string.IsNullOrWhiteSpace(_facturaSage))">Marcar como facturada</PsaButton>
+                <PsaButton Variant="secondary" OnClick="Anular" Disabled="_trabajando">@(_confirmaAnular ? "Confirmar anulación" : "Anular prefactura")</PsaButton>
+            </div>
+        }
+    </PsaCard>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private EmpresaActualService? _empresa;
+    private Prefactura? _p;
+    private DateOnly _hoy;
+    private bool _cargando = true;
+    private bool _trabajando;
+    private bool _confirmaAnular;
+    private string _facturaSage = "";
+    private string _usuario = "web";
+    private string? _mensaje;
+    private string? _error;
+
+    private string Ruc => _empresa?.Ruc ?? "SIN-EMPRESA";
+
+    private string UrlPdf => $"/ventas/prefacturas/{Id}/pdf?ruc={Uri.EscapeDataString(Ruc)}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _empresa = Sp.GetService<EmpresaActualService>();
+        _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            _hoy = Servicio.Hoy;
+            _p = await Servicio.ObtenerAsync(Ruc, Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo cargar la prefactura {Id}.", Id);
+            _error = "No se pudo cargar la prefactura: " + ex.Message;
+            _p = null;
+        }
+        finally { _cargando = false; }
+    }
+
+    private async Task Reenviar()
+    {
+        _trabajando = true; _mensaje = null; _error = null;
+        try
+        {
+            _p = await Servicio.ReenviarCorreoAsync(Ruc, Id, Nav.BaseUri);
+            _mensaje = _p.CorreoEstado == EstadoCorreo.Enviado ? "Correo enviado a Contabilidad." : "No se pudo enviar el correo: " + _p.CorreoError;
+        }
+        catch (Exception ex) { Logger.LogError(ex, "No se pudo reenviar el correo."); _error = ex.Message; }
+        finally { _trabajando = false; }
+    }
+
+    private async Task MarcarFacturada()
+    {
+        _trabajando = true; _mensaje = null; _error = null;
+        try
+        {
+            await Servicio.MarcarFacturadaAsync(Ruc, Id, _facturaSage, _usuario);
+            await Cargar();
+            _mensaje = "Prefactura marcada como facturada.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _trabajando = false; }
+    }
+
+    private async Task Anular()
+    {
+        if (!_confirmaAnular) { _confirmaAnular = true; _mensaje = "Pulsá de nuevo para confirmar: la prefactura quedará anulada."; return; }
+        _trabajando = true; _mensaje = null; _error = null;
+        try
+        {
+            await Servicio.AnularAsync(Ruc, Id);
+            _confirmaAnular = false;
+            await Cargar();
+            _mensaje = "Prefactura anulada.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _trabajando = false; }
+    }
+
+    private static string TextoCorreo(EstadoCorreo e) => e switch
+    {
+        EstadoCorreo.Enviado => "enviado",
+        EstadoCorreo.Fallo => "falló el envío",
+        EstadoCorreo.NoConfigurado => "sin configurar",
+        _ => "pendiente",
+    };
+}

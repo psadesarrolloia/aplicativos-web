@@ -131,6 +131,20 @@ internal sealed class OdbcVentasRepository : IVentasRepository
         return lista;
     }
 
+    public async Task<IReadOnlyList<string>> VendedoresAsync(CancellationToken cancellationToken = default)
+    {
+        await using var cn = await AbrirAsync(cancellationToken);
+        var lista = new List<string>();
+        await using var cmd = new OdbcCommand("SELECT EmployeeID FROM Employee WHERE EmployeeIsInactive = 0 ORDER BY EmployeeID", cn);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var id = Texto(reader, 0);
+            if (id.Length > 0) lista.Add(id);
+        }
+        return lista;
+    }
+
     // --- interno -------------------------------------------------------------
 
     private static async Task<Dictionary<int, decimal>> ExistenciasAsync(OdbcConnection cn, IReadOnlyList<int> registros, CancellationToken ct)

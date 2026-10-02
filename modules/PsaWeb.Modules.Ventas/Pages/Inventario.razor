@@ -12,6 +12,12 @@
 <PsaPageHeader Title="Inventario y precios"
                Subtitle="@Subtitulo" />
 
+<div class="psa-subnav">
+    <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
+    <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
+    <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
+</div>
+
 <PsaCard Title="Cliente (opcional)">
     <p class="psa-muted">Elegí un cliente para ver el precio de <strong>su lista</strong> en cada ítem y su cupo de crédito.</p>
     <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; align-items: flex-end">

@@ -1,0 +1,156 @@
+@page "/ventas/prefacturas"
+@namespace PsaWeb.Modules.Ventas.Pages
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Modules.Ventas.Prefacturas
+@using PsaWeb.Seguridad
+@using PsaWeb.Ventas.Prefacturas
+@inject ServicioPrefacturas Servicio
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ILogger<ListaPrefacturas> Logger
+@implements IDisposable
+
+<PageTitle>Prefacturas — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Prefacturas"
+               Subtitle="Cotizaciones emitidas por los vendedores. Contabilidad las digita en Sage y anota aquí el número de la factura." />
+
+<div class="psa-subnav">
+    <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
+    <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
+    <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
+</div>
+
+<PsaCard Title="Filtros">
+    <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
+        <label class="psa-field" style="flex: 1 1 16rem">
+            <span class="psa-field__label">Cliente, vendedor o factura de Sage</span>
+            <input class="psa-input" @bind="_texto" @bind:event="oninput" @onkeydown="Tecla" placeholder="Buscar…" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Estado</span>
+            <select class="psa-input" @bind="_estado">
+                <option value="">Todos</option>
+                <option value="@((int)EstadoPrefactura.Emitida)">Emitidas (por facturar)</option>
+                <option value="@((int)EstadoPrefactura.Facturada)">Facturadas</option>
+                <option value="@((int)EstadoPrefactura.Anulada)">Anuladas</option>
+            </select>
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Desde</span>
+            <input class="psa-input" type="date" @bind="_desde" />
+        </label>
+        <label style="display: flex; align-items: center; gap: .5rem">
+            <input type="checkbox" @bind="_soloMias" />
+            <span class="psa-muted">Solo las mías</span>
+        </label>
+        <PsaButton Variant="primary" OnClick="Buscar" Disabled="_cargando">@(_cargando ? "Consultando…" : "Consultar")</PsaButton>
+        <PsaButton Variant="secondary" OnClick='() => Nav.NavigateTo("/ventas/prefacturas/nueva")'>Nueva prefactura</PsaButton>
+    </div>
+</PsaCard>
+
+@if (_error is not null)
+{
+    <PsaCard Title="Prefacturas"><p class="psa-notice psa-notice--danger">@_error</p></PsaCard>
+}
+else if (_lista is not null)
+{
+    <PsaCard Title="@($"Prefacturas ({_lista.Count})")">
+        @if (_lista.Count == 0)
+        {
+            <p class="psa-notice">No hay prefacturas con esos filtros.</p>
+        }
+        else
+        {
+            <div style="overflow-x: auto">
+                <table class="psa-table psa-table--interactiva">
+                    <thead>
+                        <tr>
+                            <th>N.º</th><th>Fecha</th><th>Válida hasta</th><th>Cliente</th><th>Vendedor</th>
+                            <th class="num">Total</th><th>Estado</th><th>Correo</th><th>Factura de Sage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in _lista)
+                        {
+                            <tr @onclick="() => Abrir(p)">
+                                <td><strong>@p.NumeroTexto</strong></td>
+                                <td>@FormatoVentas.Fecha(p.FechaEmision)</td>
+                                <td>@FormatoVentas.Fecha(p.ValidaHasta)</td>
+                                <td>@p.ClienteNombre<div class="psa-muted">@p.ClienteId</div></td>
+                                <td>@p.Vendedor<div class="psa-muted">por @p.CreadaPor</div></td>
+                                <td class="num">@FormatoVentas.Dinero(p.Total)</td>
+                                <td>@p.EstadoVisible(_hoy)</td>
+                                <td>@TextoCorreo(p.CorreoEstado)</td>
+                                <td>@(p.FacturaSage ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </PsaCard>
+}
+
+@code {
+    private EmpresaActualService? _empresa;
+    private string _usuario = "";
+    private string _texto = "";
+    private string _estado = "";
+    private DateTime? _desde = DateTime.Today.AddDays(-60);
+    private bool _soloMias = true;
+    private bool _cargando;
+    private string? _error;
+    private IReadOnlyList<Prefactura>? _lista;
+    private DateOnly _hoy;
+
+    private string Ruc => _empresa?.Ruc ?? "SIN-EMPRESA";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _empresa = Sp.GetService<EmpresaActualService>();
+        if (_empresa is not null) _empresa.Cambio += EmpresaCambio;
+        _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "";
+        await Buscar();
+    }
+
+    private void EmpresaCambio() => InvokeAsync(async () => { await Buscar(); StateHasChanged(); });
+
+    private async Task Tecla(KeyboardEventArgs e) { if (e.Key == "Enter") await Buscar(); }
+
+    private async Task Buscar()
+    {
+        _cargando = true; _error = null;
+        try
+        {
+            _hoy = Servicio.Hoy;
+            EstadoPrefactura? estado = int.TryParse(_estado, out var e) ? (EstadoPrefactura)e : null;
+            _lista = await Servicio.ListarAsync(Ruc, new FiltroPrefacturas(
+                Texto: _texto, CreadaPor: _soloMias ? _usuario : null, Estado: estado,
+                Desde: _desde is { } d ? DateOnly.FromDateTime(d) : null));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Falló la consulta de prefacturas.");
+            _error = "No se pudieron consultar las prefacturas: " + ex.Message;
+            _lista = null;
+        }
+        finally { _cargando = false; }
+    }
+
+    private void Abrir(Prefactura p) => Nav.NavigateTo($"/ventas/prefacturas/{p.Id}");
+
+    private static string TextoCorreo(EstadoCorreo e) => e switch
+    {
+        EstadoCorreo.Enviado => "Enviado",
+        EstadoCorreo.Fallo => "Falló",
+        EstadoCorreo.NoConfigurado => "Sin configurar",
+        _ => "Pendiente",
+    };
+
+    public void Dispose()
+    {
+        if (_empresa is not null) _empresa.Cambio -= EmpresaCambio;
+    }
+}

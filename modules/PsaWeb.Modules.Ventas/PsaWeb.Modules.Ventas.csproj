@@ -8,11 +8,21 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.18" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Authorization" Version="9.0.18" />
+    <!-- Prefacturas: tablas en PsaWebPlataforma (mismo patrón que Reportes y Conciliación SRI). -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\PsaWeb.Shared\PsaWeb.Shared.csproj" />
     <ProjectReference Include="..\..\src\PsaWeb.Sage50\PsaWeb.Sage50.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Ventas\PsaWeb.Ventas.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Notificaciones\PsaWeb.Notificaciones.csproj" />
+    <ProjectReference Include="..\..\src\PsaWeb.Seguridad\PsaWeb.Seguridad.csproj" />
   </ItemGroup>
 
 </Project>

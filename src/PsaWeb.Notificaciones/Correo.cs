@@ -17,8 +17,11 @@ public sealed class CorreoOptions
     public bool Configurado => !string.IsNullOrWhiteSpace(Servidor);
 }
 
+/// <summary>Un archivo adjunto (p. ej. el PDF de una prefactura).</summary>
+public sealed record AdjuntoCorreo(string Nombre, byte[] Contenido, string TipoMime = "application/octet-stream");
+
 /// <summary>Un correo a enviar.</summary>
-public sealed record MensajeCorreo(IReadOnlyList<string> Para, string Asunto, string CuerpoHtml);
+public sealed record MensajeCorreo(IReadOnlyList<string> Para, string Asunto, string CuerpoHtml, IReadOnlyList<AdjuntoCorreo>? Adjuntos = null);
 
 /// <summary>Envía correos por SMTP. Si el SMTP no está configurado, la impl registrada lanza al usarla.</summary>
 public interface IServicioCorreo

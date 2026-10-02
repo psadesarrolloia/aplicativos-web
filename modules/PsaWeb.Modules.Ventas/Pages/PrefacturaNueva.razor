@@ -1,0 +1,422 @@
+@page "/ventas/prefacturas/nueva"
+@namespace PsaWeb.Modules.Ventas.Pages
+@using Microsoft.AspNetCore.Components.Authorization
+@using PsaWeb.Modules.Ventas.Data
+@using PsaWeb.Modules.Ventas.Prefacturas
+@using PsaWeb.Seguridad
+@using PsaWeb.Ventas.Prefacturas
+@inject IVentasRepository Repositorio
+@inject ServicioPrefacturas Servicio
+@inject IServiceProvider Sp
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+@inject ILogger<PrefacturaNueva> Logger
+@implements IDisposable
+
+<PageTitle>Nueva prefactura — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Nueva prefactura (cotización)"
+               Subtitle="Arma la cotización con los precios de Sage, descarga el PDF para el cliente y avisa a Contabilidad para que la digite en Sage." />
+
+<div class="psa-subnav">
+    <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
+    <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
+    <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
+</div>
+
+<PsaCard Title="1. Cliente">
+    @if (_cliente is null)
+    {
+        <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; align-items: flex-end">
+            <label class="psa-field" style="flex: 1 1 18rem">
+                <span class="psa-field__label">Buscar cliente</span>
+                <input class="psa-input" placeholder="Nombre o ID…" @bind="_textoCliente" @bind:event="oninput" @onkeydown="TeclaCliente" />
+            </label>
+            <PsaButton Variant="primary" OnClick="BuscarClientes">Buscar</PsaButton>
+        </div>
+        @if (_clientes.Count > 0)
+        {
+            <div style="overflow-x: auto; margin-top: .8rem">
+                <table class="psa-table psa-table--interactiva">
+                    <thead><tr><th>Cliente</th><th>Vendedor</th><th class="num">Lista</th><th class="num">Saldo</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in _clientes)
+                        {
+                            <tr @onclick="() => ElegirCliente(c)">
+                                <td>@c.Nombre<div class="psa-muted">@c.Id</div></td>
+                                <td>@(c.Vendedor ?? "—")</td>
+                                <td class="num">@c.ListaDePrecios</td>
+                                <td class="num">@FormatoVentas.Dinero(c.Saldo)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else if (_buscoClientes)
+        {
+            <p class="psa-notice" style="margin-top: .8rem">No se encontraron clientes activos con ese texto.</p>
+        }
+    }
+    else
+    {
+        <div class="psa-notice">
+            <strong>@_cliente.Nombre</strong> (@_cliente.Id) · Lista de precios <strong>@_cliente.ListaDePrecios</strong> ·
+            Crédito @(_cliente.DiasCredito) días · Saldo @FormatoVentas.Dinero(_cliente.Saldo)
+            @if (_cliente.LimiteCredito > 0) { <span> de @FormatoVentas.Dinero(_cliente.LimiteCredito)</span> }
+            @if (_cliente.Email.Length > 0) { <span> · @_cliente.Email</span> }
+        </div>
+        <div style="margin-top: .6rem"><PsaButton Variant="secondary" OnClick="CambiarCliente">Cambiar cliente</PsaButton></div>
+    }
+</PsaCard>
+
+<PsaCard Title="2. Datos para la factura">
+    <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
+        <label class="psa-field">
+            <span class="psa-field__label">Vendedor (rep de Sage con el que se facturará)</span>
+            <select class="psa-input" value="@_vendedor" @onchange="CambiarVendedor">
+                <option value="">— elegí —</option>
+                @foreach (var v in _vendedores)
+                {
+                    <option value="@v">@v</option>
+                }
+            </select>
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Línea</span>
+            <select class="psa-input" value="@_tipoEtiqueta" @onchange="CambiarTipoEtiqueta">
+                <option value="@EtiquetasVendedor.Equipos">Equipos (EQU)</option>
+                <option value="@EtiquetasVendedor.Tableros">Tableros (TAB)</option>
+            </select>
+        </label>
+        <label class="psa-field" style="flex: 1 1 16rem">
+            <span class="psa-field__label">Etiqueta impresa en la factura</span>
+            <input class="psa-input" @bind="_etiqueta" maxlength="120" />
+        </label>
+    </div>
+    <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; margin-top: .8rem">
+        <label class="psa-field" style="flex: 1 1 14rem">
+            <span class="psa-field__label">Orden de compra del cliente (opcional)</span>
+            <input class="psa-input" @bind="_ordenCliente" maxlength="60" />
+        </label>
+        <label class="psa-field" style="flex: 2 1 22rem">
+            <span class="psa-field__label">Dirección de entrega (opcional)</span>
+            <input class="psa-input" @bind="_direccion" maxlength="400" />
+        </label>
+    </div>
+    <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; margin-top: .8rem">
+        <label class="psa-field" style="flex: 1 1 18rem">
+            <span class="psa-field__label">Observaciones para el cliente (salen en el PDF)</span>
+            <textarea class="psa-input" rows="2" @bind="_notaCliente" maxlength="1000"></textarea>
+        </label>
+        <label class="psa-field" style="flex: 1 1 18rem">
+            <span class="psa-field__label">Notas internas para Contabilidad (solo en el correo)</span>
+            <textarea class="psa-input" rows="2" @bind="_notaInterna" maxlength="1000"></textarea>
+        </label>
+    </div>
+    <label style="display: flex; align-items: center; gap: .5rem; margin-top: .8rem">
+        <input type="checkbox" @bind="_aplicaIva" />
+        <span class="psa-muted">Aplicar IVA @_config.PorcentajeIva.ToString("0.##", FormatoVentas.Ec) % (código @_config.CodigoImpuesto)</span>
+    </label>
+</PsaCard>
+
+<PsaCard Title="3. Ítems">
+    <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; align-items: flex-end">
+        <label class="psa-field" style="flex: 1 1 18rem">
+            <span class="psa-field__label">Buscar ítem (código, descripción, parte, UPC)</span>
+            <input class="psa-input" placeholder="p. ej. breaker 3 polos" @bind="_textoItem" @bind:event="oninput" @onkeydown="TeclaItem" />
+        </label>
+        <PsaButton Variant="primary" OnClick="BuscarItems" Disabled="_buscandoItems">@(_buscandoItems ? "Buscando…" : "Buscar")</PsaButton>
+    </div>
+    @if (_cliente is null)
+    {
+        <p class="psa-muted" style="margin-top: .5rem">Elegí primero el cliente para ver el precio de su lista.</p>
+    }
+
+    @if (_resultadosItems is { Count: > 0 })
+    {
+        <div style="overflow-x: auto; margin-top: .8rem">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>Ítem</th><th>Descripción</th><th class="num">Existencia</th><th class="num">Precio (lista @(_cliente?.ListaDePrecios.ToString() ?? "—"))</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var i in _resultadosItems)
+                    {
+                        var precio = _cliente is null ? null : i.PrecioParaNivel(_cliente.NivelPrecio);
+                        <tr>
+                            <td><strong>@i.Id</strong></td>
+                            <td>@i.Descripcion</td>
+                            <td class="num" style="@(i.Existencia <= 0 ? "color: var(--psa-danger, #b00020); font-weight: 600" : "")">@FormatoVentas.Cantidad(i.Existencia) @i.UnidadMedida</td>
+                            <td class="num">@(precio is null ? "sin precio" : FormatoVentas.Dinero(precio.Value))</td>
+                            <td><PsaButton Variant="secondary" OnClick="() => Agregar(i)" Disabled="@(_cliente is null)">Agregar</PsaButton></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (_buscoItems)
+    {
+        <p class="psa-notice" style="margin-top: .8rem">Ningún ítem coincide con la búsqueda.</p>
+    }
+
+    @if (_lineas.Count > 0)
+    {
+        <h3 style="margin: 1.2rem 0 .4rem">Líneas de la prefactura</h3>
+        <div style="overflow-x: auto">
+            <table class="psa-table">
+                <thead>
+                    <tr>
+                        <th>Ítem</th><th>Descripción</th>
+                        <th class="num">Cantidad</th><th class="num">Precio de lista</th><th class="num">Precio unit.</th>
+                        <th class="num">Monto</th><th class="num">Existencia</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var l in _lineas)
+                    {
+                        <tr>
+                            <td><strong>@l.Item.Id</strong></td>
+                            <td><input class="psa-input" style="min-width: 14rem" @bind="l.Descripcion" maxlength="500" /></td>
+                            <td class="num"><input class="psa-input" style="width: 6rem; text-align: right" type="number" step="any" min="0" @bind="l.Cantidad" @bind:after="Refrescar" /></td>
+                            <td class="num">@(l.PrecioLista is { } pl ? FormatoVentas.Dinero(pl) : "sin precio")</td>
+                            <td class="num">
+                                <input class="psa-input" style="width: 7rem; text-align: right" type="number" step="any" min="0" @bind="l.Precio" @bind:after="Refrescar" />
+                                @if (l.Manual) { <div class="psa-muted" title="Precio distinto del de la lista">✎ manual</div> }
+                            </td>
+                            <td class="num">@FormatoVentas.Dinero(CalculadoraPrefactura.MontoDeLinea(l.Cantidad, l.Precio))</td>
+                            <td class="num">@FormatoVentas.Cantidad(l.Item.Existencia)</td>
+                            <td><PsaButton Variant="secondary" OnClick="() => Quitar(l)">Quitar</PsaButton></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (_lineas.Any(l => l.PrecioLista is not null && l.Manual))
+        {
+            <p class="psa-muted" style="margin-top: .4rem">Podés ingresar un precio distinto del de la lista; no requiere aprobación y queda marcado en el correo a Contabilidad.</p>
+        }
+
+        <div style="max-width: 22rem; margin: 1rem 0 0 auto">
+            <table class="psa-table">
+                <tbody>
+                    <tr><td>Subtotal</td><td class="num">@FormatoVentas.Dinero(_totales.Subtotal)</td></tr>
+                    @if (_aplicaIva) { <tr><td>IVA @_config.PorcentajeIva.ToString("0.##", FormatoVentas.Ec) %</td><td class="num">@FormatoVentas.Dinero(_totales.Iva)</td></tr> }
+                    <tr><td><strong>TOTAL</strong></td><td class="num"><strong>@FormatoVentas.Dinero(_totales.Total)</strong></td></tr>
+                </tbody>
+            </table>
+        </div>
+    }
+</PsaCard>
+
+<PsaCard Title="4. Emitir">
+    @if (_validacion is { Errores.Count: > 0 })
+    {
+        <div class="psa-notice psa-notice--danger">
+            <strong>Falta completar:</strong>
+            <ul style="margin: .3rem 0 0 1.2rem">@foreach (var e in _validacion.Errores) { <li>@e</li> }</ul>
+        </div>
+    }
+    @if (_validacion is { Advertencias.Count: > 0 })
+    {
+        <div class="psa-notice" style="margin-top: .6rem">
+            <strong>Revisá antes de emitir:</strong>
+            <ul style="margin: .3rem 0 0 1.2rem">@foreach (var a in _validacion.Advertencias) { <li>@a</li> }</ul>
+        </div>
+    }
+    @if (_error is not null)
+    {
+        <p class="psa-notice psa-notice--danger" style="margin-top: .6rem">@_error</p>
+    }
+    <p class="psa-muted" style="margin-top: .6rem">
+        Vigencia @_config.VigenciaDias días. Al emitir se guarda con número interno <em>PF-####</em> (no es el de la factura del SRI), se genera el PDF y se envía el correo a
+        @(_config.Destinatarios().Count == 0 ? "Contabilidad (¡esta empresa aún no tiene correos configurados!)" : string.Join(" y ", _config.Destinatarios())).
+        No se escribe nada en Sage.
+    </p>
+    <div class="psa-row" style="margin-top: .8rem">
+        <PsaButton Variant="primary" OnClick="Emitir" Disabled="@(_emitiendo || _lineas.Count == 0 || _cliente is null)">
+            @(_emitiendo ? "Emitiendo…" : "Emitir prefactura")
+        </PsaButton>
+    </div>
+</PsaCard>
+
+@code {
+    private sealed class LineaEditable
+    {
+        public required ItemVenta Item { get; init; }
+        public string Descripcion { get; set; } = "";
+        public decimal Cantidad { get; set; } = 1m;
+        public decimal? PrecioLista { get; set; }
+        public decimal Precio { get; set; }
+        public bool Manual => PrecioLista is null || PrecioLista.Value != Precio;
+    }
+
+    private EmpresaActualService? _empresa;
+    private ConfiguracionVentas _config = ConfiguracionVentas.PorDefecto("");
+    private string _usuario = "web";
+
+    private string _textoCliente = "";
+    private IReadOnlyList<ClienteVenta> _clientes = Array.Empty<ClienteVenta>();
+    private ClienteVenta? _cliente;
+    private bool _buscoClientes;
+
+    private IReadOnlyList<string> _vendedores = Array.Empty<string>();
+    private string _vendedor = "";
+    private string _tipoEtiqueta = EtiquetasVendedor.Equipos;
+    private string _etiqueta = "";
+    private string _ordenCliente = "";
+    private string _direccion = "";
+    private string _notaCliente = "";
+    private string _notaInterna = "";
+    private bool _aplicaIva = true;
+
+    private string _textoItem = "";
+    private IReadOnlyList<ItemVenta>? _resultadosItems;
+    private bool _buscandoItems;
+    private bool _buscoItems;
+    private readonly List<LineaEditable> _lineas = new();
+    private (decimal Subtotal, decimal Iva, decimal Total) _totales;
+
+    private ResultadoValidacion? _validacion;
+    private string? _error;
+    private bool _emitiendo;
+
+    private string Ruc => _empresa?.Ruc ?? "SIN-EMPRESA";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _empresa = Sp.GetService<EmpresaActualService>();
+        if (_empresa is not null) _empresa.Cambio += EmpresaCambio;
+        _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        await CargarEmpresa();
+    }
+
+    private async Task CargarEmpresa()
+    {
+        try
+        {
+            _config = await Servicio.ConfiguracionAsync(Ruc);
+            _vendedores = await Repositorio.VendedoresAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo cargar la configuración de ventas ni los vendedores.");
+            _error = "No se pudo leer la configuración o los vendedores de Sage: " + ex.Message;
+        }
+    }
+
+    private void EmpresaCambio() => InvokeAsync(async () =>
+    {
+        _cliente = null; _clientes = Array.Empty<ClienteVenta>(); _lineas.Clear(); _resultadosItems = null; _vendedor = ""; _etiqueta = "";
+        await CargarEmpresa();
+        Refrescar();
+        StateHasChanged();
+    });
+
+    private async Task TeclaCliente(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarClientes(); }
+
+    private async Task TeclaItem(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarItems(); }
+
+    private async Task BuscarClientes()
+    {
+        try
+        {
+            _clientes = string.IsNullOrWhiteSpace(_textoCliente) ? Array.Empty<ClienteVenta>() : await Repositorio.BuscarClientesAsync(_textoCliente);
+            _buscoClientes = true;
+        }
+        catch (Exception ex) { Logger.LogError(ex, "Falló la búsqueda de clientes."); _error = "No se pudo buscar clientes: " + ex.Message; }
+    }
+
+    private void ElegirCliente(ClienteVenta c)
+    {
+        _cliente = c;
+        _clientes = Array.Empty<ClienteVenta>();
+        // El vendedor por defecto es el del cliente en Sage, pero quien emite puede cambiarlo.
+        var del = c.Vendedor is null ? null : _vendedores.FirstOrDefault(v => string.Equals(v, c.Vendedor, StringComparison.OrdinalIgnoreCase));
+        if (del is not null) { _vendedor = del; _etiqueta = EtiquetasVendedor.Sugerir(_vendedor, _tipoEtiqueta); }
+        // Las líneas que seguían el precio de lista pasan a la lista del nuevo cliente; las de precio manual no se tocan.
+        foreach (var l in _lineas.Where(l => !l.Manual))
+        {
+            var lista = l.Item.PrecioParaNivel(c.NivelPrecio);
+            l.PrecioLista = lista;
+            l.Precio = lista ?? l.Precio;
+        }
+        Refrescar();
+    }
+
+    private void CambiarCliente() { _cliente = null; _buscoClientes = false; }
+
+    private void CambiarVendedor(ChangeEventArgs e)
+    {
+        _vendedor = e.Value?.ToString() ?? "";
+        _etiqueta = EtiquetasVendedor.Sugerir(_vendedor, _tipoEtiqueta);
+        Refrescar();
+    }
+
+    private void CambiarTipoEtiqueta(ChangeEventArgs e)
+    {
+        _tipoEtiqueta = e.Value?.ToString() ?? EtiquetasVendedor.Equipos;
+        _etiqueta = EtiquetasVendedor.Sugerir(_vendedor, _tipoEtiqueta);
+    }
+
+    private async Task BuscarItems()
+    {
+        _buscandoItems = true;
+        try
+        {
+            _resultadosItems = await Repositorio.BuscarItemsAsync(new FiltroItems(_textoItem, IncluirEnsamblados: true, Maximo: 30));
+            _buscoItems = true;
+        }
+        catch (Exception ex) { Logger.LogError(ex, "Falló la búsqueda de ítems."); _error = "No se pudo buscar ítems: " + ex.Message; }
+        finally { _buscandoItems = false; }
+    }
+
+    private void Agregar(ItemVenta item)
+    {
+        if (_cliente is null) return;
+        var lista = item.PrecioParaNivel(_cliente.NivelPrecio);
+        _lineas.Add(new LineaEditable { Item = item, Descripcion = item.Descripcion, PrecioLista = lista, Precio = lista ?? 0m });
+        Refrescar();
+    }
+
+    private void Quitar(LineaEditable l) { _lineas.Remove(l); Refrescar(); }
+
+    private SolicitudPrefactura Solicitud() => new(
+        _cliente?.Id ?? "", _cliente?.Nombre ?? "", _cliente?.Contacto ?? "", _cliente?.Telefono ?? "", _cliente?.Email ?? "",
+        _cliente?.ListaDePrecios ?? 1, _cliente?.DiasCredito ?? 0, _cliente?.LimiteCredito ?? 0m, _cliente?.Saldo ?? 0m,
+        _vendedor, _etiqueta, _ordenCliente, _direccion, _notaCliente, _notaInterna, _aplicaIva,
+        _lineas.Select(l => new LineaSolicitada(l.Item.Id, l.Descripcion, l.Item.UnidadMedida, l.Cantidad, l.PrecioLista, l.Precio, l.Item.Existencia)).ToList());
+
+    private void Refrescar()
+    {
+        var s = Solicitud();
+        _totales = CalculadoraPrefactura.Totales(CalculadoraPrefactura.Calcular(s.Lineas), _aplicaIva, _config.PorcentajeIva);
+        _validacion = _lineas.Count == 0 && _cliente is null ? null : ValidadorPrefactura.Validar(s, _config);
+    }
+
+    private async Task Emitir()
+    {
+        _error = null;
+        Refrescar();
+        if (_validacion is { EsValida: false }) return;
+        _emitiendo = true;
+        try
+        {
+            var r = await Servicio.EmitirAsync(Ruc, _empresa?.Nombre ?? "Empresa de prueba", Solicitud(), _usuario, Nav.BaseUri);
+            if (r.Prefactura is null) { _validacion = r.Validacion; return; }
+            Nav.NavigateTo($"/ventas/prefacturas/{r.Prefactura.Id}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "No se pudo emitir la prefactura.");
+            _error = "No se pudo emitir la prefactura: " + ex.Message;
+        }
+        finally { _emitiendo = false; }
+    }
+
+    public void Dispose()
+    {
+        if (_empresa is not null) _empresa.Cambio -= EmpresaCambio;
+    }
+}

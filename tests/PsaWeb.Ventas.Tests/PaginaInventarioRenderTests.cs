@@ -24,11 +24,18 @@ public class PaginaInventarioRenderTests
         }
     }
 
+    private sealed class FakeNav : NavigationManager
+    {
+        public FakeNav() => Initialize("http://localhost/", "http://localhost/ventas/inventario");
+        protected override void NavigateToCore(string uri, NavigationOptions options) { }
+    }
+
     private static async Task<string> RenderAsync(Func<Inventario, Task> acciones)
     {
         var act = new Activador();
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<NavigationManager>(new FakeNav()); // la subnavegación usa NavLink
         services.AddSingleton<IComponentActivator>(act);
         services.AddScoped<IVentasRepository, SampleVentasRepository>();
         services.AddScoped<IResolverEmpresaSage, SinShellResolverEmpresaSage>();

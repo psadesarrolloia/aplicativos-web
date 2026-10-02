@@ -43,6 +43,26 @@ internal sealed class SmtpServicioCorreo : IServicioCorreo
             mail.To.Add(destino.Trim());
         }
 
+        var flujos = new List<MemoryStream>();
+        try
+        {
+            foreach (var adjunto in mensaje.Adjuntos ?? Array.Empty<AdjuntoCorreo>())
+            {
+                var flujo = new MemoryStream(adjunto.Contenido);
+                flujos.Add(flujo);
+                mail.Attachments.Add(new Attachment(flujo, adjunto.Nombre, adjunto.TipoMime));
+            }
+
+            await EnviarAsync(mail, cancellationToken);
+        }
+        finally
+        {
+            foreach (var f in flujos) f.Dispose();
+        }
+    }
+
+    private async Task EnviarAsync(MailMessage mail, CancellationToken cancellationToken)
+    {
         using var smtp = new SmtpClient(_options.Servidor!, _options.Puerto)
         {
             EnableSsl = _options.Ssl,
@@ -52,6 +72,6 @@ internal sealed class SmtpServicioCorreo : IServicioCorreo
         };
 
         await smtp.SendMailAsync(mail, cancellationToken);
-        _logger.LogInformation("Correo enviado a {Para}: {Asunto}", string.Join(", ", mail.To), mensaje.Asunto);
+        _logger.LogInformation("Correo enviado a {Para}: {Asunto}", string.Join(", ", mail.To), mail.Subject);
     }
 }
