@@ -8,6 +8,7 @@ using PsaWeb.Modules.CierreDeCaja;
 using PsaWeb.Modules.CierreDeCaja.Data;
 using PsaWeb.Modules.CierreDeCaja.Export;
 using PsaWeb.Modules.Kardex;
+using PsaWeb.Modules.Ventas;
 using PsaWeb.Modules.Reportes;
 using PsaWeb.Modules.Reportes.Pwc;
 using PsaWeb.Modules.Ats;
@@ -34,6 +35,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddSage50(builder.Configuration);
 builder.Services.AddCierreDeCaja(builder.Configuration);
 builder.Services.AddKardex(builder.Configuration); // Kardex de inventarios (solo lectura, empresa de sesión)
+builder.Services.AddVentas(builder.Configuration); // Portal de ventas F1: inventario en tiempo real y precios (solo lectura, empresa de sesión)
 builder.Services.AddReportes(builder.Configuration); // Reportes de Access: PWC, Comisiones (Cartera) y Cheques (Bancos)
 
 // Módulo Retenciones (Ola 1). Solo se registra si hay cadena a PeachEBills; sin
@@ -284,7 +286,8 @@ app.MapRazorComponents<App>()
         typeof(PsaWeb.Modules.ComprobantesElectronicos.ComprobantesElectronicosModule).Assembly,
         typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly,
         typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly,
-        typeof(PsaWeb.Modules.Compras.ModuleInfo).Assembly);
+        typeof(PsaWeb.Modules.Compras.ModuleInfo).Assembly,
+        typeof(PsaWeb.Modules.Ventas.ModuleInfo).Assembly);
 
 // Descarga del reporte «Cierre de Caja» en Excel. Re-consulta con las mismas
 // fechas para que el archivo coincida siempre con lo que se ve en pantalla.

@@ -10,6 +10,7 @@ public static class Categorias
     public const string Caja = "Caja";
     public const string Cartera = "Cartera";
     public const string Compras = "Compras";
+    public const string Ventas = "Ventas";
     public const string Bancos = "Bancos";
     public const string Impuestos = "Impuestos";
     public const string ComprobantesElectronicos = "Comprobantes Electrónicos Emitidos";
@@ -17,7 +18,7 @@ public static class Categorias
 
     public static readonly IReadOnlyList<string> Orden = new[]
     {
-        Caja, Cartera, Compras, Bancos, Impuestos, ComprobantesElectronicos, Inventario,
+        Caja, Cartera, Compras, Ventas, Bancos, Impuestos, ComprobantesElectronicos, Inventario,
     };
 }
 
@@ -136,6 +137,13 @@ public static class AppCatalogo
         // Provisional (GateProvisional): sin código propio hasta que el área
         // cargue quKardex en allowAction. Mientras tanto visible para cualquier
         // empresa. Revertir a new[] { Permisos.VerKardex } cuando esté el código.
+        // Portal de ventas F1 (docs/PLAN-PORTAL-VENTAS.md): provisional, visible para cualquier empresa hasta definir los permisos
+        // quSalesQuote/mkSalesQuote/mkSalesInv (F2–F4).
+        new("ventas-inventario", "Inventario y precios",
+            "Existencias en tiempo real y precios por lista de Sage 50, con ficha y cupo del cliente (solo lectura).",
+            "🏷️", "/ventas/inventario", Categorias.Ventas,
+            Array.Empty<string>()),
+
         new("kardex", "Kardex",
             "Kardex de inventarios de Sage 50 (solo lectura).",
             "📦", "/kardex", Categorias.Inventario,

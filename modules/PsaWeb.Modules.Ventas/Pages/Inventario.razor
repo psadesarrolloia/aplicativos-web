@@ -1,0 +1,257 @@
+@page "/ventas/inventario"
+@namespace PsaWeb.Modules.Ventas.Pages
+@using System.Globalization
+@using PsaWeb.Modules.Ventas.Data
+@inject IVentasRepository Repositorio
+@inject IResolverEmpresaSage EmpresaSage
+@inject ILogger<Inventario> Logger
+@implements IDisposable
+
+<PageTitle>Inventario y precios — Aplicativos web PSA</PageTitle>
+
+<PsaPageHeader Title="Inventario y precios"
+               Subtitle="@Subtitulo" />
+
+<PsaCard Title="Cliente (opcional)">
+    <p class="psa-muted">Elegí un cliente para ver el precio de <strong>su lista</strong> en cada ítem y su cupo de crédito.</p>
+    <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; align-items: flex-end">
+        <label class="psa-field" style="flex: 1 1 18rem">
+            <span class="psa-field__label">Buscar cliente</span>
+            <input class="psa-input" placeholder="Nombre o ID…" @bind="_textoCliente" @bind:event="oninput"
+                   @onkeydown="TeclaCliente" />
+        </label>
+        <PsaButton Variant="secondary" OnClick="BuscarClientes" Disabled="_buscandoClientes">Buscar</PsaButton>
+        @if (_cliente is not null)
+        {
+            <PsaButton Variant="secondary" OnClick="QuitarCliente">Quitar cliente</PsaButton>
+        }
+    </div>
+
+    @if (_cliente is null && _clientes.Count > 0)
+    {
+        <div style="overflow-x: auto; margin-top: .8rem">
+            <table class="psa-table psa-table--interactiva">
+                <thead><tr><th>Cliente</th><th>Vendedor</th><th class="num">Lista</th><th class="num">Saldo</th></tr></thead>
+                <tbody>
+                    @foreach (var c in _clientes)
+                    {
+                        <tr @onclick="() => ElegirCliente(c)">
+                            <td>@c.Nombre<div class="psa-muted">@c.Id</div></td>
+                            <td>@(c.Vendedor ?? "—")</td>
+                            <td class="num">@c.ListaDePrecios</td>
+                            <td class="num">@Dinero(c.Saldo)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (_cliente is null && _buscoClientes)
+    {
+        <p class="psa-notice" style="margin-top: .8rem">No se encontraron clientes activos con ese texto.</p>
+    }
+
+    @if (_cliente is not null)
+    {
+        <div class="psa-notice" style="margin-top: .8rem">
+            <strong>@_cliente.Nombre</strong> (@_cliente.Id) · Lista de precios <strong>@_cliente.ListaDePrecios</strong> ·
+            Vendedor: @(_cliente.Vendedor ?? "—") · Crédito: @(_cliente.DiasCredito) días ·
+            Saldo @Dinero(_cliente.Saldo)
+            @if (_cliente.LimiteCredito > 0)
+            {
+                <span> de @Dinero(_cliente.LimiteCredito) (disponible @Dinero(_cliente.CupoDisponible))</span>
+            }
+        </div>
+    }
+</PsaCard>
+
+<PsaCard Title="Inventario">
+    <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
+        <label class="psa-field" style="flex: 1 1 18rem">
+            <span class="psa-field__label">Buscar ítem (código, descripción, parte, UPC)</span>
+            <input class="psa-input" placeholder="p. ej. breaker 3 polos siemens" @bind="_texto" @bind:event="oninput"
+                   @onkeydown="TeclaItem" />
+        </label>
+        <label class="psa-field">
+            <span class="psa-field__label">Categoría</span>
+            <select class="psa-input" @bind="_categoria">
+                <option value="">Todas</option>
+                @foreach (var c in _categorias)
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+        </label>
+        <PsaButton Variant="primary" OnClick="Buscar" Disabled="_cargando">@(_cargando ? "Consultando…" : "Consultar")</PsaButton>
+    </div>
+    <div class="psa-row" style="gap: 1.5rem; margin-top: .8rem; flex-wrap: wrap">
+        <label style="display: flex; align-items: center; gap: .5rem">
+            <input type="checkbox" @bind="_soloConExistencia" />
+            <span class="psa-muted">Solo con existencia</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: .5rem">
+            <input type="checkbox" checked="@_incluirEnsamblados" @onchange="CambiarEnsamblados" />
+            <span class="psa-muted">Incluir ensamblados (tableros «TE», uno por proyecto)</span>
+        </label>
+    </div>
+</PsaCard>
+
+@if (_error is not null)
+{
+    <PsaCard Title="Resultado"><p class="psa-notice psa-notice--danger">@_error</p></PsaCard>
+}
+else if (_items is not null)
+{
+    <PsaCard Title="@($"Resultado ({_items.Count}{(_items.Count >= _filtro.Maximo ? "+" : string.Empty)})")">
+        @if (_items.Count == 0)
+        {
+            <p class="psa-notice">Ningún ítem coincide con la búsqueda.</p>
+        }
+        else
+        {
+            @if (_items.Count >= _filtro.Maximo)
+            {
+                <p class="psa-muted">Se muestran los primeros @_filtro.Maximo; afiná la búsqueda para ver otros.</p>
+            }
+            <div style="overflow-x: auto">
+                <table class="psa-table">
+                    <thead>
+                        <tr>
+                            <th>Ítem</th>
+                            <th>Descripción</th>
+                            <th>Categoría</th>
+                            <th class="num">Existencia</th>
+                            @if (_cliente is not null) { <th class="num">Precio de @_cliente.Id (lista @_cliente.ListaDePrecios)</th> }
+                            @foreach (var n in _listasVisibles) { <th class="num">Lista @n</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var i in _items)
+                        {
+                            <tr>
+                                <td><strong>@i.Id</strong></td>
+                                <td>@i.Descripcion</td>
+                                <td>@i.Categoria</td>
+                                <td class="num" style="@EstiloExistencia(i)">@Cantidad(i.Existencia) @i.UnidadMedida</td>
+                                @if (_cliente is not null)
+                                {
+                                    var p = i.PrecioParaNivel(_cliente.NivelPrecio);
+                                    <td class="num"><strong>@(p is null ? "sin precio" : Dinero(p.Value))</strong></td>
+                                }
+                                @foreach (var n in _listasVisibles)
+                                {
+                                    <td class="num">@(i.Precios[n - 1] > 0 ? Dinero(i.Precios[n - 1]) : "—")</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <p class="psa-muted" style="margin-top: .6rem">
+                La existencia es la de Sage al momento de la consulta (compras menos ventas facturadas). Los precios son los de las listas de Sage;
+                al cotizar o facturar el vendedor puede ingresar otro precio manualmente.
+            </p>
+        }
+    </PsaCard>
+}
+
+@code {
+    private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
+
+    private FiltroItems _filtro = new(Maximo: 100);
+    private string _texto = "";
+    private string _categoria = "";
+    private bool _soloConExistencia;
+    private bool _incluirEnsamblados = true; // por defecto incluye los tableros «TE» (decisión del usuario, 2026-10-02)
+    private IReadOnlyList<string> _categorias = Array.Empty<string>();
+    private IReadOnlyList<ItemVenta>? _items;
+    private IReadOnlyList<int> _listasVisibles = Array.Empty<int>();
+    private bool _cargando;
+    private string? _error;
+
+    private string _textoCliente = "";
+    private IReadOnlyList<ClienteVenta> _clientes = Array.Empty<ClienteVenta>();
+    private ClienteVenta? _cliente;
+    private bool _buscandoClientes;
+    private bool _buscoClientes;
+
+    private string Subtitulo => EmpresaSage.RucSesion is null
+        ? "Existencias en tiempo real y precios por lista de Sage 50. Solo lectura."
+        : $"Empresa {EmpresaSage.RucSesion} · existencias en tiempo real y precios por lista de Sage 50. Solo lectura.";
+
+    protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
+
+    protected override async Task OnInitializedAsync() => await CargarCategorias();
+
+    private async Task CargarCategorias()
+    {
+        try { _categorias = await Repositorio.CategoriasAsync(_incluirEnsamblados); }
+        catch (Exception ex) { Logger.LogError(ex, "No se pudieron leer las categorías."); _categorias = Array.Empty<string>(); }
+    }
+
+    private void Refrescar()
+    {
+        _items = null; _error = null; _cliente = null; _clientes = Array.Empty<ClienteVenta>(); _categoria = "";
+        InvokeAsync(async () => { await CargarCategorias(); StateHasChanged(); });
+    }
+
+    private async Task CambiarEnsamblados(ChangeEventArgs e)
+    {
+        _incluirEnsamblados = e.Value is true;
+        _categoria = "";
+        await CargarCategorias();
+    }
+
+    private async Task TeclaItem(KeyboardEventArgs e) { if (e.Key == "Enter") await Buscar(); }
+
+    private async Task TeclaCliente(KeyboardEventArgs e) { if (e.Key == "Enter") await BuscarClientes(); }
+
+    private async Task Buscar()
+    {
+        _cargando = true; _error = null;
+        try
+        {
+            var f = _filtro with
+            {
+                Texto = _texto,
+                Categoria = string.IsNullOrWhiteSpace(_categoria) ? null : _categoria,
+                IncluirEnsamblados = _incluirEnsamblados,
+                SoloConExistencia = _soloConExistencia,
+            };
+            _items = await Repositorio.BuscarItemsAsync(f);
+            // Solo las listas que tienen precio en al menos un ítem del resultado (de 10 posibles).
+            _listasVisibles = Enumerable.Range(1, PreciosDeVenta.NivelesMaximos).Where(n => _items.Any(i => i.Precios[n - 1] > 0)).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Falló la consulta de inventario.");
+            _error = "No se pudo consultar el inventario de Sage 50: " + ex.Message;
+            _items = null;
+        }
+        finally { _cargando = false; }
+    }
+
+    private async Task BuscarClientes()
+    {
+        _buscandoClientes = true;
+        try
+        {
+            _clientes = string.IsNullOrWhiteSpace(_textoCliente) ? Array.Empty<ClienteVenta>() : await Repositorio.BuscarClientesAsync(_textoCliente);
+            _buscoClientes = true;
+        }
+        catch (Exception ex) { Logger.LogError(ex, "Falló la búsqueda de clientes."); _error = "No se pudo buscar clientes: " + ex.Message; }
+        finally { _buscandoClientes = false; }
+    }
+
+    private void ElegirCliente(ClienteVenta c) { _cliente = c; _clientes = Array.Empty<ClienteVenta>(); }
+
+    private void QuitarCliente() { _cliente = null; _buscoClientes = false; }
+
+    private static string Dinero(decimal v) => v.ToString("N2", Ec);
+
+    private static string Cantidad(decimal v) => v.ToString("#,##0.##", Ec);
+
+    private static string EstiloExistencia(ItemVenta i) => i.Existencia <= 0 ? "color: var(--psa-danger, #b00020); font-weight: 600" : string.Empty;
+
+    public void Dispose() => EmpresaSage.Cambio -= Refrescar;
+}
