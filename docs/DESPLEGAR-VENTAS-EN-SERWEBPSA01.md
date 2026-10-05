@@ -40,17 +40,49 @@ facturación de venta (ver §6).
 
 ```xml
 <environmentVariables>
-  <add name="Correo__Servidor" value="smtp.ejemplo.com" />
-  <add name="Correo__Puerto"   value="587" />
-  <add name="Correo__Usuario"  value="ventas@paredes.com.ec" />
-  <add name="Correo__Clave"    value="********" />
-  <add name="Correo__Ssl"      value="true" />
+  <environmentVariable name="Correo__Servidor" value="smtp.ejemplo.com" />
+  <environmentVariable name="Correo__Puerto"   value="587" />
+  <environmentVariable name="Correo__Usuario"  value="ventas@paredes.com.ec" />
+  <environmentVariable name="Correo__Clave"    value="********" />
+  <environmentVariable name="Correo__Ssl"      value="true" />
   <!-- Opcional: remitente (por defecto anulaciones@paredes.com.ec) -->
-  <add name="Correo__De"       value="ventas@paredes.com.ec" />
+  <environmentVariable name="Correo__De"       value="ventas@paredes.com.ec" />
 </environmentVariables>
 ```
 
 **No agregar** `Escritura__Habilitada` (o dejarla en `false`). El script de deploy se **niega a desplegar** si el `web.config` la tiene en `true`.
+
+### 3.1 Configurar el SMTP paso a paso
+
+1. **Dónde:** `C:\inetpub\CierreDeCaja\web.config`, dentro de `<aspNetCore …>` → `<environmentVariables>`, junto a las variables que ya hay. El elemento es **`<environmentVariable name="…" value="…" />`** (**no** `<add>`: con `<add>` IIS responde 500.19).
+   Si la clave tiene `&`, `<`, `>` o `"`, escribirlos como `&amp;`, `&lt;`, `&gt;`, `&quot;`.
+2. **Valores** (preguntar a quien administre el correo): servidor, puerto, usuario, clave y si exige SSL/TLS.
+   - **Puerto 587 + `Correo__Ssl=true`** (STARTTLS) es lo que soporta la aplicación. **El puerto 465 (SSL implícito) NO funciona** con este cliente.
+   - Puerto 25 sin autenticación solo sirve si el servidor de correo acepta el relay desde `SERWEBPSA01`: dejar `Correo__Usuario` y `Correo__Clave` **sin definir** y `Correo__Ssl=false`.
+   - **`Correo__De` debe ser un buzón que esa cuenta pueda usar como remitente** (casi todos los proveedores exigen que coincida con `Correo__Usuario`). Por defecto el remitente es `anulaciones@paredes.com.ec`.
+   - Gmail: contraseña de aplicación (requiere verificación en 2 pasos), `smtp.gmail.com`, 587, SSL. Microsoft 365: `smtp.office365.com`, 587, SSL, y el buzón debe tener «SMTP autenticado» habilitado (muchos tenants lo bloquean).
+3. **Guardar el archivo:** IIS reinicia solo la aplicación (si no, reciclar el app pool `CierreDeCaja`). La clave queda en texto claro: dejar `web.config` legible solo para Administradores y el usuario del app pool.
+4. **Probar la red y las credenciales desde el servidor**, antes de la web (PowerShell como Administrador):
+
+   ```powershell
+   Test-NetConnection smtp.ejemplo.com -Port 587          # TcpTestSucceeded debe ser True (si no: firewall o puerto)
+   $c = Get-Credential ventas@paredes.com.ec
+   Send-MailMessage -SmtpServer smtp.ejemplo.com -Port 587 -UseSsl -Credential $c -From ventas@paredes.com.ec -To tu.correo@paredes.com.ec -Subject "Prueba SMTP SERWEBPSA01" -Body "ok"
+   ```
+5. **Probar desde el portal:** abrir una prefactura → **Reenviar correo** (o emitir una de prueba). El estado del correo y el error exacto quedan en la tarjeta «Correo a Contabilidad» de la prefactura; la lista muestra «Enviado», «Falló» o «Sin configurar».
+6. **Si falla**, leer el mensaje de esa tarjeta:
+
+   | Mensaje | Causa | Qué hacer |
+   |---|---|---|
+   | «El servidor de correo (SMTP) no está configurado» | Falta `Correo__Servidor` (o IIS no recargó el `web.config`) | Revisar el nombre exacto de la variable y reciclar el app pool |
+   | «The SMTP server requires a secure connection» / «Must issue a STARTTLS» | El servidor exige TLS | `Correo__Ssl=true` y puerto 587 |
+   | «5.7.57 / 535 / Authentication unsuccessful» | Usuario o clave mal, o SMTP AUTH deshabilitado en el buzón | Verificar la cuenta; en Gmail usar contraseña de aplicación |
+   | «Mailbox unavailable / not allowed to send as» | `Correo__De` distinto de la cuenta autenticada | Poner `Correo__De` igual a `Correo__Usuario` |
+   | Tarda ~40 s y falla por tiempo | Puerto bloqueado por firewall | Habilitar la salida desde `SERWEBPSA01` al servidor SMTP |
+   | Falla en el «handshake» / certificado | Antivirus con inspección TLS (ya ocurrió con Kaspersky) | Excluir al servidor SMTP de la inspección |
+
+   Los intentos también quedan en `C:\inetpub\CierreDeCaja\logs` («Correo enviado a …» o «No se pudo enviar el correo de la prefactura …»).
+7. **Los 2 destinatarios** no son del `web.config`: se cargan por empresa en **Configuración → Ventas** (correo de Contabilidad y uno adicional).
 
 ## 4. Paquete y despliegue
 

@@ -36,9 +36,9 @@ apagarlo de emergencia, agregar al `web.config` del sitio:
 
 ```xml
 <environmentVariables>
-  <add name="Conciliacion__Worker__Habilitado" value="false" />
+  <environmentVariable name="Conciliacion__Worker__Habilitado" value="false" />
   <!-- o para ajustar el intervalo: -->
-  <add name="Conciliacion__Worker__Intervalo" value="04:00:00" />
+  <environmentVariable name="Conciliacion__Worker__Intervalo" value="04:00:00" />
 </environmentVariables>
 ```
 
