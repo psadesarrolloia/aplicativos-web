@@ -247,6 +247,10 @@
     margin: -.4rem 0 1rem;
 }
 .psa-subnav .psa-nav__link { font-size: .88rem; }
+/* Los .psa-nav__link nacieron para la barra oscura (texto blanco). La subnavegación vive sobre el fondo claro de la página:
+   los inactivos se leen en azul marino y el activo conserva el magenta con texto blanco. */
+.psa-subnav .psa-nav__link:not(.active) { color: var(--psa-navy); }
+.psa-subnav .psa-nav__link:not(.active):hover { color: var(--psa-navy); background: var(--psa-surface-2); }
 
 .psa-evt {
     display: inline-block;

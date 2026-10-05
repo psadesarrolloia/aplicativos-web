@@ -8,6 +8,7 @@
 @using PsaWeb.SageBridge.Contratos
 @implements IDisposable
 @inject IOptions<PlataformaOptions> Opciones
+@inject IOptions<PsaWeb.Seguridad.EscrituraOptions> Escritura
 @inject IColaSage Cola
 @inject IServiceProvider Servicios
 @inject AuthenticationStateProvider AuthState
@@ -28,6 +29,13 @@
 {
     <PsaCard Title="Sin acceso">
         <p class="psa-notice psa-notice--danger">Tu usuario no tiene acceso a la administración.</p>
+    </PsaCard>
+}
+else if (!Escritura.Value.Habilitada)
+{
+    <PsaCard Title="No disponible">
+        <p class="psa-notice">Los módulos que escriben en Sage 50 por el Sage Bridge están <strong>desactivados en este servidor</strong>
+            (<code>Escritura:Habilitada</code>). Se activan en el deploy de escritura.</p>
     </PsaCard>
 }
 else if (_latidos is null)
@@ -203,7 +211,7 @@ else
         var state = await AuthState.GetAuthenticationStateAsync();
         _usuario = state.User.Identity?.Name ?? "";
         _esAdmin = Opciones.Value.EsAdmin(_usuario);
-        if (!_esAdmin) return;
+        if (!_esAdmin || !Escritura.Value.Habilitada) return;
 
         await CargarEmpresas();
         await CargarEstado();

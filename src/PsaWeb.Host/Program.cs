@@ -70,6 +70,12 @@ if (peachEbillsConfigurado)
 // esquema de auth por defecto — eso lo hace F-Shell-1 con las pantallas de login.
 var plataformaConfigurada = !string.IsNullOrWhiteSpace(
     builder.Configuration.GetSection(PsaWeb.Identidad.ServiceCollectionExtensions.SectionName)["ConnectionString"]);
+
+// Interruptor de los módulos que ESCRIBEN en Sage por el Sage Bridge (Ola 2: Compras, Facturas recibidas, Liquidación de importaciones,
+// administración del Bridge). Apagado por defecto: producción no los activa hasta el «deploy de escritura»; desarrollo lo enciende en
+// appsettings.Development.json. Apagado no se registran, sus rutas dan 404, no salen en el menú y no corren sus migraciones ni el worker.
+var escrituraHabilitada = builder.Configuration.GetValue("Escritura:Habilitada", false);
+builder.Services.Configure<PsaWeb.Seguridad.EscrituraOptions>(builder.Configuration.GetSection(PsaWeb.Seguridad.EscrituraOptions.SectionName));
 if (plataformaConfigurada)
 {
     builder.Services.AddIdentidadPlataforma(builder.Configuration);
@@ -81,8 +87,11 @@ if (plataformaConfigurada)
     builder.Services.AddConciliacion(builder.Configuration);
     // Ola 2: cola del Sage Bridge (la web encola; el servicio PsaSageBridge escribe en Sage). Misma base física.
     builder.Services.AddSageBridgeCola(builder.Configuration);
-    // Ola 2: XML de documentos recibidos (almacén §13.1 del plan + descarga por el WS del SRI en segundo plano).
-    PsaWeb.Recibidos.ServiceCollectionExtensions.AddRecibidos(builder.Services, builder.Configuration);
+    // Ola 2: XML de documentos recibidos (almacén §13.1 del plan + descarga por el WS del SRI en segundo plano). Solo con escritura habilitada.
+    if (escrituraHabilitada)
+    {
+        PsaWeb.Recibidos.ServiceCollectionExtensions.AddRecibidos(builder.Services, builder.Configuration);
+    }
 }
 
 // El módulo de Conciliación SRI (procesador de verificación + worker + página)
@@ -95,7 +104,7 @@ if (conciliacionSriActiva)
 }
 
 // Ola 2: módulo Compras (lee Sage por ODBC, catálogos de PeachEBills, escribe encolando en el Sage Bridge).
-if (plataformaConfigurada && peachEbillsConfigurado)
+if (escrituraHabilitada && plataformaConfigurada && peachEbillsConfigurado)
 {
     PsaWeb.Modules.Compras.ComprasModule.AddCompras(builder.Services);
 }
@@ -213,19 +222,26 @@ if (plataformaConfigurada)
         await ventasDb.DisposeAsync();
         app.Logger.LogInformation("Ventas (prefacturas): migraciones aplicadas.");
 
-        var bridgeDb = await scope.ServiceProvider
-            .GetRequiredService<IDbContextFactory<PsaWeb.SageBridge.Cola.Data.SageBridgeDbContext>>()
-            .CreateDbContextAsync();
-        await bridgeDb.Database.MigrateAsync();
-        await bridgeDb.DisposeAsync();
-        app.Logger.LogInformation("Sage Bridge (cola): migraciones aplicadas.");
+        if (escrituraHabilitada)
+        {
+            var bridgeDb = await scope.ServiceProvider
+                .GetRequiredService<IDbContextFactory<PsaWeb.SageBridge.Cola.Data.SageBridgeDbContext>>()
+                .CreateDbContextAsync();
+            await bridgeDb.Database.MigrateAsync();
+            await bridgeDb.DisposeAsync();
+            app.Logger.LogInformation("Sage Bridge (cola): migraciones aplicadas.");
 
-        var recibidosDb = await scope.ServiceProvider
-            .GetRequiredService<IDbContextFactory<PsaWeb.Recibidos.Data.RecibidosDbContext>>()
-            .CreateDbContextAsync();
-        await recibidosDb.Database.MigrateAsync();
-        await recibidosDb.DisposeAsync();
-        app.Logger.LogInformation("Documentos recibidos (XML): migraciones aplicadas.");
+            var recibidosDb = await scope.ServiceProvider
+                .GetRequiredService<IDbContextFactory<PsaWeb.Recibidos.Data.RecibidosDbContext>>()
+                .CreateDbContextAsync();
+            await recibidosDb.Database.MigrateAsync();
+            await recibidosDb.DisposeAsync();
+            app.Logger.LogInformation("Documentos recibidos (XML): migraciones aplicadas.");
+        }
+        else
+        {
+            app.Logger.LogInformation("Módulos de escritura en Sage (Compras, Recibidos, Bridge): DESACTIVADOS (Escritura:Habilitada=false); no se migran sus tablas.");
+        }
     }
 
     if (app.Environment.IsDevelopment())
@@ -286,15 +302,7 @@ app.UseAntiforgery();
 app.MapStaticAssets().AllowAnonymous();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
-    .AddAdditionalAssemblies(
-        typeof(PsaWeb.Modules.CierreDeCaja.ModuleInfo).Assembly,
-        typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly,
-        typeof(PsaWeb.Modules.Reportes.ModuleInfo).Assembly,
-        typeof(PsaWeb.Modules.ComprobantesElectronicos.ComprobantesElectronicosModule).Assembly,
-        typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly,
-        typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly,
-        typeof(PsaWeb.Modules.Compras.ModuleInfo).Assembly,
-        typeof(PsaWeb.Modules.Ventas.ModuleInfo).Assembly);
+    .AddAdditionalAssemblies(PsaWeb.Host.EnsamblesDeModulos.Todos(escrituraHabilitada));
 
 // Descarga del reporte «Cierre de Caja» en Excel. Re-consulta con las mismas
 // fechas para que el archivo coincida siempre con lo que se ve en pantalla.

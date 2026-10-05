@@ -5,6 +5,7 @@
 @inject EmpresaActualService EmpresaActual
 @inject AuthenticationStateProvider AuthState
 @inject IOptions<PlataformaOptions> Plataforma
+@inject IOptions<EscrituraOptions> Escritura
 @inject NavigationManager Nav
 @implements IDisposable
 
@@ -62,9 +63,12 @@
                     <NavLink class="psa-navgroup__item" href="/admin/auditoria">
                         <span class="psa-navgroup__icon">📜</span><span>Auditoría</span>
                     </NavLink>
-                    <NavLink class="psa-navgroup__item" href="/admin/sage-bridge">
-                        <span class="psa-navgroup__icon">🔌</span><span>Sage Bridge (empresas y cola)</span>
-                    </NavLink>
+                    @if (Escritura.Value.Habilitada)
+                    {
+                        <NavLink class="psa-navgroup__item" href="/admin/sage-bridge">
+                            <span class="psa-navgroup__icon">🔌</span><span>Sage Bridge (empresas y cola)</span>
+                        </NavLink>
+                    }
                     <NavLink class="psa-navgroup__item" href="/admin/ventas">
                         <span class="psa-navgroup__icon">🧾</span><span>Ventas (prefacturas)</span>
                     </NavLink>
@@ -115,7 +119,7 @@
         var state = await AuthState.GetAuthenticationStateAsync();
         var usuario = state.User.Identity?.Name ?? "";
         var ctx = await Seguridad.ContextoAsync(usuario, EmpresaActual.Ruc!);
-        _apps = AppCatalogo.Habilitadas(ctx).ToList();
+        _apps = AppCatalogo.Habilitadas(ctx, Escritura.Value.Habilitada).ToList();
     }
 
     private void Alternar(string categoria) =>

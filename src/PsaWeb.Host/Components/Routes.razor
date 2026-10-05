@@ -1,7 +1,9 @@
-@using PsaWeb.Modules.CierreDeCaja
+@using Microsoft.Extensions.Options
+@using PsaWeb.Seguridad
+@inject IOptions<EscrituraOptions> Escritura
 
 <Router AppAssembly="typeof(Program).Assembly"
-        AdditionalAssemblies="new[] { typeof(ModuleInfo).Assembly, typeof(PsaWeb.Modules.Kardex.ModuleInfo).Assembly, typeof(PsaWeb.Modules.Reportes.ModuleInfo).Assembly, typeof(PsaWeb.Modules.ComprobantesElectronicos.ComprobantesElectronicosModule).Assembly, typeof(PsaWeb.Modules.Ats.ModuleInfo).Assembly, typeof(PsaWeb.Modules.ConciliacionSri.ModuleInfo).Assembly, typeof(PsaWeb.Modules.Compras.ModuleInfo).Assembly, typeof(PsaWeb.Modules.Ventas.ModuleInfo).Assembly }">
+        AdditionalAssemblies="PsaWeb.Host.EnsamblesDeModulos.Todos(Escritura.Value.Habilitada)">
     <Found Context="routeData">
         <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
         <FocusOnNavigate RouteData="routeData" Selector="h1" />

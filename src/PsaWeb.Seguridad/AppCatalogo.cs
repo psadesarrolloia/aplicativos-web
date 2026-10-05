@@ -157,6 +157,12 @@ public static class AppCatalogo
             Array.Empty<string>()),
     };
 
-    public static IEnumerable<AppWeb> Habilitadas(ContextoDeUsuario ctx) =>
-        Todas.Where(a => a.VisiblePara(ctx));
+    /// <summary>
+    /// Módulos que escriben en Sage por el Bridge (Ola 2). Solo se ofrecen si <see cref="EscrituraOptions.Habilitada"/> (producción los mantiene
+    /// apagados hasta el deploy de escritura).
+    /// </summary>
+    public static readonly IReadOnlySet<string> IdsDeEscritura = new HashSet<string> { "compras", "compras-recibidos", "compras-importaciones" };
+
+    public static IEnumerable<AppWeb> Habilitadas(ContextoDeUsuario ctx, bool escrituraHabilitada = true) =>
+        Todas.Where(a => (escrituraHabilitada || !IdsDeEscritura.Contains(a.Id)) && a.VisiblePara(ctx));
 }

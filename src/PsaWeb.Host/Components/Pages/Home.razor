@@ -1,5 +1,7 @@
 @page "/"
+@using Microsoft.Extensions.Options
 @using PsaWeb.Seguridad
+@inject IOptions<EscrituraOptions> Escritura
 @inject ISecurityDirectory Seguridad
 @inject EmpresaActualService EmpresaActual
 @inject AuthenticationStateProvider AuthState
@@ -59,7 +61,7 @@ else
         var state = await AuthState.GetAuthenticationStateAsync();
         var usuario = state.User.Identity?.Name ?? "";
         var ctx = await Seguridad.ContextoAsync(usuario, EmpresaActual.Ruc!);
-        _apps = AppCatalogo.Habilitadas(ctx).ToList();
+        _apps = AppCatalogo.Habilitadas(ctx, Escritura.Value.Habilitada).ToList();
     }
 
     public void Dispose() => EmpresaActual.Cambio -= AlCambiar;

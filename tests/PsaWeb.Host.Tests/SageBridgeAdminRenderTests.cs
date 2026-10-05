@@ -94,13 +94,14 @@ public class SageBridgeAdminRenderTests
             Task.FromResult(new EmpresaBridge { Ruc = ruc, Habilitada = habilitada, Ventana = ventana });
     }
 
-    private static async Task<string> RenderizarAsync(string usuario, ColaFake cola)
+    private static async Task<string> RenderizarAsync(string usuario, ColaFake cola, bool escritura = true)
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<NavigationManager>(new FakeNav());
         services.AddSingleton<AuthenticationStateProvider>(new Auth(usuario));
         services.AddSingleton<IOptions<PlataformaOptions>>(Options.Create(new PlataformaOptions { Admins = { "lparedes" } }));
+        services.AddSingleton<IOptions<PsaWeb.Seguridad.EscrituraOptions>>(Options.Create(new PsaWeb.Seguridad.EscrituraOptions { Habilitada = escritura }));
         services.AddSingleton<IColaSage>(cola);
         services.AddSingleton<IEmpresasActivasRepository>(new EmpresasFake());
         await using var sp = services.BuildServiceProvider();
@@ -125,6 +126,17 @@ public class SageBridgeAdminRenderTests
         Assert.Contains("Solicitud de acceso pendiente.", html); // resultado de ProbarEmpresa legible
         Assert.Contains("La base no está en SoloBases.", html);
         Assert.Contains("Reintentar", html);                   // acción del trabajo en Error
+    }
+
+    [Fact]
+    public async Task Con_escritura_apagada_el_admin_ve_que_el_modulo_no_esta_disponible_y_no_consulta_la_cola()
+    {
+        var cola = new ColaFake();
+        var html = await RenderizarAsync("lparedes", cola, escritura: false);
+
+        Assert.Contains("desactivados en este servidor", html);
+        Assert.DoesNotContain("PREDATOR/predator-dev", html);
+        Assert.DoesNotContain("Reintentar", html);
     }
 
     [Fact]
