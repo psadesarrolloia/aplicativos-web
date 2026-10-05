@@ -72,7 +72,9 @@ aprovechar.
 ### 2.6 F0 con factura (reemplaza F0-b/F0-c)
 
 Arnés `SondeoVentasF0Tests`, etapa `so`: crea una factura de prueba `999-999-…` con `AddSalesLine`, compara sus filas con las de una factura real, mide si cambian `InventoryCosts` y la
-existencia, la anula y verifica que se revierte. **Escribe en la base de SANCEV de PREDATOR (Bridge con `SoloBases` = SANCEV); pendiente de autorización.**
+existencia, la anula y verifica que se revierte. Escribió en la base de SANCEV de PREDATOR (Bridge con `SoloBases` = SANCEV; resultados en §2.7 y §2.8).
+**El spike se eliminó el 2026-10-05** (`ManejadorSondeoVentas`, `TiposTrabajo.SondeoVentas` y `SondeoVentasF0Tests`; recuperables del historial de la conversación, no de git, porque nunca se commitearon). Para el F3 se reescribe como `GuardarFactura`
+con lo aprendido: precio por `PriceLevels` (lista = `Customers.PriceLevel + 1`), `SalesTaxCodeReference` = `4-15%`, `AddSalesLine` + `CalculateAmount`, sin `Void()`.
 
 ### 2.7 Resultado de la primera corrida de factura (2026-10-02, SANCEV en PREDATOR; informe `psa-f0-ventas-so.txt`)
 
@@ -157,7 +159,7 @@ Módulo `modules/PsaWeb.Modules.Ventas` (categoría **Ventas**, ya prevista en e
 | **F5 – Corte** | Deploy único con el resto de aplicativos de escritura; ensayo con una factura real de bajo valor; guía para vendedores. | — |
 
 Pendientes a resolver antes de F3: (a) numeración exacta (¿una sola serie 001-003 para todos los vendedores? ¿y los `XC-D-INT`/`XC-T-INT`?), (b) quién ve costo y utilidad, (c) etiqueta `(EQU|TAB)` y el vendedor TABLEROS: lo elige quien factura (confirmado) — la pantalla ofrece los reps del cliente y los «… TABLEROS»,
-(d) ítems ensamblados (`ItemClass 3`, 2252): ¿se facturan desde el portal? (e) cierre de la fase: eliminar `ManejadorSondeoVentas`, `TiposTrabajo.SondeoVentas` y `SondeoVentasF0Tests`.
+(d) ítems ensamblados (`ItemClass 3`, 2252): ¿se facturan desde el portal? (e) ~~eliminar el spike del F0~~ ✅ hecho el 2026-10-05.
 
 (f) **Ajuste 2026-10-02:** el vendedor emite una *prefactura/cotización* con PDF y correo; la factura de Sage se genera en un paso posterior (F3) con los mismos datos. Falta definir quién convierte (contabilidad o el mismo vendedor), la vigencia de la prefactura, los 1–2 correos por empresa y si el correo sale a cada emisión o solo a la primera.
 
