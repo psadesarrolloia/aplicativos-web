@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,6 +25,12 @@ public class PaginaInventarioRenderTests
         }
     }
 
+    private sealed class Auth : AuthenticationStateProvider
+    {
+        public override Task<AuthenticationState> GetAuthenticationStateAsync() =>
+            Task.FromResult(new AuthenticationState(new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "vendedor1") }, "test"))));
+    }
+
     private sealed class FakeNav : NavigationManager
     {
         public FakeNav() => Initialize("http://localhost/", "http://localhost/ventas/inventario");
@@ -39,6 +46,8 @@ public class PaginaInventarioRenderTests
         services.AddSingleton<IComponentActivator>(act);
         services.AddScoped<IVentasRepository, SampleVentasRepository>();
         services.AddScoped<IResolverEmpresaSage, SinShellResolverEmpresaSage>();
+        services.AddSingleton<AuthenticationStateProvider>(new Auth());
+        services.AddScoped<PsaWeb.Modules.Ventas.Prefacturas.ServicioPermisosVentas>();
         await using var sp = services.BuildServiceProvider();
 
         await using var renderer = new HtmlRenderer(sp, sp.GetRequiredService<ILoggerFactory>());

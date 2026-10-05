@@ -134,21 +134,23 @@ public static class AppCatalogo
             "↩️", "/fe/notas-credito", Categorias.ComprobantesElectronicos,
             new[] { Permisos.VerNotasCredito, Permisos.HacerNotaCredito, Permisos.HacerNotasCreditoLote }),
 
-        // Provisional (GateProvisional): sin código propio hasta que el área
-        // cargue quKardex en allowAction. Mientras tanto visible para cualquier
-        // empresa. Revertir a new[] { Permisos.VerKardex } cuando esté el código.
-        // Portal de ventas F1 (docs/PLAN-PORTAL-VENTAS.md): provisional, visible para cualquier empresa hasta definir los permisos
-        // quSalesQuote/mkSalesQuote/mkSalesInv (F2–F4).
+        // Portal de ventas (docs/PLAN-PORTAL-VENTAS.md). Llaves nuevas (docs/sql/permisos-ventas.sql) + las provisionales de facturación de venta
+        // (GateProvisional, ReglasVentas.PermisosProvisionales): al aplicar el script, dejar solo las llaves nuevas.
         new("ventas-inventario", "Inventario y precios",
             "Existencias en tiempo real y precios por lista de Sage 50, con ficha y cupo del cliente (solo lectura).",
             "🏷️", "/ventas/inventario", Categorias.Ventas,
-            Array.Empty<string>()),
+            new[] { Permisos.VerInventarioVentas, Permisos.VerPrefacturas, Permisos.EmitirPrefactura, Permisos.CerrarPrefactura,
+                    Permisos.VerFacturas, Permisos.HacerFactura }),
 
         new("ventas-prefacturas", "Prefacturas",
             "Cotizaciones con PDF y correo a Contabilidad para facturar en Sage (no escribe en Sage).",
             "🧾", "/ventas/prefacturas", Categorias.Ventas,
-            Array.Empty<string>()),
+            new[] { Permisos.VerPrefacturas, Permisos.EmitirPrefactura, Permisos.CerrarPrefactura,
+                    Permisos.VerFacturas, Permisos.HacerFactura }),
 
+        // Provisional (GateProvisional): sin código propio hasta que el área
+        // cargue quKardex en allowAction. Mientras tanto visible para cualquier
+        // empresa. Revertir a new[] { Permisos.VerKardex } cuando esté el código.
         new("kardex", "Kardex",
             "Kardex de inventarios de Sage 50 (solo lectura).",
             "📦", "/kardex", Categorias.Inventario,

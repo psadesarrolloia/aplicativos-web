@@ -5,6 +5,7 @@
 @using PsaWeb.Seguridad
 @using PsaWeb.Ventas.Prefacturas
 @inject ServicioPrefacturas Servicio
+@inject ServicioPermisosVentas PermisosSrv
 @inject IServiceProvider Sp
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
@@ -15,11 +16,7 @@
 <PsaPageHeader Title="@(_p is null ? "Prefactura" : $"Prefactura {_p.NumeroTexto}")"
                Subtitle="Cotización emitida: el PDF es para el cliente; Contabilidad la digita en Sage con los datos del correo." />
 
-<div class="psa-subnav">
-    <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
-    <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
-    <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
-</div>
+<SubnavVentas Permisos="_actor.Permisos" />
 
 @if (_cargando)
 {
@@ -27,7 +24,7 @@
 }
 else if (_p is null)
 {
-    <PsaCard Title="Prefactura"><p class="psa-notice psa-notice--danger">@(_error ?? "No existe esa prefactura en esta empresa.")</p></PsaCard>
+    <PsaCard Title="Prefactura"><p class="psa-notice psa-notice--danger">@(_error ?? "No existe esa prefactura en esta empresa, o no tenés acceso a ella.")</p></PsaCard>
 }
 else
 {
@@ -39,8 +36,14 @@ else
         </p>
         <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; margin-top: .6rem">
             <a class="psa-btn psa-btn--primary" href="@UrlPdf" download>Descargar PDF</a>
-            <PsaButton Variant="secondary" OnClick="Reenviar" Disabled="_trabajando">@(_p.CorreoEstado == EstadoCorreo.Enviado ? "Reenviar correo" : "Enviar correo")</PsaButton>
-            <PsaButton Variant="secondary" OnClick='() => Nav.NavigateTo("/ventas/prefacturas/nueva")'>Nueva prefactura</PsaButton>
+            @if (PuedeReenviar)
+            {
+                <PsaButton Variant="secondary" OnClick="Reenviar" Disabled="_trabajando">@(_p.CorreoEstado == EstadoCorreo.Enviado ? "Reenviar correo" : "Enviar correo")</PsaButton>
+            }
+            @if (_actor.Permisos.Emitir)
+            {
+                <PsaButton Variant="secondary" OnClick='() => Nav.NavigateTo("/ventas/prefacturas/nueva")'>Nueva prefactura</PsaButton>
+            }
         </div>
         @if (_mensaje is not null) { <p class="psa-notice" style="margin-top: .8rem">@_mensaje</p> }
         @if (_error is not null) { <p class="psa-notice psa-notice--danger" style="margin-top: .8rem">@_error</p> }
@@ -117,6 +120,12 @@ else
         }
         else
         {
+            @if (!_actor.Permisos.Cerrar)
+            {
+                <p class="psa-muted">Contabilidad la digitará en Sage y anotará aquí el número de la factura.</p>
+            }
+            else
+            {
             <p class="psa-muted">Cuando la factura esté digitada en Sage, anotá su número para cerrar la prefactura.</p>
             <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; align-items: flex-end">
                 <label class="psa-field">
@@ -126,6 +135,7 @@ else
                 <PsaButton Variant="primary" OnClick="MarcarFacturada" Disabled="@(_trabajando || string.IsNullOrWhiteSpace(_facturaSage))">Marcar como facturada</PsaButton>
                 <PsaButton Variant="secondary" OnClick="Anular" Disabled="_trabajando">@(_confirmaAnular ? "Confirmar anulación" : "Anular prefactura")</PsaButton>
             </div>
+            }
         }
     </PsaCard>
 }
@@ -141,6 +151,8 @@ else
     private bool _confirmaAnular;
     private string _facturaSage = "";
     private string _usuario = "web";
+    private ActorVentas _actor = new("web", PermisosVentas.Ninguno);
+    private bool PuedeReenviar => _p is not null && (_actor.Permisos.Cerrar || (_actor.Permisos.Emitir && string.Equals(_p.CreadaPor, _usuario, StringComparison.OrdinalIgnoreCase)));
     private string? _mensaje;
     private string? _error;
 
@@ -152,6 +164,8 @@ else
     {
         _empresa = Sp.GetService<EmpresaActualService>();
         _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        try { _actor = await PermisosSrv.ActorAsync(_usuario, Ruc); }
+        catch (Exception ex) { Logger.LogError(ex, "No se pudieron leer los permisos."); _actor = new ActorVentas(_usuario, PermisosVentas.Ninguno); }
         await Cargar();
     }
 
@@ -160,7 +174,7 @@ else
         try
         {
             _hoy = Servicio.Hoy;
-            _p = await Servicio.ObtenerAsync(Ruc, Id);
+            _p = await Servicio.ObtenerAsync(Ruc, Id, _actor);
         }
         catch (Exception ex)
         {
@@ -176,7 +190,7 @@ else
         _trabajando = true; _mensaje = null; _error = null;
         try
         {
-            _p = await Servicio.ReenviarCorreoAsync(Ruc, Id, Nav.BaseUri);
+            _p = await Servicio.ReenviarCorreoAsync(Ruc, Id, Nav.BaseUri, _actor);
             _mensaje = _p.CorreoEstado == EstadoCorreo.Enviado ? "Correo enviado a Contabilidad." : "No se pudo enviar el correo: " + _p.CorreoError;
         }
         catch (Exception ex) { Logger.LogError(ex, "No se pudo reenviar el correo."); _error = ex.Message; }
@@ -188,7 +202,7 @@ else
         _trabajando = true; _mensaje = null; _error = null;
         try
         {
-            await Servicio.MarcarFacturadaAsync(Ruc, Id, _facturaSage, _usuario);
+            await Servicio.MarcarFacturadaAsync(Ruc, Id, _facturaSage, _actor);
             await Cargar();
             _mensaje = "Prefactura marcada como facturada.";
         }
@@ -202,7 +216,7 @@ else
         _trabajando = true; _mensaje = null; _error = null;
         try
         {
-            await Servicio.AnularAsync(Ruc, Id);
+            await Servicio.AnularAsync(Ruc, Id, _actor);
             _confirmaAnular = false;
             await Cargar();
             _mensaje = "Prefactura anulada.";

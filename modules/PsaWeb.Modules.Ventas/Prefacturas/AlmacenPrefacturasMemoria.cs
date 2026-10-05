@@ -31,7 +31,7 @@ public sealed class AlmacenPrefacturasMemoria : IAlmacenPrefacturas
         lock (_candado)
         {
             var q = _prefacturas.Where(p => p.Ruc == ruc);
-            if (!string.IsNullOrWhiteSpace(filtro.CreadaPor)) q = q.Where(p => p.CreadaPor == filtro.CreadaPor);
+            if (!string.IsNullOrWhiteSpace(filtro.CreadaPor)) q = q.Where(p => string.Equals(p.CreadaPor, filtro.CreadaPor, StringComparison.OrdinalIgnoreCase));
             if (filtro.Estado is { } e) q = q.Where(p => p.Estado == e);
             if (filtro.Desde is { } d) q = q.Where(p => p.FechaEmision >= d);
             if (filtro.Hasta is { } h) q = q.Where(p => p.FechaEmision <= h);

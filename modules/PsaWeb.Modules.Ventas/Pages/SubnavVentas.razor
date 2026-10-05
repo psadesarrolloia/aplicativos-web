@@ -1,0 +1,22 @@
+@namespace PsaWeb.Modules.Ventas.Pages
+@using PsaWeb.Modules.Ventas.Prefacturas
+
+<div class="psa-subnav">
+    @if (Permisos.VerInventario)
+    {
+        <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
+    }
+    @if (Permisos.VerPrefacturas)
+    {
+        <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
+    }
+    @if (Permisos.Emitir)
+    {
+        <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
+    }
+</div>
+
+@code {
+    /// <summary>Permisos del usuario: la subnavegación solo ofrece lo que puede usar.</summary>
+    [Parameter] public PermisosVentas Permisos { get; set; } = PermisosVentas.Todos;
+}

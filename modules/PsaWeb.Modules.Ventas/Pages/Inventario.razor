@@ -1,9 +1,13 @@
 @page "/ventas/inventario"
 @namespace PsaWeb.Modules.Ventas.Pages
 @using System.Globalization
+@using Microsoft.AspNetCore.Components.Authorization
 @using PsaWeb.Modules.Ventas.Data
+@using PsaWeb.Modules.Ventas.Prefacturas
 @inject IVentasRepository Repositorio
 @inject IResolverEmpresaSage EmpresaSage
+@inject ServicioPermisosVentas PermisosSrv
+@inject AuthenticationStateProvider AuthState
 @inject ILogger<Inventario> Logger
 @implements IDisposable
 
@@ -12,12 +16,20 @@
 <PsaPageHeader Title="Inventario y precios"
                Subtitle="@Subtitulo" />
 
-<div class="psa-subnav">
-    <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
-    <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
-    <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
-</div>
+<SubnavVentas Permisos="_permisos" />
 
+@if (!_permisosListos)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else if (!_permisos.VerInventario)
+{
+    <PsaCard Title="Sin acceso">
+        <p class="psa-notice psa-notice--danger">Tu usuario no tiene permiso para ver el inventario y los precios de esta empresa (llave quSalesStk).</p>
+    </PsaCard>
+}
+else
+{
 <PsaCard Title="Cliente (opcional)">
     <p class="psa-muted">Elegí un cliente para ver el precio de <strong>su lista</strong> en cada ítem y su cupo de crédito.</p>
     <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; align-items: flex-end">
@@ -161,6 +173,8 @@ else if (_items is not null)
     </PsaCard>
 }
 
+}
+
 @code {
     private static readonly CultureInfo Ec = CultureInfo.GetCultureInfo("es-EC");
 
@@ -174,6 +188,8 @@ else if (_items is not null)
     private IReadOnlyList<int> _listasVisibles = Array.Empty<int>();
     private bool _cargando;
     private string? _error;
+    private PermisosVentas _permisos = PermisosVentas.Ninguno;
+    private bool _permisosListos;
 
     private string _textoCliente = "";
     private IReadOnlyList<ClienteVenta> _clientes = Array.Empty<ClienteVenta>();
@@ -187,7 +203,22 @@ else if (_items is not null)
 
     protected override void OnInitialized() => EmpresaSage.Cambio += Refrescar;
 
-    protected override async Task OnInitializedAsync() => await CargarCategorias();
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarPermisos();
+        if (_permisos.VerInventario) await CargarCategorias();
+    }
+
+    private async Task CargarPermisos()
+    {
+        try
+        {
+            var usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+            _permisos = await PermisosSrv.PermisosAsync(usuario, EmpresaSage.RucSesion ?? "SIN-EMPRESA");
+        }
+        catch (Exception ex) { Logger.LogError(ex, "No se pudieron leer los permisos."); _permisos = PermisosVentas.Ninguno; }
+        _permisosListos = true;
+    }
 
     private async Task CargarCategorias()
     {
@@ -198,7 +229,7 @@ else if (_items is not null)
     private void Refrescar()
     {
         _items = null; _error = null; _cliente = null; _clientes = Array.Empty<ClienteVenta>(); _categoria = "";
-        InvokeAsync(async () => { await CargarCategorias(); StateHasChanged(); });
+        InvokeAsync(async () => { await CargarPermisos(); if (_permisos.VerInventario) await CargarCategorias(); StateHasChanged(); });
     }
 
     private async Task CambiarEnsamblados(ChangeEventArgs e)

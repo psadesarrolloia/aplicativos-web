@@ -38,6 +38,7 @@ public static class VentasModule
         services.TryAddSingleton<IServicioCorreo, CorreoInerte>();
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<ServicioPrefacturas>();
+        services.AddScoped<ServicioPermisosVentas>();
         return services;
     }
 

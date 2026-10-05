@@ -41,6 +41,12 @@ public static class Permisos
     public const string VerLiquidacionImportaciones = "quimpliq";
     public const string RegistrarLiquidacionImportaciones = "mkimpliq";
 
+    // Portal de ventas — códigos nuevos (docs/sql/permisos-ventas.sql copia los roles de qusaleinv/mksaleinv; allowCode = nvarchar(10)).
+    public const string VerInventarioVentas = "quSalesStk";   // inventario y precios, solo lectura
+    public const string VerPrefacturas = "quSalesQte";        // ver prefacturas (las propias; Contabilidad ve todas)
+    public const string EmitirPrefactura = "mkSalesQte";      // emitir prefactura/cotización (PDF + correo a Contabilidad)
+    public const string CerrarPrefactura = "auSalesQte";      // Contabilidad: ver todas, marcar facturada en Sage, anular
+
     // ATS
     public const string VerAts = "quats";
 

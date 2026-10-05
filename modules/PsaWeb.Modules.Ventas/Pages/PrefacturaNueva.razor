@@ -7,6 +7,7 @@
 @using PsaWeb.Ventas.Prefacturas
 @inject IVentasRepository Repositorio
 @inject ServicioPrefacturas Servicio
+@inject ServicioPermisosVentas PermisosSrv
 @inject IServiceProvider Sp
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
@@ -18,12 +19,20 @@
 <PsaPageHeader Title="Nueva prefactura (cotización)"
                Subtitle="Arma la cotización con los precios de Sage, descarga el PDF para el cliente y avisa a Contabilidad para que la digite en Sage." />
 
-<div class="psa-subnav">
-    <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
-    <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
-    <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
-</div>
+<SubnavVentas Permisos="_actor.Permisos" />
 
+@if (!_permisosListos)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else if (!_actor.Permisos.Emitir)
+{
+    <PsaCard Title="Sin acceso">
+        <p class="psa-notice psa-notice--danger">Tu usuario no tiene permiso para emitir prefacturas en esta empresa (llave mkSalesQte).</p>
+    </PsaCard>
+}
+else
+{
 <PsaCard Title="1. Cliente">
     @if (_cliente is null)
     {
@@ -241,6 +250,8 @@
     </div>
 </PsaCard>
 
+}
+
 @code {
     private sealed class LineaEditable
     {
@@ -255,6 +266,8 @@
     private EmpresaActualService? _empresa;
     private ConfiguracionVentas _config = ConfiguracionVentas.PorDefecto("");
     private string _usuario = "web";
+    private ActorVentas _actor = new("web", PermisosVentas.Ninguno);
+    private bool _permisosListos;
 
     private string _textoCliente = "";
     private IReadOnlyList<ClienteVenta> _clientes = Array.Empty<ClienteVenta>();
@@ -289,7 +302,15 @@
         _empresa = Sp.GetService<EmpresaActualService>();
         if (_empresa is not null) _empresa.Cambio += EmpresaCambio;
         _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "web";
+        await CargarPermisos();
         await CargarEmpresa();
+    }
+
+    private async Task CargarPermisos()
+    {
+        try { _actor = await PermisosSrv.ActorAsync(_usuario, Ruc); }
+        catch (Exception ex) { Logger.LogError(ex, "No se pudieron leer los permisos."); _actor = new ActorVentas(_usuario, PermisosVentas.Ninguno); }
+        _permisosListos = true;
     }
 
     private async Task CargarEmpresa()
@@ -309,6 +330,7 @@
     private void EmpresaCambio() => InvokeAsync(async () =>
     {
         _cliente = null; _clientes = Array.Empty<ClienteVenta>(); _lineas.Clear(); _resultadosItems = null; _vendedor = ""; _etiqueta = "";
+        await CargarPermisos();
         await CargarEmpresa();
         Refrescar();
         StateHasChanged();
@@ -403,7 +425,7 @@
         _emitiendo = true;
         try
         {
-            var r = await Servicio.EmitirAsync(Ruc, _empresa?.Nombre ?? "Empresa de prueba", Solicitud(), _usuario, Nav.BaseUri);
+            var r = await Servicio.EmitirAsync(Ruc, _empresa?.Nombre ?? "Empresa de prueba", Solicitud(), _actor, Nav.BaseUri);
             if (r.Prefactura is null) { _validacion = r.Validacion; return; }
             Nav.NavigateTo($"/ventas/prefacturas/{r.Prefactura.Id}");
         }

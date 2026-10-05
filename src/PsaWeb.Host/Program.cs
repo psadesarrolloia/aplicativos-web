@@ -589,6 +589,7 @@ app.MapGet("/ventas/prefacturas/{id:int}/pdf", async (
         string? ruc,
         System.Security.Claims.ClaimsPrincipal usuario,
         PsaWeb.Modules.Ventas.Prefacturas.ServicioPrefacturas servicio,
+        PsaWeb.Modules.Ventas.Prefacturas.ServicioPermisosVentas permisos,
         PsaWeb.Seguridad.ISecurityDirectory? seguridad,
         CancellationToken cancellationToken) =>
     {
@@ -601,7 +602,13 @@ app.MapGet("/ventas/prefacturas/{id:int}/pdf", async (
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
-        var prefactura = await servicio.ObtenerAsync(ruc, id, cancellationToken);
+        // Permiso de ver prefacturas (quSalesQte); sin «cerrar» solo las propias (las ajenas responden 404, como si no existieran).
+        var actor = await permisos.ActorAsync(usuario.Identity?.Name ?? string.Empty, ruc, cancellationToken);
+        if (!actor.Permisos.VerPrefacturas)
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+        var prefactura = await servicio.ObtenerAsync(ruc, id, actor, cancellationToken);
         if (prefactura is null)
         {
             return Results.NotFound("No existe esa prefactura.");

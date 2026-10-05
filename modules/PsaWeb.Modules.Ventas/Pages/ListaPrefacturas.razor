@@ -5,6 +5,7 @@
 @using PsaWeb.Seguridad
 @using PsaWeb.Ventas.Prefacturas
 @inject ServicioPrefacturas Servicio
+@inject ServicioPermisosVentas PermisosSrv
 @inject IServiceProvider Sp
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
@@ -16,12 +17,20 @@
 <PsaPageHeader Title="Prefacturas"
                Subtitle="Cotizaciones emitidas por los vendedores. Contabilidad las digita en Sage y anota aquí el número de la factura." />
 
-<div class="psa-subnav">
-    <NavLink class="psa-nav__link" href="/ventas/inventario">Inventario y precios</NavLink>
-    <NavLink class="psa-nav__link" href="/ventas/prefacturas" Match="NavLinkMatch.All">Prefacturas</NavLink>
-    <NavLink class="psa-nav__link" href="/ventas/prefacturas/nueva">Nueva prefactura</NavLink>
-</div>
+<SubnavVentas Permisos="_actor.Permisos" />
 
+@if (!_permisosListos)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else if (!_actor.Permisos.VerPrefacturas)
+{
+    <PsaCard Title="Sin acceso">
+        <p class="psa-notice psa-notice--danger">Tu usuario no tiene permiso para ver prefacturas en esta empresa (llave quSalesQte).</p>
+    </PsaCard>
+}
+else
+{
 <PsaCard Title="Filtros">
     <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
         <label class="psa-field" style="flex: 1 1 16rem">
@@ -42,7 +51,7 @@
             <input class="psa-input" type="date" @bind="_desde" />
         </label>
         <label style="display: flex; align-items: center; gap: .5rem">
-            <input type="checkbox" @bind="_soloMias" />
+            <input type="checkbox" @bind="_soloMias" disabled="@(!_actor.Permisos.VerTodas)" />
             <span class="psa-muted">Solo las mías</span>
         </label>
         <PsaButton Variant="primary" OnClick="Buscar" Disabled="_cargando">@(_cargando ? "Consultando…" : "Consultar")</PsaButton>
@@ -93,9 +102,13 @@ else if (_lista is not null)
     </PsaCard>
 }
 
+}
+
 @code {
     private EmpresaActualService? _empresa;
     private string _usuario = "";
+    private ActorVentas _actor = new("", PermisosVentas.Ninguno);
+    private bool _permisosListos;
     private string _texto = "";
     private string _estado = "";
     private DateTime? _desde = DateTime.Today.AddDays(-60);
@@ -112,23 +125,33 @@ else if (_lista is not null)
         _empresa = Sp.GetService<EmpresaActualService>();
         if (_empresa is not null) _empresa.Cambio += EmpresaCambio;
         _usuario = (await AuthState.GetAuthenticationStateAsync()).User.Identity?.Name ?? "";
+        await CargarPermisos();
         await Buscar();
     }
 
-    private void EmpresaCambio() => InvokeAsync(async () => { await Buscar(); StateHasChanged(); });
+    private async Task CargarPermisos()
+    {
+        try { _actor = await PermisosSrv.ActorAsync(_usuario, Ruc); }
+        catch (Exception ex) { Logger.LogError(ex, "No se pudieron leer los permisos."); _actor = new ActorVentas(_usuario, PermisosVentas.Ninguno); }
+        _soloMias = !_actor.Permisos.VerTodas; // Contabilidad (cerrar) entra viendo todas; los demás solo las suyas
+        _permisosListos = true;
+    }
+
+    private void EmpresaCambio() => InvokeAsync(async () => { await CargarPermisos(); await Buscar(); StateHasChanged(); });
 
     private async Task Tecla(KeyboardEventArgs e) { if (e.Key == "Enter") await Buscar(); }
 
     private async Task Buscar()
     {
+        if (!_actor.Permisos.VerPrefacturas) { _lista = null; return; }
         _cargando = true; _error = null;
         try
         {
             _hoy = Servicio.Hoy;
             EstadoPrefactura? estado = int.TryParse(_estado, out var e) ? (EstadoPrefactura)e : null;
             _lista = await Servicio.ListarAsync(Ruc, new FiltroPrefacturas(
-                Texto: _texto, CreadaPor: _soloMias ? _usuario : null, Estado: estado,
-                Desde: _desde is { } d ? DateOnly.FromDateTime(d) : null));
+                Texto: _texto, CreadaPor: _soloMias || !_actor.Permisos.VerTodas ? _usuario : null, Estado: estado,
+                Desde: _desde is { } d ? DateOnly.FromDateTime(d) : null), _actor);
         }
         catch (Exception ex)
         {

@@ -199,3 +199,26 @@ y a una más (**2 correos por empresa**) con todos los datos para digitarla en S
   **SQL Server local** (`PSAWEB_TEST_PLATAFORMA`: migración, 8 emisiones simultáneas numeradas 1..8 —encontró que 5 reintentos no alcanzaban; ahora 25 con espera aleatoria—, actualización y limpieza).
 - **Pendiente de F2:** configurar el SMTP del servidor (`Correo:Servidor/Puerto/Usuario/Clave/Ssl`; el remitente hoy es `anulaciones@paredes.com.ec`, `Correo:De`) y los 2 correos en Configuración > Ventas; probar el flujo en el navegador con SANCEV; permisos definitivos (`GateProvisional`).
 - **Pospuesto (F3):** `GuardarFactura` por el Bridge con numeración del SRI cuando se decida pasar de digitación manual a escritura automática.
+
+## 10. Permisos del portal (implementados 2026-10-05, sin commit)
+
+Hasta F2 el menú era visible para todos y **las páginas no verificaban nada** (la URL directa funcionaba). Ahora hay 4 llaves nuevas en `allowAction` y se exigen **en el servidor** (el servicio y el endpoint del PDF), no solo en el menú.
+
+| Llave | Nombre | Qué permite | Roles que el script propone |
+|---|---|---|---|
+| `quSalesStk` | Ver inventario y precios de venta | `/ventas/inventario` | los de `qusaleinv` |
+| `quSalesQte` | Ver prefacturas | lista y detalle de **las propias** + PDF | los de `qusaleinv` |
+| `mkSalesQte` | Emitir prefacturas | nueva prefactura (PDF + correo), reenviar el correo de **las suyas** | los de `mksaleinv` |
+| `auSalesQte` | Contabilidad | ver **todas** las de la empresa, anotar la factura de Sage, anular | los de `mksaleinv` |
+
+- **Reglas** (`ReglasVentas`, `PsaWeb.Seguridad`): emitir implica ver prefacturas y ver inventario; cerrar implica ver (pero **no** emitir); ver inventario solo no abre las prefacturas. Un usuario sin `auSalesQte` solo ve las que emitió él
+  (la lista fuerza el filtro y las ajenas responden «no existe»; el PDF las responde 404). Contabilidad entra a la lista viendo todas.
+- **GateProvisional** (`ReglasVentas.PermisosProvisionales = true`, igual que Compras): mientras el área no cargue las llaves, `qusaleinv` (ver) y `mksaleinv` (emitir y cerrar) habilitan el portal. Al aplicar el script: poner `false` y dejar en
+  `AppCatalogo` solo las 4 llaves nuevas. **Consecuencia a tener en cuenta:** con las llaves provisionales los vendedores de SANCEV **no** entran si no tienen `qusaleinv`/`mksaleinv`; hay que crear un rol «Vendedor»
+  (`quSalesStk` + `quSalesQte` + `mkSalesQte`) y asignarlo por empresa desde el administrador de roles.
+- **Script:** `docs/sql/permisos-ventas.sql` (vista previa con `-v Aplicar=0`, aplica con `-v Aplicar=1`; idempotente; códigos ≤ 10 y nombres ≤ 50). **Vista previa corrida en el PeachEBills local el 2026-10-05**: las 4 llaves se crean y se asignan a los roles
+  `HacerFactElec`, `Hacer Comprobantes Electrónicos`, `Hacer Facturas electrónicas por Lotes` (y `Ver Comprobantes electrónicos` para las de lectura). **No aplicado** (decisión del área).
+- **Código:** `PermisosVentas`/`ActorVentas`/`ServicioPermisosVentas` en el módulo; `ServicioPrefacturas` recibe el `ActorVentas` en cada operación y lanza `AccesoDenegadoVentasException`; las 4 páginas muestran «Sin acceso» y la
+  subnavegación (`SubnavVentas`) solo ofrece lo que el usuario puede usar; `/admin/ventas` sigue siendo solo de `Plataforma:Admins`.
+- **Pruebas** (98 en `PsaWeb.Ventas.Tests`): matriz de reglas con y sin provisionales, menú por llaves, permisos desde un directorio falso, el servicio exige cada permiso (emitir, ver solo lo propio, cerrar, reenviar) y las páginas con permisos limitados.
+- **Pendiente:** que el área apruebe el reparto y aplique el script; crear el rol de vendedor; luego `PermisosProvisionales = false`.
