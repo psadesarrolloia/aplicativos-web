@@ -486,3 +486,7 @@ $RECYCLE.BIN/
 # Artefactos de publicación (F5)
 /publish/
 *.zip
+
+# Datos de usuarios reales (matrices de accesos): nunca al repo
+Usuarios/
+publish-*/

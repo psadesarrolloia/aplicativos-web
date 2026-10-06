@@ -31,10 +31,10 @@ async function subirReporte(ruc, contenido) {
   const { tokenApi, hostPsa } = await obtenerConfiguracion();
 
   if (!tokenApi) {
-    return { ok: false, mensaje: "Configurá tu token de PSA en el ícono de la extensión." };
+    return { ok: false, mensaje: "Configura tu token de PSA en el ícono de la extensión." };
   }
   if (!hostPsa) {
-    return { ok: false, mensaje: "Configurá la dirección del sitio de PSA en el ícono de la extensión." };
+    return { ok: false, mensaje: "Configura la dirección del sitio de PSA en el ícono de la extensión." };
   }
 
   let respuesta;
@@ -48,11 +48,11 @@ async function subirReporte(ruc, contenido) {
       body: JSON.stringify({ ruc, contenidoReporte: contenido }),
     });
   } catch {
-    return { ok: false, mensaje: "No se pudo conectar con PSA. Reintentá en unos minutos." };
+    return { ok: false, mensaje: "No se pudo conectar con PSA. Reintenta en unos minutos." };
   }
 
   if (respuesta.status === 401) {
-    return { ok: false, mensaje: "Tu token ya no es válido — generá uno nuevo en Mi cuenta." };
+    return { ok: false, mensaje: "Tu token ya no es válido — genera uno nuevo en Mi cuenta." };
   }
   if (respuesta.status === 403) {
     return { ok: false, mensaje: "Esta empresa no está habilitada para tu usuario en PSA." };
@@ -62,7 +62,7 @@ async function subirReporte(ruc, contenido) {
     return { ok: false, mensaje: texto || "El reporte no tiene el formato esperado." };
   }
   if (!respuesta.ok) {
-    return { ok: false, mensaje: "No se pudo conectar con PSA. Reintentá en unos minutos." };
+    return { ok: false, mensaje: "No se pudo conectar con PSA. Reintenta en unos minutos." };
   }
 
   const resultado = await respuesta.json();

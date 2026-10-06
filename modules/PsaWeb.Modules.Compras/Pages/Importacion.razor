@@ -14,7 +14,7 @@
 @inject ILogger<Importacion> Logger
 @implements IDisposable
 
-<PageTitle>Liquidación @Cuenta — Aplicativos web PSA</PageTitle>
+<PageTitle>Liquidación @Cuenta — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="@Titulo" Subtitle="@(_d?.Cuenta.Descripcion ?? "Liquidación de importación")">
     <a class="psa-linkbtn" href="/compras/importaciones">← Importaciones</a>
@@ -26,11 +26,11 @@
 }
 else if (_ruc is null)
 {
-    <div class="psa-notice">Elija una empresa para trabajar.</div>
+    <div class="psa-notice">Elige una empresa para trabajar.</div>
 }
 else if (_permisos is { Ver: false })
 {
-    <div class="psa-notice psa-notice--danger">No tiene permiso para ver las liquidaciones de importación de esta empresa.</div>
+    <div class="psa-notice psa-notice--danger">No tienes permiso para ver las liquidaciones de importación de esta empresa.</div>
 }
 else if (_cargaError is not null)
 {
@@ -87,7 +87,7 @@ else
     </PsaCard>
 
     <PsaCard Title="Valores de importación (movimientos de la cuenta en Sage)">
-        <p class="psa-muted" style="margin-bottom: .6rem">Marque la factura del exterior; el resto son gastos de nacionalización que se prorratean a los ítems.</p>
+        <p class="psa-muted" style="margin-bottom: .6rem">Marca la factura del exterior; el resto son gastos de nacionalización que se prorratean a los ítems.</p>
         <div style="overflow-x: auto">
         <table class="psa-table">
             <thead>
@@ -232,7 +232,7 @@ else
             <p class="psa-muted" style="margin-top: .4rem">Reporte: @motivo</p>
         }
         <p class="psa-muted" style="margin-top: .8rem">
-            «Crear OC» guarda la liquidación y registra la OC (total 0) en Sage. Revise la OC y, si está bien, «Registrar compra» registra
+            «Crear OC» guarda la liquidación y registra la OC (total 0) en Sage. Revisa la OC y, si está bien, «Registrar compra» registra
             la compra @(string.IsNullOrEmpty(_numero) ? "" : $"«{_cat.ReferenciaCompra(Liquidaciones.Referencia(_prefijo, _numero))}»") que carga el costo al inventario.
             Mientras no haya compra, la OC se corrige desde aquí («Actualizar OC»), no en Sage.
         </p>
@@ -276,7 +276,7 @@ else
     private bool TrabajoEnCurso => _trabajo is not null && !EstadosTrabajo.EsFinal(_trabajo.Estado);
     private (double Gastos, double Factura) Totales => Liquidaciones.Totales(_gastos);
     private string NombreProveedor => _cat?.Proveedores.FirstOrDefault(x => x.Id == _proveedor)?.Nombre ?? (string.IsNullOrEmpty(_proveedor) ? "" : "(no existe en Sage)");
-    private string? MotivoSinReporte => _d is null ? "Cargando." : _cambios && !SoloLectura ? "Guarde los cambios antes de sacar el reporte." : _d.MotivoSinReporte(_items, _gastos);
+    private string? MotivoSinReporte => _d is null ? "Cargando." : _cambios && !SoloLectura ? "Guarda los cambios antes de sacar el reporte." : _d.MotivoSinReporte(_items, _gastos);
 
     // Descarga como el Kardex: navegación completa a un endpoint del Host (fuera de las rutas de las páginas).
     private void DescargarReporte() =>

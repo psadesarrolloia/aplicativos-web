@@ -99,7 +99,7 @@ public class CompraMixtaCopiaTests(ITestOutputHelper salida)
                     if (Entero(b["IncludeInInvLedger"]) != 1) fallas.Add($"Fila {i} (inventario) sin IncludeInInvLedger.");
                 }
             }
-            if (stock == 0) fallas.Add("La OC de origen no tiene ítems de inventario: elija otra.");
+            if (stock == 0) fallas.Add("La OC de origen no tiene ítems de inventario: elige otra.");
 
             // Capas de costo.
             const string sqlCapas = "SELECT l.ItemID, i.Quantity, i.TransAmount FROM InventoryCosts i, LineItem l WHERE i.ItemRecNumber = l.ItemRecordNumber " +

@@ -1,80 +1,87 @@
 @page "/admin/auditoria"
-@using Microsoft.Extensions.Options
 @using PsaWeb.Identidad
-@inject IOptions<PlataformaOptions> Opciones
+@using PsaWeb.Seguridad
 @inject AuditoriaAuth Registro
-@inject AuthenticationStateProvider AuthState
 
-<PageTitle>Auditoría — Aplicativos web PSA</PageTitle>
+<PageTitle>Auditoría — Aplicativos Web PSA</PageTitle>
 
-<PsaPageHeader Title="Configuración"
-               Subtitle="Auditoría de acceso: últimos eventos de inicio de sesión." />
-
-<div class="psa-subnav">
-    <NavLink class="psa-nav__link" href="/admin/usuarios">Usuarios</NavLink>
-    <NavLink class="psa-nav__link" href="/admin/auditoria">Auditoría</NavLink>
-    <NavLink class="psa-nav__link" href="/admin/sage-bridge">Sage Bridge</NavLink>
-    <NavLink class="psa-nav__link" href="/admin/ventas">Ventas</NavLink>
-</div>
-
-@if (!_esAdmin)
-{
-    <PsaCard Title="Sin acceso">
-        <p class="psa-notice psa-notice--danger">Tu usuario no tiene acceso a la administración.</p>
-    </PsaCard>
-}
-else if (_eventos is null)
-{
-    <p class="psa-muted">Cargando…</p>
-}
-else
-{
-    <PsaCard Title="@($"Últimos {_eventos.Count} eventos")">
-        <div style="overflow-x:auto">
-        <table class="psa-table">
-            <thead>
-                <tr><th>Fecha (UTC)</th><th>Evento</th><th>Usuario</th><th>IP</th><th>Detalle</th></tr>
-            </thead>
-            <tbody>
-                @if (_eventos.Count == 0)
-                {
-                    <tr><td colspan="5" class="psa-muted">Sin eventos todavía.</td></tr>
-                }
-                @foreach (var e in _eventos)
-                {
-                    <tr>
-                        <td>@e.Utc.ToString("dd/MM/yyyy HH:mm:ss")</td>
-                        <td><span class="psa-evt psa-evt--@Clase(e.Tipo)">@Etiqueta(e.Tipo)</span></td>
-                        <td>@e.Usuario</td>
-                        <td>@e.Ip</td>
-                        <td class="psa-muted">@e.Detalle</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+<AdminMarco Requiere="RolPanel.Admin" AlCargar="AlCargar"
+            Subtitulo="Auditoría: ingresos, verificación en dos pasos y cambios de usuarios y accesos (quién, a quién, qué y desde dónde).">
+    <PsaCard Title="Filtros">
+        <div class="psa-row" style="align-items:flex-end;flex-wrap:wrap">
+            <label class="psa-field"><span class="psa-field__lbl">Usuario (o texto del detalle)</span>
+                <input class="psa-input" @bind="_usuario" /></label>
+            <label class="psa-field"><span class="psa-field__lbl">Evento</span>
+                <select class="psa-input" @bind="_tipo">
+                    <option value="">Todos</option>
+                    @foreach (var t in Tipos)
+                    {
+                        <option value="@t">@Etiqueta(t)</option>
+                    }
+                </select></label>
+            <PsaButton Variant="primary" OnClick="Buscar">Buscar</PsaButton>
         </div>
     </PsaCard>
-}
+
+    @if (_eventos is null)
+    {
+        <p class="psa-muted">Cargando…</p>
+    }
+    else
+    {
+        <PsaCard Title="@($"Últimos {_eventos.Count} eventos")">
+            <div style="overflow-x:auto">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>Fecha (Ecuador)</th><th>Evento</th><th>Usuario</th><th>IP</th><th>Detalle</th></tr>
+                </thead>
+                <tbody>
+                    @if (_eventos.Count == 0)
+                    {
+                        <tr><td colspan="5" class="psa-muted">Sin eventos.</td></tr>
+                    }
+                    @foreach (var e in _eventos)
+                    {
+                        <tr>
+                            <td>@e.Utc.AddHours(-5).ToString("dd/MM/yyyy HH:mm:ss")</td>
+                            <td><span class="psa-evt psa-evt--@Clase(e.Tipo)">@Etiqueta(e.Tipo)</span></td>
+                            <td>@e.Usuario</td>
+                            <td>@e.Ip</td>
+                            <td class="psa-muted">@e.Detalle</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+        </PsaCard>
+    }
+</AdminMarco>
 
 @code {
-    private bool _esAdmin;
     private IReadOnlyList<EventoAuth>? _eventos;
+    private string _usuario = "";
+    private string _tipo = "";
 
-    protected override async Task OnInitializedAsync()
+    private static readonly string[] Tipos =
     {
-        var state = await AuthState.GetAuthenticationStateAsync();
-        _esAdmin = Opciones.Value.EsAdmin(state.User.Identity?.Name);
-        if (_esAdmin)
-        {
-            _eventos = await Registro.RecientesAsync(200);
-        }
-    }
+        TiposEventoAuth.LoginOk, TiposEventoAuth.LoginFallido, TiposEventoAuth.LoginDeshabilitado, TiposEventoAuth.LoginIpNueva,
+        TiposEventoAuth.SegundoFactorPendiente, TiposEventoAuth.SegundoFactorOk, TiposEventoAuth.SegundoFactorFallido, TiposEventoAuth.Bloqueo,
+        TiposEventoAuth.SegundoFactorActivado, TiposEventoAuth.SegundoFactorDesactivado, TiposEventoAuth.Logout,
+        TiposEventoAuth.AdminAltaUsuario, TiposEventoAuth.InvitacionEnviada, TiposEventoAuth.CuentaActivada, TiposEventoAuth.ClaveRecuperada,
+        TiposEventoAuth.AdminResetClave, TiposEventoAuth.AdminHabilitado, TiposEventoAuth.AdminDeshabilitado, TiposEventoAuth.Admin2faQuitado,
+        TiposEventoAuth.PerfilCambiado, TiposEventoAuth.EmpresaActivada, TiposEventoAuth.EmpresaDesactivada,
+        TiposEventoAuth.AccesoOtorgado, TiposEventoAuth.AccesoQuitado, TiposEventoAuth.UsuarioSageCambiado, TiposEventoAuth.TokenExtensionRevocado,
+    };
+
+    private async Task AlCargar(ServicioAccesos.Actor _) => await Buscar();
+
+    private async Task Buscar() => _eventos = await Registro.BuscarAsync(_usuario, _tipo, 300);
 
     private static string Clase(string tipo) => tipo switch
     {
-        TiposEventoAuth.LoginOk or TiposEventoAuth.SegundoFactorOk => "ok",
-        TiposEventoAuth.LoginFallido or TiposEventoAuth.SegundoFactorFallido
-            or TiposEventoAuth.Bloqueo or TiposEventoAuth.LoginDeshabilitado => "bad",
+        TiposEventoAuth.LoginOk or TiposEventoAuth.SegundoFactorOk or TiposEventoAuth.CuentaActivada or TiposEventoAuth.SegundoFactorActivado => "ok",
+        TiposEventoAuth.LoginFallido or TiposEventoAuth.SegundoFactorFallido or TiposEventoAuth.LoginIpNueva
+            or TiposEventoAuth.Bloqueo or TiposEventoAuth.LoginDeshabilitado or TiposEventoAuth.SegundoFactorDesactivado => "bad",
         _ => "neutral",
     };
 
@@ -83,16 +90,29 @@ else
         TiposEventoAuth.LoginOk => "ingreso ok",
         TiposEventoAuth.LoginFallido => "ingreso fallido",
         TiposEventoAuth.LoginDeshabilitado => "usuario deshabilitado",
+        TiposEventoAuth.LoginIpNueva => "ingreso desde IP nueva",
         TiposEventoAuth.SegundoFactorPendiente => "pide 2FA",
         TiposEventoAuth.SegundoFactorOk => "2FA ok",
         TiposEventoAuth.SegundoFactorFallido => "2FA fallido",
+        TiposEventoAuth.SegundoFactorActivado => "2FA activado",
+        TiposEventoAuth.SegundoFactorDesactivado => "2FA desactivado",
         TiposEventoAuth.Bloqueo => "bloqueo por intentos",
         TiposEventoAuth.Logout => "salida",
         TiposEventoAuth.AdminAltaUsuario => "alta de usuario",
-        TiposEventoAuth.AdminResetClave => "reseteo de clave",
-        TiposEventoAuth.AdminHabilitado => "usuario habilitado",
-        TiposEventoAuth.AdminDeshabilitado => "usuario deshabilitado",
-        TiposEventoAuth.Admin2faQuitado => "2FA quitado",
+        TiposEventoAuth.InvitacionEnviada => "invitación / enlace de clave",
+        TiposEventoAuth.CuentaActivada => "clave definida por enlace",
+        TiposEventoAuth.ClaveRecuperada => "pidió recuperar clave",
+        TiposEventoAuth.AdminResetClave => "clave temporal",
+        TiposEventoAuth.AdminHabilitado => "cuenta habilitada",
+        TiposEventoAuth.AdminDeshabilitado => "cuenta deshabilitada",
+        TiposEventoAuth.Admin2faQuitado => "2FA quitado por admin",
+        TiposEventoAuth.PerfilCambiado => "perfil / correo cambiado",
+        TiposEventoAuth.EmpresaActivada => "empresa activada",
+        TiposEventoAuth.EmpresaDesactivada => "empresa desactivada",
+        TiposEventoAuth.AccesoOtorgado => "módulos otorgados",
+        TiposEventoAuth.AccesoQuitado => "módulos quitados",
+        TiposEventoAuth.UsuarioSageCambiado => "usuario de Sage",
+        TiposEventoAuth.TokenExtensionRevocado => "token extensión revocado",
         _ => tipo,
     };
 }

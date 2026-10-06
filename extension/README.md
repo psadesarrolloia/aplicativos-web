@@ -14,7 +14,7 @@ sin pasar por la carpeta de Descargas.
 4. Click en **"Cargar descomprimida"** y elegir esta carpeta.
 5. Click en el ícono de la extensión (barra de herramientas de Chrome, puede
    estar escondido bajo el ícono de rompecabezas) — abre una **pestaña normal**
-   de configuración (no un cuadro chico que se cierra solo), así que podés ir
+   de configuración (no un cuadro chico que se cierra solo), así que puedes ir
    y volver de otra pestaña sin perder lo que ya escribiste → completar:
    - **Sitio de PSA**: `http://192.168.0.11:8088` (o la dirección que
      corresponda).

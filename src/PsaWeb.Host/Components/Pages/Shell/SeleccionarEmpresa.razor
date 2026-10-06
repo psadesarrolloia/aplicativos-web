@@ -7,9 +7,9 @@
 @inject NavigationManager Nav
 @inject ProtectedLocalStorage LocalStorage
 
-<PageTitle>Elegí una empresa — Aplicativos web PSA</PageTitle>
+<PageTitle>Elige una empresa — Aplicativos Web PSA</PageTitle>
 
-<PsaPageHeader Title="Elegí una empresa"
+<PsaPageHeader Title="Elige una empresa"
                Subtitle="El resto de los módulos trabajan sobre la empresa y el ambiente que elijas acá." />
 
 @if (_cargando)
@@ -20,7 +20,7 @@ else if (_empresas.Count == 0)
 {
     <PsaCard Title="Sin empresas asignadas">
         <p class="psa-notice psa-notice--danger">
-            Tu usuario no tiene ninguna empresa asignada. Contactá al administrador.
+            Tu usuario no tiene ninguna empresa asignada. Contacta al administrador.
         </p>
         <div class="psa-row" style="margin-top:1rem">
             <a class="psa-btn psa-btn--secondary" href="/salir">Salir</a>

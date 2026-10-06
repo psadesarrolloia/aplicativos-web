@@ -1,15 +1,26 @@
 @page "/mi-cuenta/seguridad"
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.Extensions.Options
 @using PsaWeb.Identidad
 @inject UserManager<UsuarioApp> Users
 @inject GestorSegundoFactor Gestor
+@inject IEnviadorCorreoPlataforma Correo
+@inject AuditoriaAuth Auditoria
+@inject IOptions<PlataformaOptions> Plataforma
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Navegacion
 
-<PageTitle>Seguridad — Aplicativos web PSA</PageTitle>
+<PageTitle>Seguridad — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Seguridad de la cuenta"
-               Subtitle="Verificación en dos pasos con una app de autenticación (TOTP)." />
+               Subtitle="Verificación en dos pasos: con una app de autenticación (TOTP) o con un código a tu correo." />
+
+@if (_obligatorio)
+{
+    <p class="psa-notice psa-notice--danger" style="margin-bottom:1rem">
+        Tu perfil (@Perfiles.Etiqueta(_perfil)) exige la verificación en dos pasos. Actívala para poder usar la plataforma.
+    </p>
+}
 
 @if (_cargando)
 {
@@ -19,62 +30,99 @@ else if (_usuario is null)
 {
     <p class="psa-notice psa-notice--danger">No se pudo identificar tu usuario.</p>
 }
-else if (_estado!.Habilitado && _enrolamiento is null)
+else if (_codigos is not null)
+{
+    <PsaCard Title="Verificación en dos pasos activada">
+        <CodigosRecuperacion Codigos="_codigos" />
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="primary" OnClick="Continuar">Ya los guardé, continuar</PsaButton>
+        </div>
+    </PsaCard>
+}
+else if (_estado!.Habilitado)
 {
     <PsaCard Title="Verificación en dos pasos">
-        <p class="psa-notice">Está <strong>activa</strong>. Quedan @_estado.CodigosRecuperacionRestantes códigos de recuperación.</p>
+        <p class="psa-notice">
+            Está <strong>activa</strong> (@(GestorSegundoFactor.MetodoDe(_usuario) == MetodosSegundoFactor.Correo ? "código por correo" : "app de autenticación")).
+            Quedan @_estado.CodigosRecuperacionRestantes códigos de recuperación.
+        </p>
         <div class="psa-row" style="margin-top:1rem">
             <PsaButton Variant="secondary" OnClick="Regenerar">Regenerar códigos de recuperación</PsaButton>
-            <PsaButton Variant="danger" OnClick="Desactivar">Desactivar</PsaButton>
+            @if (!Perfiles.ExigeSegundoFactor(_perfil))
+            {
+                <PsaButton Variant="danger" OnClick="Desactivar">Desactivar</PsaButton>
+            }
         </div>
-        @if (_codigos is not null)
+        @if (Perfiles.ExigeSegundoFactor(_perfil))
         {
-            <CodigosRecuperacion Codigos="_codigos" />
+            <p class="psa-muted" style="margin-top:.6rem">Tu perfil la exige: para cambiar de método, pide a un Super Admin que la quite y vuelve a activarla.</p>
         }
     </PsaCard>
 }
 else if (_enrolamiento is not null)
 {
     <PsaCard Title="Configurar la app de autenticación">
-        @if (_codigos is null)
-        {
-            <ol class="psa-pasos">
-                <li>Abrí Google Authenticator / Microsoft Authenticator y escaneá el código.</li>
-                <li>O cargá la clave manualmente: <code>@_enrolamiento.ClaveFormateada</code></li>
-                <li>Ingresá el código de 6 dígitos que muestra la app.</li>
-            </ol>
+        <ol class="psa-pasos">
+            <li>Abre Google Authenticator / Microsoft Authenticator y escanea el código.</li>
+            <li>O carga la clave manualmente: <code>@_enrolamiento.ClaveFormateada</code></li>
+            <li>Ingresa el código de 6 dígitos que muestra la app.</li>
+        </ol>
 
-            <div class="psa-qr">@((MarkupString)_enrolamiento.QrSvg)</div>
+        <div class="psa-qr">@((MarkupString)_enrolamiento.QrSvg)</div>
 
-            <div class="psa-field" style="max-width:220px">
-                <span class="psa-field__lbl">Código</span>
-                <input class="psa-input" inputmode="numeric" @bind="_codigo" @bind:event="oninput" />
-            </div>
-            @if (_error is not null)
-            {
-                <p class="psa-notice psa-notice--danger" style="margin-top:.6rem">@_error</p>
-            }
-            <div class="psa-row" style="margin-top:1rem">
-                <PsaButton Variant="primary" OnClick="Activar" Disabled="_procesando">
-                    @(_procesando ? "Verificando…" : "Activar")
-                </PsaButton>
-                <PsaButton Variant="ghost" OnClick="Cancelar">Cancelar</PsaButton>
-            </div>
-        }
-        else
+        <div class="psa-field" style="max-width:220px">
+            <span class="psa-field__lbl">Código</span>
+            <input class="psa-input" inputmode="numeric" @bind="_codigo" @bind:event="oninput" />
+        </div>
+        @if (_error is not null)
         {
-            <p class="psa-notice">La verificación en dos pasos quedó <strong>activada</strong>.</p>
-            <CodigosRecuperacion Codigos="_codigos" />
+            <p class="psa-notice psa-notice--danger" style="margin-top:.6rem">@_error</p>
         }
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="primary" OnClick="Activar" Disabled="_procesando">@(_procesando ? "Verificando…" : "Activar")</PsaButton>
+            <PsaButton Variant="ghost" OnClick="Cancelar">Cancelar</PsaButton>
+        </div>
+    </PsaCard>
+}
+else if (_esperandoCodigoCorreo)
+{
+    <PsaCard Title="Verificación por correo">
+        <p>Te mandamos un código de 6 dígitos a <strong>@_usuario.Email</strong>. Ingrésalo para activar.</p>
+        <div class="psa-field" style="max-width:220px;margin-top:.6rem">
+            <span class="psa-field__lbl">Código</span>
+            <input class="psa-input" inputmode="numeric" @bind="_codigo" @bind:event="oninput" />
+        </div>
+        @if (_error is not null)
+        {
+            <p class="psa-notice psa-notice--danger" style="margin-top:.6rem">@_error</p>
+        }
+        <div class="psa-row" style="margin-top:1rem">
+            <PsaButton Variant="primary" OnClick="ActivarCorreo" Disabled="_procesando">@(_procesando ? "Verificando…" : "Activar")</PsaButton>
+            <PsaButton Variant="secondary" OnClick="EnviarCodigoCorreo" Disabled="_procesando">Reenviar el código</PsaButton>
+            <PsaButton Variant="ghost" OnClick="Cancelar">Cancelar</PsaButton>
+        </div>
     </PsaCard>
 }
 else
 {
     <PsaCard Title="Verificación en dos pasos">
-        <p class="psa-muted">No está configurada. Recomendado para todas las cuentas.</p>
+        <p class="psa-muted">
+            No está configurada. @(Perfiles.ExigeSegundoFactor(_perfil) ? "Tu perfil la exige." : "Es opcional para tu cuenta, pero muy recomendable si ingresas desde fuera de la oficina.")
+        </p>
         <div class="psa-row" style="margin-top:1rem">
-            <PsaButton Variant="primary" OnClick="Configurar">Configurar</PsaButton>
+            <PsaButton Variant="primary" OnClick="Configurar">Usar una app de autenticación</PsaButton>
+            <PsaButton Variant="secondary" OnClick="EnviarCodigoCorreo" Disabled="@(!PuedeCorreo || _procesando)">Usar un código por correo</PsaButton>
         </div>
+        @if (!PuedeCorreo)
+        {
+            <p class="psa-muted" style="margin-top:.6rem">
+                @(string.IsNullOrWhiteSpace(_usuario.Email) ? "Tu cuenta no tiene correo: pídelo a la administración para usar esta opción." : "El correo saliente no está configurado en el servidor.")
+            </p>
+        }
+        @if (_error is not null)
+        {
+            <p class="psa-notice psa-notice--danger" style="margin-top:.6rem">@_error</p>
+        }
     </PsaCard>
 }
 
@@ -90,7 +138,10 @@ else
 </div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "obligatorio")] private string? Obligatorio { get; set; }
+
     private UsuarioApp? _usuario;
+    private string _perfil = Perfiles.Usuario;
     private EstadoSegundoFactor? _estado;
     private EnrolamientoTotp? _enrolamiento;
     private IReadOnlyList<string>? _codigos;
@@ -98,6 +149,10 @@ else
     private string? _error;
     private bool _cargando = true;
     private bool _procesando;
+    private bool _esperandoCodigoCorreo;
+
+    private bool _obligatorio => Perfiles.ExigeSegundoFactor(_perfil) && _estado is { Habilitado: false };
+    private bool PuedeCorreo => _usuario is not null && !string.IsNullOrWhiteSpace(_usuario.Email) && Correo.Disponible;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,6 +164,7 @@ else
         }
         if (_usuario is not null)
         {
+            _perfil = UsuarioClaimsFactory.PerfilEfectivo(_usuario, Plataforma.Value);
             _estado = await Gestor.EstadoAsync(_usuario);
         }
         _cargando = false;
@@ -117,13 +173,14 @@ else
     private async Task Configurar()
     {
         _error = null;
-        _codigos = null;
+        _codigo = "";
         _enrolamiento = await Gestor.PrepararEnrolamientoAsync(_usuario!);
     }
 
     private void Cancelar()
     {
         _enrolamiento = null;
+        _esperandoCodigoCorreo = false;
         _codigo = "";
         _error = null;
     }
@@ -137,9 +194,11 @@ else
             var (ok, codigos) = await Gestor.ActivarAsync(_usuario!, _codigo);
             if (!ok)
             {
-                _error = "El código no es válido. Probá con el siguiente que muestre la app.";
+                _error = "El código no es válido. Prueba con el siguiente que muestre la app.";
                 return;
             }
+            await Auditoria.RegistrarAsync(TiposEventoAuth.SegundoFactorActivado, _usuario!.UserName, "app de autenticación");
+            _enrolamiento = null;
             _codigos = codigos;
             _estado = await Gestor.EstadoAsync(_usuario!);
         }
@@ -149,6 +208,56 @@ else
         }
     }
 
+    private async Task EnviarCodigoCorreo()
+    {
+        _procesando = true;
+        _error = null;
+        try
+        {
+            if (!await Gestor.EnviarCodigoActivacionCorreoAsync(_usuario!, Correo))
+            {
+                _error = "No se pudo enviar el código.";
+                return;
+            }
+            _codigo = "";
+            _esperandoCodigoCorreo = true;
+        }
+        catch (Exception)
+        {
+            _error = "No se pudo enviar el correo. Prueba de nuevo en unos minutos.";
+        }
+        finally
+        {
+            _procesando = false;
+        }
+    }
+
+    private async Task ActivarCorreo()
+    {
+        _procesando = true;
+        _error = null;
+        try
+        {
+            var (ok, codigos) = await Gestor.ActivarPorCorreoAsync(_usuario!, _codigo);
+            if (!ok)
+            {
+                _error = "El código no es válido o venció. Pide uno nuevo.";
+                return;
+            }
+            await Auditoria.RegistrarAsync(TiposEventoAuth.SegundoFactorActivado, _usuario!.UserName, "código por correo");
+            _esperandoCodigoCorreo = false;
+            _codigos = codigos;
+            _estado = await Gestor.EstadoAsync(_usuario!);
+        }
+        finally
+        {
+            _procesando = false;
+        }
+    }
+
+    // La cookie de sesión todavía dice "sin 2FA": se re-firma (endpoint HTTP, fuera del circuito) y se sigue al inicio.
+    private void Continuar() => Navegacion.NavigateTo("/mi-cuenta/refrescar-sesion?volver=/", forceLoad: true);
+
     private async Task Regenerar()
     {
         _codigos = await Gestor.RegenerarCodigosRecuperacionAsync(_usuario!);
@@ -157,10 +266,13 @@ else
 
     private async Task Desactivar()
     {
+        if (Perfiles.ExigeSegundoFactor(_perfil)) return;
         await Gestor.DesactivarAsync(_usuario!);
+        await Auditoria.RegistrarAsync(TiposEventoAuth.SegundoFactorDesactivado, _usuario!.UserName, "por el propio usuario");
         _enrolamiento = null;
         _codigos = null;
         _codigo = "";
         _estado = await Gestor.EstadoAsync(_usuario!);
+        Navegacion.NavigateTo("/mi-cuenta/refrescar-sesion?volver=/mi-cuenta/seguridad", forceLoad: true);
     }
 }

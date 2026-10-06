@@ -16,9 +16,9 @@ public static class ValidadorPrefactura
         var errores = new List<string>();
         var advertencias = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(s.ClienteId)) errores.Add("Elegí el cliente.");
-        if (string.IsNullOrWhiteSpace(s.Vendedor)) errores.Add("Elegí el vendedor (el rep de Sage con el que se facturará).");
-        if (s.Lineas.Count == 0) errores.Add("Agregá al menos un ítem.");
+        if (string.IsNullOrWhiteSpace(s.ClienteId)) errores.Add("Elige el cliente.");
+        if (string.IsNullOrWhiteSpace(s.Vendedor)) errores.Add("Elige el vendedor (el rep de Sage con el que se facturará).");
+        if (s.Lineas.Count == 0) errores.Add("Agrega al menos un ítem.");
         if (s.Lineas.Count > MaximoDeLineas) errores.Add($"Máximo {MaximoDeLineas} líneas por prefactura.");
 
         for (var i = 0; i < s.Lineas.Count; i++)

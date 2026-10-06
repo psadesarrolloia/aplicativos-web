@@ -28,9 +28,13 @@ public sealed record ContextoCompras(
 public sealed record ResultadoGuardarCompra(ResultadoArmado Armado, long? TrabajoId, string? Error);
 
 /// <summary>Permisos del usuario en el módulo (<c>qupurchinv</c>/<c>mkpurchinv</c>, §9 del plan).</summary>
-public sealed record PermisosCompras(bool Ver, bool Registrar)
+/// <param name="UsuarioSage">Usuario de Sage 50 vinculado a la cuenta en la empresa (fuente de accesos Web; PLAN-ACCESOS-WEB §6).</param>
+/// <param name="FaltaUsuarioSage">Tiene la llave de registrar pero no puede porque su cuenta no tiene usuario de Sage en la empresa.</param>
+public sealed record PermisosCompras(bool Ver, bool Registrar, string? UsuarioSage = null, bool FaltaUsuarioSage = false)
 {
     public static readonly PermisosCompras Todos = new(true, true);
+
+    public string? MotivoSinRegistro => Registrar ? null : FaltaUsuarioSage ? MensajesEscrituraSage.SinUsuarioSage : MensajesEscrituraSage.SinPermiso;
 }
 
 /// <summary>
@@ -60,7 +64,10 @@ public sealed class ServicioCompras(
     {
         if (servicios.GetService(typeof(ISecurityDirectory)) is not ISecurityDirectory dir) return PermisosCompras.Todos;
         var p = await dir.PermisosAsync(usuario, ruc, ct);
-        return new PermisosCompras(ReglasCompras.PuedeVer(p), ReglasCompras.PuedeRegistrar(p));
+        var vinculo = await dir.VinculoSageAsync(usuario, ruc, ct);
+        var llave = ReglasCompras.PuedeRegistrar(p);
+        return new PermisosCompras(ReglasCompras.PuedeVer(p), llave && vinculo.PermiteEscribir, vinculo.UsuarioSage,
+            FaltaUsuarioSage: llave && !vinculo.PermiteEscribir);
     }
 
     public async Task<ContextoCompras> ContextoAsync(string ruc, CancellationToken ct = default)
@@ -161,6 +168,10 @@ public sealed class ServicioCompras(
             return new(armado, null, null);
         }
         if (armado.Confirmaciones.Count > 0 && !confirmado) return new(armado, null, null);
+        // Revalidación en el servidor (la página ya lo oculta): llave de registrar y, con la fuente Web, usuario de Sage vinculado.
+        var permisos = await PermisosAsync(usuario, ruc, ct);
+        if (!permisos.Registrar) return new(armado, null, permisos.MotivoSinRegistro);
+        var auditado = MensajesEscrituraSage.ConUsuarioSage(usuario, permisos.UsuarioSage);
         if (!await BridgeHabilitadoAsync(ruc, ct))
         {
             return new(armado, null, "La empresa no está habilitada en el Sage Bridge (administración › Sage Bridge): la compra no se registraría.");
@@ -169,7 +180,7 @@ public sealed class ServicioCompras(
         var solicitud = SolicitudGuardarOc.Crear(oc, entrada.Proveedor, numeroOcAutomatico, numeroRetencionAutomatico,
             contexto.SerieRetencion, contexto.SecuencialRetencionInicial);
         var encolado = await cola.EncolarAsync(ruc, solicitud.Tipo, solicitud.PayloadJson, solicitud.ClaveIdempotencia, usuario, ct);
-        await AuditarAsync(ruc, usuario, entrada, TiposTrabajo.GuardarOc, encolado.Nuevo ? "Encolado" : "YaEncolado",
+        await AuditarAsync(ruc, auditado, entrada, TiposTrabajo.GuardarOc, encolado.Nuevo ? "Encolado" : "YaEncolado",
             encolado.Trabajo.Id, Huella(solicitud.PayloadJson), numeroOcAutomatico ? null : $"OC {oc.Referencia}", huellaOrigen, ct);
         return new(armado, encolado.Trabajo.Id, null);
     }

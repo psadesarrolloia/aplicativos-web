@@ -14,9 +14,13 @@ using PsaWeb.Seguridad;
 namespace PsaWeb.Modules.Compras.Servicios;
 
 /// <summary>Permisos del usuario en la liquidación de importaciones (<c>quimpliq</c>/<c>mkimpliq</c>).</summary>
-public sealed record PermisosLiquidacion(bool Ver, bool Registrar)
+/// <param name="UsuarioSage">Usuario de Sage 50 vinculado a la cuenta en la empresa (fuente de accesos Web; PLAN-ACCESOS-WEB §6).</param>
+/// <param name="FaltaUsuarioSage">Tiene la llave de registrar pero su cuenta no tiene usuario de Sage en la empresa.</param>
+public sealed record PermisosLiquidacion(bool Ver, bool Registrar, string? UsuarioSage = null, bool FaltaUsuarioSage = false)
 {
     public static readonly PermisosLiquidacion Todos = new(true, true);
+
+    public string? MotivoSinRegistro => Registrar ? null : FaltaUsuarioSage ? MensajesEscrituraSage.SinUsuarioSage : MensajesEscrituraSage.SinPermiso;
 }
 
 /// <summary>Una fila de la lista de importaciones.</summary>
@@ -62,11 +66,11 @@ public sealed class DetalleImportacion
     /// </summary>
     public string? MotivoSinReporte(IReadOnlyList<ItemLiquidacion> items, IEnumerable<GastoImportacion> gastos)
     {
-        if (LiquidacionId is null) return "Guarde primero la liquidación.";
-        if (items.Count == 0) return "Ingrese ítems a prorratear.";
+        if (LiquidacionId is null) return "Guarda primero la liquidación.";
+        if (items.Count == 0) return "Ingresa ítems a prorratear.";
         if (Estado != EstadoImportacion.Liquidada && !Liquidaciones.CosteoCompleto(items, GastosSinLiquidacion(gastos)))
         {
-            return "Complete primero el proceso de prorrateo (el costo total de los ítems debe cuadrar con la importación).";
+            return "Completa primero el proceso de prorrateo (el costo total de los ítems debe cuadrar con la importación).";
         }
         return null;
     }
@@ -108,7 +112,17 @@ public sealed class ServicioLiquidaciones(
     {
         if (servicios.GetService(typeof(ISecurityDirectory)) is not ISecurityDirectory dir) return PermisosLiquidacion.Todos;
         var p = await dir.PermisosAsync(usuario, ruc, ct);
-        return new PermisosLiquidacion(ReglasCompras.PuedeVerLiquidaciones(p), ReglasCompras.PuedeRegistrarLiquidaciones(p));
+        var vinculo = await dir.VinculoSageAsync(usuario, ruc, ct);
+        var llave = ReglasCompras.PuedeRegistrarLiquidaciones(p);
+        return new PermisosLiquidacion(ReglasCompras.PuedeVerLiquidaciones(p), llave && vinculo.PermiteEscribir, vinculo.UsuarioSage,
+            FaltaUsuarioSage: llave && !vinculo.PermiteEscribir);
+    }
+
+    /// <summary>Revalidación en el servidor antes de guardar o encolar: devuelve el motivo si no puede, y el usuario para la auditoría.</summary>
+    private async Task<(string? Motivo, string Auditado)> ExigirRegistroAsync(string usuario, string ruc, CancellationToken ct)
+    {
+        var permisos = await PermisosAsync(usuario, ruc, ct);
+        return (permisos.MotivoSinRegistro, MensajesEscrituraSage.ConUsuarioSage(usuario, permisos.UsuarioSage));
     }
 
     public async Task<CatalogoLiquidacion> CatalogoAsync(string ruc, CancellationToken ct = default)
@@ -207,11 +221,13 @@ public sealed class ServicioLiquidaciones(
     public async Task<(int? Id, List<string> Errores)> GuardarAsync(string ruc, string usuario, string cuenta, string proveedorId, string referencia,
         DateTime fecha, IReadOnlyList<ItemLiquidacion> items, IReadOnlyList<GastoImportacion> gastos, CancellationToken ct = default)
     {
+        var (motivo, auditado) = await ExigirRegistroAsync(usuario, ruc, ct);
+        if (motivo is not null) return (null, [motivo]);
         var errores = await ValidarCabeceraAsync(ruc, proveedorId, referencia, ct);
         if (errores.Count > 0) return (null, errores);
         await using var db = await peachEbills.CreateDbContextAsync(ct);
         var id = await RepositorioLiquidaciones.GuardarAsync(db, ruc, cuenta, new DatosLiquidacion(proveedorId.Trim(), referencia.Trim(), fecha, items, gastos), ct);
-        await AuditarAsync(ruc, usuario, cuenta, proveedorId, referencia, "Guardar", "Guardado", null, null, $"{items.Count} ítems, {gastos.Count} filas", ct);
+        await AuditarAsync(ruc, auditado, cuenta, proveedorId, referencia, "Guardar", "Guardado", null, null, $"{items.Count} ítems, {gastos.Count} filas", ct);
         return (id, errores);
     }
 
@@ -221,6 +237,8 @@ public sealed class ServicioLiquidaciones(
     /// </summary>
     public async Task<(long? TrabajoId, List<string> Errores)> CrearOcAsync(string ruc, string usuario, string cuenta, EntradaOcLiquidacion entrada, CancellationToken ct = default)
     {
+        var (motivo, auditado) = await ExigirRegistroAsync(usuario, ruc, ct);
+        if (motivo is not null) return (null, [motivo]);
         var catalogo = await CatalogoAsync(ruc, ct);
         var (payload, errores) = ArmadorOcLiquidacion.Armar(entrada, catalogo.Proveedores.Select(x => x.Id).ToHashSet(StringComparer.Ordinal));
         foreach (var x in entrada.Items.Where(x => !string.IsNullOrWhiteSpace(x.ItemId) && !catalogo.Items.ContainsKey(x.ItemId.Trim())))
@@ -246,7 +264,7 @@ public sealed class ServicioLiquidaciones(
         }
         if (await TrabajoPendienteAsync(ruc, cuenta, entrada.PostOrder, ct) is { } pendiente)
         {
-            return (null, [$"Ya hay un trabajo (#{pendiente.Id}) en el Sage Bridge para esta importación; espere a que termine."]);
+            return (null, [$"Ya hay un trabajo (#{pendiente.Id}) en el Sage Bridge para esta importación; espera a que termine."]);
         }
 
         var (id, erroresGuardar) = await GuardarAsync(ruc, usuario, cuenta, entrada.ProveedorId, entrada.Referencia, entrada.Fecha, entrada.Items, entrada.Gastos, ct);
@@ -255,7 +273,7 @@ public sealed class ServicioLiquidaciones(
         var json = JsonSerializer.Serialize(payload);
         var huella = Huella(json);
         var encolado = await cola.EncolarAsync(ruc, TiposTrabajo.GuardarOcLiquidacion, json, $"liq-oc-{ruc}-{cuenta}-{huella[..16]}-{DateTime.UtcNow:yyyyMMddHHmm}", usuario, ct);
-        await AuditarAsync(ruc, usuario, cuenta, entrada.ProveedorId, payload.Referencia, TiposTrabajo.GuardarOcLiquidacion,
+        await AuditarAsync(ruc, auditado, cuenta, entrada.ProveedorId, payload.Referencia, TiposTrabajo.GuardarOcLiquidacion,
             encolado.Nuevo ? "Encolado" : "YaEncolado", encolado.Trabajo.Id, huella, entrada.PostOrder is null ? "OC nueva" : $"Actualiza PostOrder {entrada.PostOrder}", ct);
         return (encolado.Trabajo.Id, []);
     }
@@ -272,20 +290,22 @@ public sealed class ServicioLiquidaciones(
     /// <summary>«Registrar compra» (D1): encola <see cref="TiposTrabajo.ConvertirLiquidacion"/> de la OC.</summary>
     public async Task<(long? TrabajoId, string? Error)> RegistrarCompraAsync(string ruc, string usuario, string cuenta, OcLiquidacion oc, CancellationToken ct = default)
     {
+        var (motivo, auditado) = await ExigirRegistroAsync(usuario, ruc, ct);
+        if (motivo is not null) return (null, motivo);
         if (!await BridgeHabilitadoAsync(ruc, ct))
         {
             return (null, "La empresa no está habilitada en el Sage Bridge (administración › Sage Bridge): la compra no se registraría.");
         }
         if (await TrabajoPendienteAsync(ruc, cuenta, oc.PostOrder, ct) is { } pendiente)
         {
-            return (null, $"Ya hay un trabajo (#{pendiente.Id}) en el Sage Bridge para esta importación; espere a que termine.");
+            return (null, $"Ya hay un trabajo (#{pendiente.Id}) en el Sage Bridge para esta importación; espera a que termine.");
         }
         var json = JsonSerializer.Serialize(new PayloadConvertirLiquidacion
         {
             PostOrder = oc.PostOrder, ReferenciaCompra = (await CatalogoAsync(ruc, ct)).ReferenciaCompra(oc.Referencia),
         });
         var encolado = await cola.EncolarAsync(ruc, TiposTrabajo.ConvertirLiquidacion, json, $"liq-compra-{ruc}-{oc.PostOrder}-{DateTime.UtcNow:yyyyMMddHHmm}", usuario, ct);
-        await AuditarAsync(ruc, usuario, cuenta, oc.ProveedorId, oc.Referencia, TiposTrabajo.ConvertirLiquidacion,
+        await AuditarAsync(ruc, auditado, cuenta, oc.ProveedorId, oc.Referencia, TiposTrabajo.ConvertirLiquidacion,
             encolado.Nuevo ? "Encolado" : "YaEncolado", encolado.Trabajo.Id, Huella(json), $"OC {oc.PostOrder}", ct);
         return (encolado.Trabajo.Id, null);
     }

@@ -87,18 +87,18 @@ public static class ArmadorOc
         // Corrección C4: el `.exe` exigía 7 caracteres (xx-xxxx); la numeración nueva pasa de OC-9999 a OC-10000.
         if (!Regex.IsMatch(e.NumeroOc, @"^[A-Za-z0-9]{2}-\d{4,}$"))
         {
-            errores.Add("Ingrese un número de Orden de Compra correcto xx-xxxx");
+            errores.Add("Ingresa un número de Orden de Compra correcto xx-xxxx");
         }
 
         // ---- CorrectToLoad ----
         if (string.IsNullOrWhiteSpace(proveedor.Id))
         {
-            errores.Add("Revise la información del proveedor");
+            errores.Add("Revisa la información del proveedor");
         }
         var forma = e.FormaPagoId is { } idForma ? catalogo.FormaPago(idForma) : null;
         if (forma is null)
         {
-            errores.Add("Seleccione: Aplica Retención /o/ No Aplica retención");
+            errores.Add("Selecciona: Aplica Retención /o/ No Aplica retención");
             return new(null, errores, avisos, confirmaciones);
         }
 
@@ -127,7 +127,7 @@ public static class ArmadorOc
                 }
                 if (codDoc == "02" && !avisoNotaVenta)
                 {
-                    errores.Add("El tipo de comprobante \"NOTA DE VENTA\" NO APLICA RETENCIONES, seleccione la opción correcta.");
+                    errores.Add("El tipo de comprobante \"NOTA DE VENTA\" NO APLICA RETENCIONES, selecciona la opción correcta.");
                     avisoNotaVenta = true;
                 }
                 if (!string.IsNullOrEmpty(linea.RetencionFuenteId)
@@ -168,13 +168,13 @@ public static class ArmadorOc
         if (!desdeXml)
         {
             if (!EsNumeroFacturaValido(e.NumeroFactura)) errores.Add("NUMERO de factura incorrecto");
-            if (string.IsNullOrEmpty(proveedor.Identificacion)) errores.Add("Revise la información del PROVEEDOR: identificación del proveedor es requerido");
-            if (string.IsNullOrEmpty(proveedor.TipoIdentificacionSri)) errores.Add("Revise la información del PROVEEDOR: No se pudo determinar correctamente el Tipo de identifcación");
+            if (string.IsNullOrEmpty(proveedor.Identificacion)) errores.Add("Revisa la información del PROVEEDOR: identificación del proveedor es requerido");
+            if (string.IsNullOrEmpty(proveedor.TipoIdentificacionSri)) errores.Add("Revisa la información del PROVEEDOR: No se pudo determinar correctamente el Tipo de identifcación");
         }
-        if (string.IsNullOrEmpty(proveedor.Email) && forma.TieneRetencion) errores.Add("Revise la información del PROVEEDOR: email del proveedor es requerido");
-        if (!desdeXml && string.IsNullOrEmpty(proveedor.NombreCompleto)) errores.Add("Revise la información del PROVEEDOR: Ingrese Nombre");
-        if (string.IsNullOrEmpty(proveedor.CuentaGasto)) errores.Add("Revise la información del PROVEEDOR: cuenta de gasto es requerida");
-        if (!desdeXml && detalles.Count == 0) errores.Add("Ingrese DETALLES de factura");
+        if (string.IsNullOrEmpty(proveedor.Email) && forma.TieneRetencion) errores.Add("Revisa la información del PROVEEDOR: email del proveedor es requerido");
+        if (!desdeXml && string.IsNullOrEmpty(proveedor.NombreCompleto)) errores.Add("Revisa la información del PROVEEDOR: Ingresa Nombre");
+        if (string.IsNullOrEmpty(proveedor.CuentaGasto)) errores.Add("Revisa la información del PROVEEDOR: cuenta de gasto es requerida");
+        if (!desdeXml && detalles.Count == 0) errores.Add("Ingresa DETALLES de factura");
 
         if (ErrorProveedorExterior(proveedor) is { } errorExterior)
         {
@@ -222,9 +222,9 @@ public static class ArmadorOc
 
         string? ItemDe(LineaDetalle x) => string.IsNullOrEmpty(x.ItemId) ? itemC.GetValueOrDefault(x) : x.ItemId;
         if (detalles.Any(x => ItemDe(x) is null)) errores.Add("No se pudo Identificar correctamente el Item(Cs)");
-        if (detalles.Any(x => string.IsNullOrEmpty(x.CuentaId))) errores.Add("Revise los detalles de la compra, falta asignar Cuenta");
-        if (impuestos.Any(x => x.ItemId is null || string.IsNullOrEmpty(x.CuentaId))) errores.Add("Seleccione Cuenta válida en todos los detalles para contabilizar la compra: revise los impuestos de la compra");
-        if (e.Propina > 0 && (cuentaPropina is null || itemPropina is null)) errores.Add("Revise la cuenta correspondiente a la propina de la compra");
+        if (detalles.Any(x => string.IsNullOrEmpty(x.CuentaId))) errores.Add("Revisa los detalles de la compra, falta asignar Cuenta");
+        if (impuestos.Any(x => x.ItemId is null || string.IsNullOrEmpty(x.CuentaId))) errores.Add("Selecciona Cuenta válida en todos los detalles para contabilizar la compra: revisa los impuestos de la compra");
+        if (e.Propina > 0 && (cuentaPropina is null || itemPropina is null)) errores.Add("Revisa la cuenta correspondiente a la propina de la compra");
 
         var retenciones = e.Retenciones?.ToList();
         if (forma.TieneRetencion)
@@ -245,7 +245,7 @@ public static class ArmadorOc
 
         if (desdeXml && e.Factura!.Comprador.Identificacion != e.RucEmpresa)
         {
-            confirmaciones.Add("La presente factura es para a una empresa diferente, Confirma que desea cargar la compra?");
+            confirmaciones.Add("La presente factura es para a una empresa diferente, ¿Confirmas que deseas cargar la compra?");
         }
         if (desdeXml && e.Factura!.EsAmbientePruebas) avisos.Add("La factura es del ambiente de pruebas del SRI.");
         if (desdeXml)

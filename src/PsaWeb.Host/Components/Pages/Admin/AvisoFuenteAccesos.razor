@@ -1,0 +1,18 @@
+@using Microsoft.Extensions.Options
+@using PsaWeb.Seguridad
+@inject IServiceProvider Servicios
+
+@if (_fuente == FuenteAccesos.PeachEBills)
+{
+    <p class="psa-notice" style="margin-bottom:1rem">
+        Hoy la web todavía toma empresas y permisos de <strong>PeachEBills</strong> (las tablas del .exe). Lo que configures acá queda
+        guardado y empieza a regir cuando se pase <code>Accesos:Fuente</code> a <code>Web</code> (corte de AW-4).
+    </p>
+}
+
+@code {
+    private FuenteAccesos _fuente;
+
+    protected override void OnInitialized() =>
+        _fuente = Servicios.GetService<IOptions<AccesosOptions>>()?.Value.Fuente ?? FuenteAccesos.PeachEBills;
+}

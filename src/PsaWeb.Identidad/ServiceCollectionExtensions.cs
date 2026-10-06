@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace PsaWeb.Identidad;
 
@@ -28,7 +29,7 @@ public static class ServiceCollectionExtensions
         if (string.IsNullOrWhiteSpace(cs))
         {
             throw new InvalidOperationException(
-                $"Falta la cadena de conexión. Configure '{SectionName}:ConnectionString'.");
+                $"Falta la cadena de conexión. Configura '{SectionName}:ConnectionString'.");
         }
 
         services.Configure<PlataformaOptions>(configuration.GetSection(SectionName));
@@ -53,13 +54,18 @@ public static class ServiceCollectionExtensions
         })
         .AddEntityFrameworkStores<PlataformaDbContext>()
         .AddSignInManager()
-        .AddDefaultTokenProviders();
+        .AddDefaultTokenProviders()
+        .AddClaimsPrincipalFactory<UsuarioClaimsFactory>();
 
+        // Sin SMTP el envío de correos de la cuenta queda inerte; el Host lo reemplaza por el de PsaWeb.Notificaciones.
+        services.TryAddScoped<IEnviadorCorreoPlataforma, EnviadorCorreoNulo>();
         services.AddScoped<IProveedorAutenticacion, IdentityProveedorAutenticacion>();
         services.AddScoped<GestorSegundoFactor>();
         services.AddScoped<AuditoriaAuth>();
         services.AddScoped<IdentidadSeeder>();
-        services.AddScoped<IServicioTokensExtension, ServicioTokensExtension>();
+        services.AddScoped<IServicioTokensExtension>(sp => new ServicioTokensExtension(
+            sp.GetRequiredService<PlataformaDbContext>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<PlataformaOptions>>().Value.TokenExtensionDias));
 
         return services;
     }

@@ -106,9 +106,9 @@ public static class HojaPruebaCheque
             $"Desplazamiento vigente: X = {cfg.CorreccionX.ToString("0.0", Es)} mm · Y = {cfg.CorreccionY.ToString("0.0", Es)} mm (ya sumado arriba; por defecto = margen de Access).",
             Alineacion.Izquierda, 7, true));
         campos.Add(new CampoPagina("leyenda-pasos", 15, ly + 6 + i * 4.5 + 8, 185.0,
-            "1) Pegue el cheque con cinta en la esquina superior izquierda.  2) Imprima al 100 %.", Alineacion.Izquierda, 6.5));
+            "1) Pega el cheque con cinta en la esquina superior izquierda.  2) Imprime al 100 %.", Alineacion.Izquierda, 6.5));
         campos.Add(new CampoPagina("leyenda-pasos-2", 15, ly + 6 + i * 4.5 + 12, 185.0,
-            "3) Mida cuánto se corrió cada campo.  4) Cargue el desplazamiento X/Y (mm) en la página.", Alineacion.Izquierda, 6.5));
+            "3) Mide cuánto se corrió cada campo.  4) Carga el desplazamiento X/Y (mm) en la página.", Alineacion.Izquierda, 6.5));
 
         return new PaginaCheque(campos, lineas, rectangulos);
     }

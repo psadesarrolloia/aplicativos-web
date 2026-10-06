@@ -52,7 +52,7 @@ public sealed class ValidadorNumeroEstablecimiento
         {
             return new ValidadorNumeroEstablecimiento(
                 numero, esValido: false, establecimiento: null,
-                error: "Formato de número incorrecto. Revise el formato: ___-___-_________ (123-123-123456789).");
+                error: "Formato de número incorrecto. Revisa el formato: ___-___-_________ (123-123-123456789).");
         }
 
         var establecimiento = await lookup.BuscarAsync(

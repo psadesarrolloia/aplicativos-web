@@ -155,7 +155,7 @@ public static class PreparacionCompra
                 // el ítem de otra tarifa). Acá es un error.
                 if (item is null)
                 {
-                    errores.Add($"No hay un ítem de IVA ({tarifa}%) activo en Sage: revise la categoría IMPUESTO.");
+                    errores.Add($"No hay un ítem de IVA ({tarifa}%) activo en Sage: revisa la categoría IMPUESTO.");
                 }
                 impuestos.Add(new LineaImpuesto
                 {

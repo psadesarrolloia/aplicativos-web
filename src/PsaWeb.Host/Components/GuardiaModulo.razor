@@ -1,0 +1,115 @@
+@using PsaWeb.Identidad
+@using PsaWeb.Seguridad
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+@inject IServiceProvider Servicios
+@implements IDisposable
+
+@* Guardia central de páginas (AW-1, 2026-10-05). El menú solo ESCONDE los módulos sin permiso; esta guardia además BLOQUEA la ruta,
+   así escribir /kardex a mano no alcanza. Usa la misma regla que el menú y que los endpoints de descarga (AppCatalogo.VisiblePara).
+   El contenido del módulo no se renderiza (ni consulta nada) hasta que el permiso de ESA ruta y ESA empresa quedó verificado.
+   También manda a /mi-cuenta/seguridad a los Super Admin / Admin que todavía no activaron la verificación en dos pasos. *@
+
+@if (Mostrar)
+{
+    @ChildContent
+}
+else if (_estado == Estado.Denegado && _modulo is not null)
+{
+    <PageTitle>Sin acceso — Aplicativos Web PSA</PageTitle>
+    <PsaCard Title="Sin acceso">
+        <p class="psa-notice psa-notice--danger">
+            Tu usuario no tiene acceso a «@_modulo.Nombre» en la empresa «@(_empresa ?? "elegida")».
+        </p>
+        <p class="psa-muted" style="margin-top:.6rem">Si lo necesitas, pídelo a la administración de PSA. <a href="/">Volver al inicio</a></p>
+    </PsaCard>
+}
+else
+{
+    <p class="psa-muted">Cargando…</p>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private enum Estado { Verificando, Permitido, Denegado }
+
+    private Estado _estado = Estado.Verificando;
+    private string? _rutaEvaluada;
+    private string? _rucEvaluado;
+    private AppWeb? _modulo;
+    private string? _empresa;
+    private EmpresaActualService? _empresaActual;
+    private ISecurityDirectory? _seguridad;
+
+    private string RutaActual => "/" + Nav.ToBaseRelativePath(Nav.Uri);
+
+    // Solo se muestra lo que se verificó para esta ruta exacta y esta empresa (evita que una navegación nueva pinte el módulo
+    // con el veredicto de la página anterior mientras se evalúa).
+    private bool Mostrar =>
+        _estado == Estado.Permitido
+        && _rutaEvaluada == RutaSinQuery(RutaActual)
+        && (_modulo is null || _rucEvaluado == _empresaActual?.Ruc);
+
+    protected override void OnInitialized()
+    {
+        _empresaActual = Servicios.GetService<EmpresaActualService>();
+        _seguridad = Servicios.GetService<ISecurityDirectory>();
+        Nav.LocationChanged += AlNavegar;
+        if (_empresaActual is not null) _empresaActual.Cambio += AlCambiarEmpresa;
+    }
+
+    protected override Task OnParametersSetAsync() => EvaluarAsync();
+
+    private void AlNavegar(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        _ = InvokeAsync(async () => { await EvaluarAsync(); StateHasChanged(); });
+
+    private void AlCambiarEmpresa() =>
+        _ = InvokeAsync(async () => { await EvaluarAsync(); StateHasChanged(); });
+
+    private static string RutaSinQuery(string ruta)
+    {
+        var i = ruta.IndexOfAny(new[] { '?', '#' });
+        return i >= 0 ? ruta[..i] : ruta;
+    }
+
+    private async Task EvaluarAsync()
+    {
+        var ruta = RutaSinQuery(RutaActual);
+        var usuario = (await AuthState.GetAuthenticationStateAsync()).User;
+
+        if (ClaimsPsa.DebeActivarSegundoFactor(usuario)
+            && !ruta.StartsWith("/mi-cuenta", StringComparison.OrdinalIgnoreCase)
+            && !ruta.StartsWith("/salir", StringComparison.OrdinalIgnoreCase))
+        {
+            _estado = Estado.Verificando;
+            Nav.NavigateTo("/mi-cuenta/seguridad?obligatorio=1");
+            return;
+        }
+
+        _modulo = AppCatalogo.ModuloDeRuta(ruta);
+        _rutaEvaluada = ruta;
+        if (_modulo is null || _seguridad is null || _empresaActual is null)
+        {
+            _estado = Estado.Permitido; // inicio, cuenta, admin (cada página de admin valida su rol), shell; o sin directorio
+            return;
+        }
+        if (!_empresaActual.HaySeleccion)
+        {
+            _estado = Estado.Verificando; // GuardiaEmpresa rehidrata la empresa o manda a elegirla
+            return;
+        }
+
+        var ruc = _empresaActual.Ruc!;
+        var ctx = await _seguridad.ContextoAsync(usuario.Identity?.Name ?? "", ruc);
+        _rucEvaluado = ruc;
+        _empresa = _empresaActual.Nombre;
+        _estado = _modulo.VisiblePara(ctx) ? Estado.Permitido : Estado.Denegado;
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= AlNavegar;
+        if (_empresaActual is not null) _empresaActual.Cambio -= AlCambiarEmpresa;
+    }
+}

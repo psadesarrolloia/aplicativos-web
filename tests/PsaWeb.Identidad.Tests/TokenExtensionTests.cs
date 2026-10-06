@@ -174,3 +174,54 @@ public class ServicioTokensExtensionTests : IAsyncLifetime
         Assert.NotNull(infoTrasUso!.UltimoUsoUtc);
     }
 }
+
+/// <summary>Vencimiento del token de la extensión (AW-3): se usa desde fuera de la red, un token robado no debe servir para siempre.</summary>
+public class VencimientoTokenExtensionTests
+{
+    private const string LocalConnectionString =
+        @"Server=.\SQLEXPRESS;Database=PsaWebPlataforma;Trusted_Connection=True;TrustServerCertificate=True;Connect Timeout=15";
+
+    private static PlataformaDbContext Db() =>
+        new(new DbContextOptionsBuilder<PlataformaDbContext>().UseSqlServer(LocalConnectionString).Options);
+
+    private static bool DbDisponible()
+    {
+        try { using var db = Db(); return db.Database.CanConnect(); }
+        catch { return false; }
+    }
+
+    [SkippableFact]
+    public async Task Un_token_vencido_no_valida_y_la_info_lo_marca()
+    {
+        Skip.IfNot(DbDisponible(), "PsaWebPlataforma local no disponible.");
+        await using var db = Db();
+        var usuarioId = "test_" + Guid.NewGuid().ToString("N")[..12];
+        try
+        {
+            var token = await new ServicioTokensExtension(db).GenerarAsync(usuarioId);
+            var fila = await db.TokensExtension.SingleAsync(t => t.UsuarioId == usuarioId && t.RevocadoUtc == null);
+            fila.CreadoUtc = DateTime.UtcNow.AddDays(-91);
+            await db.SaveChangesAsync();
+
+            var con90 = new ServicioTokensExtension(db, 90);
+            Assert.Null(await con90.ValidarAsync(token));
+            var info = await con90.ObtenerInfoAsync(usuarioId);
+            Assert.True(info!.Vencido);
+
+            // Con más días de vigencia configurados (Plataforma:TokenExtensionDias) el mismo token todavía vale.
+            Assert.Equal(usuarioId, await new ServicioTokensExtension(db, 120).ValidarAsync(token));
+        }
+        finally
+        {
+            db.TokensExtension.RemoveRange(db.TokensExtension.Where(t => t.UsuarioId == usuarioId));
+            await db.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
+    public void Por_defecto_vence_a_los_90_dias()
+    {
+        Assert.Equal(90, ServicioTokensExtension.DiasVigenciaPorDefecto);
+        Assert.Equal(90, new PlataformaOptions().TokenExtensionDias);
+    }
+}

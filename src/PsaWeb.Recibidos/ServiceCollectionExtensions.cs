@@ -16,7 +16,7 @@ public static class ServiceCollectionExtensions
         var cs = configuration.GetSection("Plataforma")["ConnectionString"];
         if (string.IsNullOrWhiteSpace(cs))
         {
-            throw new InvalidOperationException("Falta la cadena de conexión. Configure 'Plataforma:ConnectionString'.");
+            throw new InvalidOperationException("Falta la cadena de conexión. Configura 'Plataforma:ConnectionString'.");
         }
         services.AddDbContextFactory<RecibidosDbContext>(o => o.UseSqlServer(cs));
         services.AddSingleton<IAlmacenXmlRecibidos, AlmacenXmlRecibidos>();

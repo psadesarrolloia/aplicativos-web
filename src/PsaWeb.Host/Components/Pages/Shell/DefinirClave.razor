@@ -1,0 +1,88 @@
+@page "/activar-cuenta"
+@page "/restablecer-clave"
+@layout PsaWeb.Host.Components.Layout.ShellLayout
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [EnableRateLimiting("login")]
+@using System.ComponentModel.DataAnnotations
+@using PsaWeb.Seguridad
+@inject ServicioAccesos Accesos
+@inject NavigationManager Nav
+
+@* Destino de los enlaces por correo: invitación (activar-cuenta) y recuperación (restablecer-clave). El token es el de reseteo de
+   clave de Identity (vale 24 h, sirve una sola vez porque cambia el sello de seguridad). *@
+
+<PageTitle>@Titulo — Aplicativos Web PSA</PageTitle>
+
+<h1>@Titulo</h1>
+
+@if (_listo)
+{
+    <p class="psa-notice">Listo: tu contraseña quedó guardada. Ya puedes ingresar con tu correo.</p>
+    <a class="psa-btn psa-btn--primary" style="margin-top:1rem;width:100%;text-align:center" href="/ingresar">Ingresar</a>
+}
+else if (string.IsNullOrEmpty(U) || string.IsNullOrEmpty(T))
+{
+    <p class="psa-notice psa-notice--danger">El enlace está incompleto. Ábrelo de nuevo desde el correo o pide uno nuevo.</p>
+    <p style="margin-top:1rem"><a href="/recuperar-clave">Pedir un enlace nuevo</a></p>
+}
+else
+{
+    <p class="psa-muted">Mínimo 12 caracteres, con mayúscula, minúscula, número y símbolo.</p>
+    @if (_error is not null)
+    {
+        <p class="psa-notice psa-notice--danger">@_error</p>
+    }
+    <EditForm Model="Input" method="post" OnValidSubmit="Guardar" FormName="definir-clave">
+        <DataAnnotationsValidator />
+        <input type="hidden" name="Input.U" value="@U" />
+        <input type="hidden" name="Input.T" value="@T" />
+        <div class="psa-field" style="width:100%">
+            <span class="psa-field__lbl">Contraseña nueva</span>
+            <InputText type="password" class="psa-input" @bind-Value="Input.Clave" autocomplete="new-password" />
+            <ValidationMessage For="() => Input.Clave" />
+        </div>
+        <div class="psa-field" style="width:100%;margin-top:.8rem">
+            <span class="psa-field__lbl">Repítela</span>
+            <InputText type="password" class="psa-input" @bind-Value="Input.Repetir" autocomplete="new-password" />
+            <ValidationMessage For="() => Input.Repetir" />
+        </div>
+        <button type="submit" class="psa-btn psa-btn--primary" style="margin-top:1.2rem;width:100%">Guardar contraseña</button>
+    </EditForm>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "u")] private string? QueryU { get; set; }
+    [SupplyParameterFromQuery(Name = "t")] private string? QueryT { get; set; }
+
+    [SupplyParameterFromForm(FormName = "definir-clave")]
+    private DatosClave Input { get; set; } = new();
+
+    private string? U => string.IsNullOrEmpty(Input.U) ? QueryU : Input.U;
+    private string? T => string.IsNullOrEmpty(Input.T) ? QueryT : Input.T;
+
+    private bool _listo;
+    private string? _error;
+
+    private string Titulo => Nav.Uri.Contains("/activar-cuenta", StringComparison.OrdinalIgnoreCase) ? "Activar tu cuenta" : "Cambiar la contraseña";
+
+    private async Task Guardar()
+    {
+        var (ok, error) = await Accesos.DefinirClaveAsync(U ?? "", T ?? "", Input.Clave);
+        _listo = ok;
+        _error = error;
+    }
+
+    public sealed class DatosClave
+    {
+        public string? U { get; set; }
+        public string? T { get; set; }
+
+        [Required(ErrorMessage = "Ingresa la contraseña.")]
+        public string Clave { get; set; } = "";
+
+        [Required(ErrorMessage = "Repite la contraseña.")]
+        [Compare(nameof(Clave), ErrorMessage = "Las contraseñas no coinciden.")]
+        public string Repetir { get; set; } = "";
+    }
+}

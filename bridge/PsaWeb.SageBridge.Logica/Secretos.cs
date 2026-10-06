@@ -24,7 +24,7 @@ internal static class Secretos
         catch (Exception ex) when (ex is CryptographicException || ex is FormatException)
         {
             throw new InvalidOperationException(
-                "No se pudo descifrar ClaveAplicacionProtegida: se generó en otro equipo o está dañada. Vuelva a correr --proteger-clave en este servidor.", ex);
+                "No se pudo descifrar ClaveAplicacionProtegida: se generó en otro equipo o está dañada. Vuelve a correr --proteger-clave en este servidor.", ex);
         }
     }
 }

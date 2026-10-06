@@ -136,7 +136,7 @@ public static class LectorCliente
 
         if (identificacion.Length == 0)
         {
-            errores.Add("Revise la cédula / RUC / identificación del cliente.");
+            errores.Add("Revisa la cédula / RUC / identificación del cliente.");
         }
 
         return new ClienteSri

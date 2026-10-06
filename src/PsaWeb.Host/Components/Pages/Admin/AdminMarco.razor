@@ -1,0 +1,72 @@
+@using Microsoft.Extensions.Options
+@using PsaWeb.Identidad
+@using PsaWeb.Seguridad
+@inject IServiceProvider Servicios
+@inject AuthenticationStateProvider AuthState
+@inject IOptions<EscrituraOptions> Escritura
+
+@* Marco de las páginas de /admin: encabezado, submenú según el rol y la puerta de acceso. El rol se lee de la BASE en cada carga
+   (ServicioAccesos.ActorAsync), no de la cookie, y los servicios lo vuelven a validar en cada operación. *@
+
+<PsaPageHeader Title="Configuración" Subtitle="@Subtitulo" />
+
+@if (_cargando)
+{
+    <p class="psa-muted">Cargando…</p>
+}
+else
+{
+    <div class="psa-subnav">
+        @if (_actor is { Rol: not RolPanel.Ninguno })
+        {
+            @if (_actor.Rol == RolPanel.SuperAdmin)
+            {
+                <NavLink class="psa-nav__link" href="/admin/usuarios">Usuarios</NavLink>
+            }
+            <NavLink class="psa-nav__link" href="/admin/accesos" Match="NavLinkMatch.Prefix">Accesos</NavLink>
+            <NavLink class="psa-nav__link" href="/admin/auditoria">Auditoría</NavLink>
+            @if (_actor.Rol == RolPanel.SuperAdmin)
+            {
+                @if (Escritura.Value.Habilitada)
+                {
+                    <NavLink class="psa-nav__link" href="/admin/sage-bridge">Sage Bridge</NavLink>
+                }
+                <NavLink class="psa-nav__link" href="/admin/ventas">Ventas</NavLink>
+            }
+        }
+    </div>
+
+    @if (_actor is null || _actor.Rol < Requiere)
+    {
+        <PsaCard Title="Sin acceso">
+            <p class="psa-notice psa-notice--danger">Tu usuario no tiene acceso a esta parte de la administración.</p>
+        </PsaCard>
+    }
+    else
+    {
+        @ChildContent
+    }
+}
+
+@code {
+    [Parameter] public string Subtitulo { get; set; } = "";
+    [Parameter] public RolPanel Requiere { get; set; } = RolPanel.SuperAdmin;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Se invoca una vez, con el actor ya validado contra <see cref="Requiere"/>: la página carga sus datos recién ahí.</summary>
+    [Parameter] public EventCallback<ServicioAccesos.Actor> AlCargar { get; set; }
+
+    private ServicioAccesos.Actor? _actor;
+    private bool _cargando = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState.GetAuthenticationStateAsync();
+        _actor = await PsaWeb.Host.Auth.RolesPanel.ActorAsync(Servicios, state.User.Identity?.Name);
+        _cargando = false;
+        if (_actor is not null && _actor.Rol >= Requiere)
+        {
+            await AlCargar.InvokeAsync(_actor);
+        }
+    }
+}

@@ -16,14 +16,14 @@
 {
     <PsaCard Title="Módulo no configurado">
         <p class="psa-notice psa-notice--danger">
-            Falta <code>PeachEbills:ConnectionString</code> en el Host. Configúrala y reiniciá la aplicación.
+            Falta <code>PeachEbills:ConnectionString</code> en el Host. Configúrala y reinicia la aplicación.
         </p>
     </PsaCard>
 }
 else if (_ruc is null)
 {
-    <PsaCard Title="Elegí una empresa">
-        <p class="psa-notice">Seleccioná una empresa en la barra superior para trabajar sus comprobantes.</p>
+    <PsaCard Title="Elige una empresa">
+        <p class="psa-notice">Selecciona una empresa en la barra superior para trabajar sus comprobantes.</p>
     </PsaCard>
 }
 else if (!_permisosCargados)
@@ -33,7 +33,7 @@ else if (!_permisosCargados)
 else if (!_puedeVer)
 {
     <PsaCard Title="Sin permiso">
-        <p class="psa-notice psa-notice--danger">No tenés permiso para ver este módulo en la empresa actual.</p>
+        <p class="psa-notice psa-notice--danger">No tienes permiso para ver este módulo en la empresa actual.</p>
     </PsaCard>
 }
 else
@@ -78,7 +78,7 @@ else
             }
             else if (_panorama is null || _panorama.Count == 0)
             {
-                <p class="psa-notice">No tenés empresas asignadas.</p>
+                <p class="psa-notice">No tienes empresas asignadas.</p>
             }
             else
             {
@@ -212,7 +212,7 @@ else
             {
                 <p class="psa-muted" style="margin-bottom:.75rem">
                     Mostrando los comprobantes <strong>guardados</strong> de todas tus empresas. Los pendientes de
-                    emitir se cuentan por empresa en la tabla de arriba; entrá a una para generarlos.
+                    emitir se cuentan por empresa en la tabla de arriba; entra a una para generarlos.
                 </p>
             }
 
@@ -251,7 +251,7 @@ else
 
                 <p class="psa-muted" style="margin-bottom:.4rem">
                     @vista.Count de @_emitidos.Count guardado@(_emitidos.Count == 1 ? "" : "s")
-                    @if (_emitidos.Count >= Tope) { <text> (tope @Tope — acotá por fecha)</text> }
+                    @if (_emitidos.Count >= Tope) { <text> (tope @Tope — acota por fecha)</text> }
                     @if (_incluirPendientes && !ModoMulti) { <text> · @_pendientes.Count pendiente@(_pendientes.Count == 1 ? "" : "s")</text> }
                     @if (TieneFiltros)
                     {

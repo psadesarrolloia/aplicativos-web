@@ -27,7 +27,7 @@ public sealed class ServicioImpresionCheques(
     {
         if (!opciones.Valida)
         {
-            throw new ArgumentException("Elija al menos «cheque» o «comprobante de egreso».", nameof(opciones));
+            throw new ArgumentException("Elige al menos «cheque» o «comprobante de egreso».", nameof(opciones));
         }
         if (postOrders.Count > MaximoPagos)
         {

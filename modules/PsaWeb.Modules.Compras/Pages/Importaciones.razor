@@ -10,7 +10,7 @@
 @inject ILogger<Importaciones> Logger
 @implements IDisposable
 
-<PageTitle>Liquidación de importaciones — Aplicativos web PSA</PageTitle>
+<PageTitle>Liquidación de importaciones — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Liquidación de importaciones" Subtitle="@Subtitulo">
     <a class="psa-linkbtn" href="/compras">← Compras</a>
@@ -22,14 +22,18 @@
 }
 else if (_ruc is null)
 {
-    <div class="psa-notice">Elija una empresa para trabajar.</div>
+    <div class="psa-notice">Elige una empresa para trabajar.</div>
 }
 else if (_permisos is { Ver: false })
 {
-    <div class="psa-notice psa-notice--danger">No tiene permiso para ver las liquidaciones de importación de esta empresa.</div>
+    <div class="psa-notice psa-notice--danger">No tienes permiso para ver las liquidaciones de importación de esta empresa.</div>
 }
 else
 {
+    @if (_permisos is { FaltaUsuarioSage: true })
+    {
+        <div class="psa-notice" style="margin-bottom: .8rem">@_permisos.MotivoSinRegistro Puedes consultar, pero no registrar en Sage.</div>
+    }
     <PsaCard Title="Importaciones (cuentas IMPORTACION de Sage)">
         <div class="psa-row" style="gap: 1rem; flex-wrap: wrap; align-items: flex-end">
             <label class="psa-field">

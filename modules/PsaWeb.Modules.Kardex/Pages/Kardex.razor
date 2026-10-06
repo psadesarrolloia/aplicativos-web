@@ -8,7 +8,7 @@
 @inject NavigationManager Nav
 @implements IDisposable
 
-<PageTitle>Kardex de inventarios — Aplicativos web PSA</PageTitle>
+<PageTitle>Kardex de inventarios — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Kardex de inventarios"
                Subtitle="@Subtitulo" />
@@ -19,7 +19,7 @@
 
     <div class="psa-row" style="margin-top: 1rem; align-items: flex-start; gap: 1.5rem; flex-wrap: wrap">
         <label class="psa-field">
-            <span class="psa-field__label">Cuenta de inventario (opcional; podés elegir varias)</span>
+            <span class="psa-field__label">Cuenta de inventario (opcional; puedes elegir varias)</span>
             <select class="psa-input" multiple size="6" @bind="_cuentasSeleccionadas">
                 @foreach (var c in _cuentas)
                 {
@@ -40,7 +40,7 @@
     </div>
 
     <div class="psa-field" style="margin-top: 1rem; display: flex; align-items: stretch; max-width: 34rem">
-        <span class="psa-field__label">Ítems (opcional; si elegís, mandan sobre cuenta y rango)</span>
+        <span class="psa-field__label">Ítems (opcional; si eliges, mandan sobre cuenta y rango)</span>
         <input class="psa-input" placeholder="Filtrar la lista…" @bind="_filtroItem" @bind:event="oninput" />
         <select class="psa-input" multiple size="8" style="margin-top: .4rem" @bind="_itemsSeleccionados">
             @foreach (var i in ItemsFiltrados)
@@ -257,7 +257,7 @@ else if (_resultado is not null)
         }
         if (!filtro.TieneAcotador)
         {
-            _error = "Elegí al menos un ítem, una cuenta de inventario o un rango de ítems.";
+            _error = "Elige al menos un ítem, una cuenta de inventario o un rango de ítems.";
             return;
         }
 

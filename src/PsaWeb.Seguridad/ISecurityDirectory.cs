@@ -33,6 +33,10 @@ public interface ISecurityDirectory
     Task<IReadOnlyList<string>> EmailsPorRolAsync(
         string ruc, string rol = "Supervisor", CancellationToken cancellationToken = default);
 
+    /// <summary>Usuario de Sage 50 vinculado a la cuenta en esa empresa. Por defecto no aplica (fuente PeachEBills).</summary>
+    Task<VinculoSage> VinculoSageAsync(string usuario, string ruc, CancellationToken cancellationToken = default)
+        => Task.FromResult(VinculoSage.NoAplica);
+
     /// <summary>Atajo: ¿el usuario tiene ese permiso en esa empresa?</summary>
     async Task<bool> TienePermisoAsync(
         string usuario, string ruc, string codigoPermiso, CancellationToken cancellationToken = default)

@@ -155,6 +155,65 @@ namespace PsaWeb.Identidad.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("PsaWeb.Identidad.AccesoEmpresa", b =>
+                {
+                    b.Property<string>("UsuarioId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Ruc")
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ModificadoPor")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("ModificadoUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UsuarioSage")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("UsuarioId", "Ruc");
+
+                    b.HasIndex("Ruc");
+
+                    b.ToTable("AccesosEmpresa", (string)null);
+                });
+
+            modelBuilder.Entity("PsaWeb.Identidad.AccesoLlave", b =>
+                {
+                    b.Property<string>("UsuarioId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("Ruc")
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<string>("Llave")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("OtorgadoPor")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("OtorgadoUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("UsuarioId", "Ruc", "Llave");
+
+                    b.ToTable("AccesosLlave", (string)null);
+                });
+
             modelBuilder.Entity("PsaWeb.Identidad.EventoAuth", b =>
                 {
                     b.Property<long>("Id")
@@ -263,6 +322,10 @@ namespace PsaWeb.Identidad.Migrations
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("MetodoSegundoFactor")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.Property<string>("NombreCompleto")
                         .HasMaxLength(120)
                         .HasColumnType("nvarchar(120)");
@@ -283,6 +346,13 @@ namespace PsaWeb.Identidad.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<string>("Perfil")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasDefaultValue("Usuario");
+
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("nvarchar(max)");
 
@@ -295,6 +365,9 @@ namespace PsaWeb.Identidad.Migrations
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("UltimoAccesoUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("UserName")
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
@@ -302,7 +375,9 @@ namespace PsaWeb.Identidad.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
-                        .HasDatabaseName("EmailIndex");
+                        .IsUnique()
+                        .HasDatabaseName("UX_AspNetUsers_NormalizedEmail")
+                        .HasFilter("[NormalizedEmail] IS NOT NULL");
 
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
@@ -363,6 +438,29 @@ namespace PsaWeb.Identidad.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("PsaWeb.Identidad.AccesoEmpresa", b =>
+                {
+                    b.HasOne("PsaWeb.Identidad.UsuarioApp", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PsaWeb.Identidad.AccesoLlave", b =>
+                {
+                    b.HasOne("PsaWeb.Identidad.AccesoEmpresa", null)
+                        .WithMany("Llaves")
+                        .HasForeignKey("UsuarioId", "Ruc")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("PsaWeb.Identidad.AccesoEmpresa", b =>
+                {
+                    b.Navigation("Llaves");
                 });
 #pragma warning restore 612, 618
         }

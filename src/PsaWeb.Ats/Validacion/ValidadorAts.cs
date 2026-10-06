@@ -45,13 +45,13 @@ public static class ValidadorAts
         hallazgos.Add(new HallazgoAts(
             SeveridadHallazgo.Advertencia, "MANUAL-PARTE-RELACIONADA",
             "\"Parte relacionada\" en ventas sale del \"Sales Rep\" del cliente en Sage 50 " +
-            "(\"SI RELACIONADO\" = relacionado). Confirmá que esté asignado a todos los clientes relacionados " +
+            "(\"SI RELACIONADO\" = relacionado). Confirma que esté asignado a todos los clientes relacionados " +
             "del período antes de declarar."));
         hallazgos.Add(new HallazgoAts(
             SeveridadHallazgo.Advertencia, "MANUAL-RETENCION-SIN-COMPROBANTE",
             "Si un cliente recibió una retención en el período pero no tiene ningún comprobante de venta en " +
             "ese mismo período, esa fila no aparece en el ATS (el `.exe` solo recorre clientes con comprobante). " +
-            "Revisá manualmente en el DIMM si corresponde agregarla."));
+            "Revisa manualmente en el DIMM si corresponde agregarla."));
 
         return hallazgos;
     }

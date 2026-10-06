@@ -13,7 +13,7 @@
 @inject IServiceProvider Servicios
 @inject AuthenticationStateProvider AuthState
 
-<PageTitle>Sage Bridge — Aplicativos web PSA</PageTitle>
+<PageTitle>Sage Bridge — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Configuración"
                Subtitle="Sage Bridge: el servicio que escribe en Sage 50. Estado, empresas habilitadas y cola de trabajos." />
@@ -210,7 +210,7 @@ else
     {
         var state = await AuthState.GetAuthenticationStateAsync();
         _usuario = state.User.Identity?.Name ?? "";
-        _esAdmin = Opciones.Value.EsAdmin(_usuario);
+        _esAdmin = await PsaWeb.Host.Auth.RolesPanel.RolAsync(Servicios, _usuario) == PsaWeb.Seguridad.RolPanel.SuperAdmin;
         if (!_esAdmin || !Escritura.Value.Habilitada) return;
 
         await CargarEmpresas();

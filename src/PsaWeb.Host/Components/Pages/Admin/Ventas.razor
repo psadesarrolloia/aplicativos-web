@@ -6,11 +6,12 @@
 @using PsaWeb.Ventas.Prefacturas
 @inject IOptions<PlataformaOptions> Opciones
 @inject ServicioPrefacturas Servicio
+@inject IServiceProvider Servicios
 @inject EmpresaActualService Empresa
 @inject AuthenticationStateProvider AuthState
 @implements IDisposable
 
-<PageTitle>Ventas — Aplicativos web PSA</PageTitle>
+<PageTitle>Ventas — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Configuración"
                Subtitle="Portal de ventas: a quién avisar cuando un vendedor emite una prefactura, y la vigencia y el IVA por empresa." />
@@ -30,7 +31,7 @@
 }
 else if (Empresa.Ruc is null)
 {
-    <PsaCard Title="Empresa"><p class="psa-notice">Elegí primero una empresa en la barra superior: la configuración es por empresa.</p></PsaCard>
+    <PsaCard Title="Empresa"><p class="psa-notice">Elige primero una empresa en la barra superior: la configuración es por empresa.</p></PsaCard>
 }
 else
 {
@@ -84,7 +85,7 @@ else
     {
         var state = await AuthState.GetAuthenticationStateAsync();
         _usuario = state.User.Identity?.Name ?? "";
-        _esAdmin = Opciones.Value.EsAdmin(_usuario);
+        _esAdmin = await PsaWeb.Host.Auth.RolesPanel.RolAsync(Servicios, _usuario) == PsaWeb.Seguridad.RolPanel.SuperAdmin;
         Empresa.Cambio += EmpresaCambio;
         await Cargar();
     }
@@ -106,10 +107,10 @@ else
     {
         _mensaje = _error = null;
         var correos = new[] { _correo1, _correo2 }.Select(c => c?.Trim() ?? "").Where(c => c.Length > 0).ToList();
-        if (correos.Any(c => !c.Contains('@') || c.Contains(' '))) { _error = "Revisá los correos: no parecen válidos."; return; }
+        if (correos.Any(c => !c.Contains('@') || c.Contains(' '))) { _error = "Revisa los correos: no parecen válidos."; return; }
         if (_vigencia is < 1 or > 365) { _error = "La vigencia debe estar entre 1 y 365 días."; return; }
         if (_iva is < 0 or > 100) { _error = "El IVA debe estar entre 0 y 100."; return; }
-        if (string.IsNullOrWhiteSpace(_codigo)) { _error = "Indicá el código de IVA de Sage (p. ej. 4-15%)."; return; }
+        if (string.IsNullOrWhiteSpace(_codigo)) { _error = "Indica el código de IVA de Sage (p. ej. 4-15%)."; return; }
         await Servicio.GuardarConfiguracionAsync(new ConfiguracionVentas(Empresa.Ruc!, _correo1, _correo2, _vigencia, _codigo, _iva), _usuario);
         _mensaje = "Configuración guardada.";
     }

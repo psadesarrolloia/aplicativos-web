@@ -284,7 +284,7 @@ public sealed class Trabajador
                 return CodigoNormal;
 
             case AccionAnteError.SinAutorizacion:
-                _cola.Fallar(trabajo.Id, _instancia, "Sage no autorizó al Bridge en esta empresa. Pruebe la empresa desde la administración del Bridge. " + mensaje);
+                _cola.Fallar(trabajo.Id, _instancia, "Sage no autorizó al Bridge en esta empresa. Prueba la empresa desde la administración del Bridge. " + mensaje);
                 return CodigoNormal;
 
             default:
@@ -300,7 +300,7 @@ public sealed class Trabajador
         {
             if (t.Tipo != TiposTrabajo.ProbarEmpresa)
             {
-                _cola.Fallar(t.Id, _instancia, $"Sage no autorizó al Bridge en esta empresa (estado {acceso}). Pruebe la empresa desde la administración del Bridge.");
+                _cola.Fallar(t.Id, _instancia, $"Sage no autorizó al Bridge en esta empresa (estado {acceso}). Prueba la empresa desde la administración del Bridge.");
                 continue;
             }
 
@@ -315,12 +315,12 @@ public sealed class Trabajador
             var mensaje = estado switch
             {
                 AuthorizationResult.Pending =>
-                    "Solicitud de acceso pendiente. Abra esta empresa en Sage (si ya estaba abierta, ciérrela y vuelva a abrirla), " +
-                    "elija «Always allow access» y pruebe otra vez.",
+                    "Solicitud de acceso pendiente. Abre esta empresa en Sage (si ya estaba abierta, ciérrala y vuelve a abrirla), " +
+                    "elige «Always allow access» y prueba otra vez.",
                 AuthorizationResult.Denied =>
                     "Sage tiene NEGADO el acceso al Bridge en esta empresa. Hay que quitar la negación en Sage antes de volver a probar.",
                 AuthorizationResult.CompanyLocked or AuthorizationResult.LoginRestricted =>
-                    $"La compañía no admite el acceso ahora ({estado}). Pruebe más tarde.",
+                    $"La compañía no admite el acceso ahora ({estado}). Prueba más tarde.",
                 _ => $"Sage respondió «{estado}» al pedir acceso.",
             };
 

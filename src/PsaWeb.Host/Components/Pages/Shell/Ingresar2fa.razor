@@ -8,10 +8,20 @@
 @inject IProveedorAutenticacion Auth
 @inject NavigationManager Nav
 
-<PageTitle>Verificación — Aplicativos web PSA</PageTitle>
+<PageTitle>Verificación — Aplicativos Web PSA</PageTitle>
 
 <h1>Verificación en dos pasos</h1>
-<p class="psa-muted">Ingresá el código de tu app de autenticación.</p>
+@if (_metodo == MetodosSegundoFactor.Correo)
+{
+    <p class="psa-muted">
+        @(_enviado ? "Te mandamos un código de 6 dígitos a tu correo. Ingrésalo acá (vale unos minutos)."
+                   : "No se pudo enviar el código a tu correo. Prueba de nuevo en un minuto o usa un código de recuperación.")
+    </p>
+}
+else
+{
+    <p class="psa-muted">Ingresa el código de tu app de autenticación.</p>
+}
 
 @if (_error is not null)
 {
@@ -32,14 +42,50 @@
     <button type="submit" class="psa-btn psa-btn--primary" style="margin-top:1.2rem;width:100%">Verificar</button>
 </EditForm>
 
+@if (_metodo == MetodosSegundoFactor.Correo)
+{
+    <form method="post" @formname="reenviar-2fa" @onsubmit="Reenviar" style="margin-top:.8rem;text-align:center">
+        <AntiforgeryToken />
+        <button type="submit" class="psa-linkbtn">Reenviar el código</button>
+    </form>
+}
+<p class="psa-muted" style="margin-top:1rem;font-size:.85rem">
+    ¿Sin acceso a tu app o a tu correo? Puedes usar uno de tus códigos de recuperación (formato XXXXX-XXXXX) en el mismo campo.
+</p>
+
 @code {
-    [SupplyParameterFromForm]
+    [SupplyParameterFromForm(FormName = "ingresar-2fa")]
     private Datos2fa Input { get; set; } = new();
 
     [SupplyParameterFromQuery(Name = "returnUrl")]
     private string? ReturnUrl { get; set; }
 
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? _metodo;
+    private bool _enviado;
     private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _metodo = await Auth.MetodoSegundoFactorPendienteAsync();
+        if (_metodo is null)
+        {
+            // Sin primer paso válido (o venció): de vuelta al ingreso.
+            Nav.NavigateTo("/ingresar", forceLoad: true);
+            return;
+        }
+
+        // Quien eligió correo recibe el código al llegar a esta pantalla (y al pedir «Reenviar»); como mucho uno por minuto.
+        _enviado = true;
+        if (_metodo == MetodosSegundoFactor.Correo && HttpMethods.IsGet(HttpContext?.Request.Method ?? "GET"))
+        {
+            _enviado = await Auth.EnviarCodigoSegundoFactorAsync();
+        }
+    }
+
+    private async Task Reenviar() => _enviado = await Auth.EnviarCodigoSegundoFactorAsync();
 
     private async Task Enviar()
     {
@@ -51,12 +97,12 @@
             Nav.NavigateTo(destino, forceLoad: true);
             return;
         }
-        _error = r.Bloqueado ? r.Motivo : "El código no es válido o expiró.";
+        _error = r.Bloqueado || r.Motivo?.StartsWith("La verificación venció") == true ? r.Motivo : "El código no es válido o expiró.";
     }
 
     public sealed class Datos2fa
     {
-        [Required(ErrorMessage = "Ingresá el código.")]
+        [Required(ErrorMessage = "Ingresa el código.")]
         public string Codigo { get; set; } = "";
 
         public bool RecordarDispositivo { get; set; }

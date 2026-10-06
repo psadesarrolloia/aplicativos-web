@@ -9,7 +9,7 @@
 @inject ILogger<Recibidos> Logger
 @implements IDisposable
 
-<PageTitle>Documentos recibidos — Aplicativos web PSA</PageTitle>
+<PageTitle>Documentos recibidos — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Documentos recibidos del SRI" Subtitle="@_empresaActual?.Nombre">
     <a class="psa-linkbtn" href="/compras">← Órdenes de compra</a>
@@ -21,14 +21,18 @@
 }
 else if (_ruc is null)
 {
-    <div class="psa-notice">Elija una empresa para trabajar.</div>
+    <div class="psa-notice">Elige una empresa para trabajar.</div>
 }
 else if (_permisos is { Ver: false })
 {
-    <div class="psa-notice psa-notice--danger">No tiene permiso para ver las compras de esta empresa.</div>
+    <div class="psa-notice psa-notice--danger">No tienes permiso para ver las compras de esta empresa.</div>
 }
 else
 {
+    @if (_permisos is { FaltaUsuarioSage: true })
+    {
+        <div class="psa-notice" style="margin-bottom: .8rem">@_permisos.MotivoSinRegistro Puedes consultar, pero no registrar en Sage.</div>
+    }
     <PsaCard Title="Comprobantes recibidos">
         <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap">
             <label class="psa-field">
@@ -125,7 +129,7 @@ else
             @if (_lista.Count == 0)
             {
                 <p class="psa-muted" style="margin-top: .8rem">
-                    No hay comprobantes recibidos en el período. Suba el reporte del SRI con la extensión (Conciliación) o pegue las claves abajo.
+                    No hay comprobantes recibidos en el período. Sube el reporte del SRI con la extensión (Conciliación) o pega las claves abajo.
                 </p>
             }
         }
@@ -135,7 +139,7 @@ else
     {
         <PsaCard Title="Desde texto">
             <p class="psa-muted">
-                Pegue texto que contenga claves de acceso (49 dígitos): por ejemplo el TXT del reporte del SRI. Se descarga el XML de cada una
+                Pega texto que contenga claves de acceso (49 dígitos): por ejemplo el TXT del reporte del SRI. Se descarga el XML de cada una
                 (el SRI lo entrega ~15 días después de la emisión) y aparecen en la bandeja.
             </p>
             <textarea class="psa-input" style="width: 100%; min-height: 6rem" @bind="_texto" @bind:event="oninput"></textarea>

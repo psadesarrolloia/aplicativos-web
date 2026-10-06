@@ -170,7 +170,7 @@ public sealed class ColaSage(IDbContextFactory<SageBridgeDbContext> contextFacto
         var ventanaNormalizada = string.IsNullOrWhiteSpace(ventana) ? null : ventana.Trim();
         if (!VentanaMantenimiento.TryParsear(ventanaNormalizada, out var v))
         {
-            throw new ArgumentException($"Ventana inválida «{ventana}». Use HH:mm-HH:mm (p. ej. 22:00-06:00).", nameof(ventana));
+            throw new ArgumentException($"Ventana inválida «{ventana}». Usa HH:mm-HH:mm (p. ej. 22:00-06:00).", nameof(ventana));
         }
 
         await using var db = await contextFactory.CreateDbContextAsync(cancellationToken);

@@ -15,7 +15,7 @@
 @inject ILogger<Compra> Logger
 @implements IDisposable
 
-<PageTitle>@Titulo — Aplicativos web PSA</PageTitle>
+<PageTitle>@Titulo — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="@Titulo" Subtitle="@_empresaActual?.Nombre">
     @if (Volver == "conciliacion")
@@ -38,7 +38,7 @@
 }
 else if (_ruc is null)
 {
-    <div class="psa-notice">Elija una empresa para trabajar.</div>
+    <div class="psa-notice">Elige una empresa para trabajar.</div>
 }
 else if (_cargaError is not null)
 {
@@ -49,7 +49,7 @@ else if (_faltaXml)
     <PsaCard Title="Falta el XML de la factura">
         <p>
             El web service del SRI ya no entrega este comprobante (solo lo hace ~15 días después de emitido).
-            Descárguelo del portal del SRI (Comprobantes electrónicos recibidos › XML) y súbalo aquí.
+            Descárgalo del portal del SRI (Comprobantes electrónicos recibidos › XML) y súbelo aquí.
         </p>
         <p class="psa-muted">Clave de acceso: @Clave</p>
         <div class="psa-row" style="gap: 1rem; align-items: center; flex-wrap: wrap; margin-top: .8rem">
@@ -73,7 +73,7 @@ else
     @if (_soloLectura)
     {
         <div class="psa-notice" style="margin-bottom: 1rem">
-            @(_contabilizada ? "Esta OC ya se convirtió en compra (contabilizada): solo lectura." : "No tiene permiso para registrar compras: solo lectura.")
+            @(_contabilizada ? "Esta OC ya se convirtió en compra (contabilizada): solo lectura." : _permisos?.FaltaUsuarioSage == true ? PsaWeb.Seguridad.MensajesEscrituraSage.SinUsuarioSage + " Solo lectura." : "No tienes permiso para registrar compras: solo lectura.")
         </div>
     }
     @foreach (var a in _avisosCarga)
@@ -257,7 +257,7 @@ else
             }
             @if (_idUsado)
             {
-                <div class="psa-notice psa-notice--danger" style="margin-top: .6rem">El ID «@p.Id» ya lo usa otro proveedor en Sage. Elija otro.</div>
+                <div class="psa-notice psa-notice--danger" style="margin-top: .6rem">El ID «@p.Id» ya lo usa otro proveedor en Sage. Elige otro.</div>
             }
         }
     </PsaCard>
@@ -556,7 +556,7 @@ else
         try
         {
             _permisos = await _servicio.PermisosAsync(_usuario, _ruc);
-            if (!_permisos.Ver) { _cargaError = "No tiene permiso para ver las compras de esta empresa."; return; }
+            if (!_permisos.Ver) { _cargaError = "No tienes permiso para ver las compras de esta empresa."; return; }
             _ctx = await _servicio.ContextoAsync(_ruc);
             if (Clave is not null)
             {
@@ -803,7 +803,7 @@ else
             _f.PropagarCuentaGasto();
             Recalcular();
             var entrada = _f.Entrada(_ruc, _ctx.Catalogo);
-            if (entrada is null) { _errorGuardar = "Elija o cree el proveedor."; return; }
+            if (entrada is null) { _errorGuardar = "Elige o crea el proveedor."; return; }
             _resultado = await _servicio.GuardarAsync(_ruc, _usuario, entrada, _f.NumeroOcAutomatico, _f.NumeroRetencionAutomatico, _confirmado,
                 huellaOrigen: _huellaXml);
             _errorGuardar = _resultado.Error;

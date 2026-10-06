@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\PsaWeb.PeachEbills\PsaWeb.PeachEbills.csproj" />
+    <ProjectReference Include="..\PsaWeb.Identidad\PsaWeb.Identidad.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

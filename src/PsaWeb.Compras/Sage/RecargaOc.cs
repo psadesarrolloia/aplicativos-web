@@ -136,9 +136,9 @@ public static class RecargaOc
         var formaPago = DeducirFormaPago(filasRf, filasRiva, asumidas, catalogo);
         if (!AsignarRetencionFuente(detalles, filasDetalle, filasRf, itemsC, catalogo))
         {
-            avisos.Add("No se pudo deducir la retención de renta de cada línea: revísela.");
+            avisos.Add("No se pudo deducir la retención de renta de cada línea: revísala.");
         }
-        if (!AsignarRetencionIva(detalles, filasRiva)) avisos.Add("No se pudo deducir la retención de IVA de cada línea: revísela.");
+        if (!AsignarRetencionIva(detalles, filasRiva)) avisos.Add("No se pudo deducir la retención de IVA de cada línea: revísala.");
 
         var cab = oc.Cabecera;
         var retenciones = CalculadorRetenciones.Calcular(detalles, formaPago, proveedor.CuentaGasto, catalogo);
@@ -146,7 +146,7 @@ public static class RecargaOc
         var calculadas = (retenciones ?? []).Select(r => (r.ItemId, r.BaseImponible)).OrderBy(x => x.ItemId).ToList();
         if (!enSage.SequenceEqual(calculadas))
         {
-            avisos.Add("Las retenciones recalculadas no coinciden con las de la OC en Sage: revise la pestaña Retención.");
+            avisos.Add("Las retenciones recalculadas no coinciden con las de la OC en Sage: revisa la pestaña Retención.");
         }
 
         var entrada = new EntradaCompra

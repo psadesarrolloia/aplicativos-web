@@ -101,7 +101,7 @@ internal sealed class OdbcComisionesRepository(SageAcceso sage) : IComisionesRep
     {
         if (!filtro.TieneAcotador)
         {
-            throw new ArgumentException("Indique un rango de recibos o de fechas del recibo.", nameof(filtro));
+            throw new ArgumentException("Indica un rango de recibos o de fechas del recibo.", nameof(filtro));
         }
 
         var cobros = (await LeerCobrosAsync(cn, filtro, ct)).Where(filtro.Coincide).ToList();

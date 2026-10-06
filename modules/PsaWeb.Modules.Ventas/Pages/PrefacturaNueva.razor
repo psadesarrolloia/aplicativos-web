@@ -14,7 +14,7 @@
 @inject ILogger<PrefacturaNueva> Logger
 @implements IDisposable
 
-<PageTitle>Nueva prefactura — Aplicativos web PSA</PageTitle>
+<PageTitle>Nueva prefactura — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Nueva prefactura (cotización)"
                Subtitle="Arma la cotización con los precios de Sage, descarga el PDF para el cliente y avisa a Contabilidad para que la digite en Sage." />
@@ -84,7 +84,7 @@ else
         <label class="psa-field">
             <span class="psa-field__label">Vendedor (rep de Sage con el que se facturará)</span>
             <select class="psa-input" value="@_vendedor" @onchange="CambiarVendedor">
-                <option value="">— elegí —</option>
+                <option value="">— elige —</option>
                 @foreach (var v in _vendedores)
                 {
                     <option value="@v">@v</option>
@@ -139,7 +139,7 @@ else
     </div>
     @if (_cliente is null)
     {
-        <p class="psa-muted" style="margin-top: .5rem">Elegí primero el cliente para ver el precio de su lista.</p>
+        <p class="psa-muted" style="margin-top: .5rem">Elige primero el cliente para ver el precio de su lista.</p>
     }
 
     @if (_resultadosItems is { Count: > 0 })
@@ -204,7 +204,7 @@ else
         </div>
         @if (_lineas.Any(l => l.PrecioLista is not null && l.Manual))
         {
-            <p class="psa-muted" style="margin-top: .4rem">Podés ingresar un precio distinto del de la lista; no requiere aprobación y queda marcado en el correo a Contabilidad.</p>
+            <p class="psa-muted" style="margin-top: .4rem">Puedes ingresar un precio distinto del de la lista; no requiere aprobación y queda marcado en el correo a Contabilidad.</p>
         }
 
         <div style="max-width: 22rem; margin: 1rem 0 0 auto">
@@ -230,7 +230,7 @@ else
     @if (_validacion is { Advertencias.Count: > 0 })
     {
         <div class="psa-notice" style="margin-top: .6rem">
-            <strong>Revisá antes de emitir:</strong>
+            <strong>Revisa antes de emitir:</strong>
             <ul style="margin: .3rem 0 0 1.2rem">@foreach (var a in _validacion.Advertencias) { <li>@a</li> }</ul>
         </div>
     }

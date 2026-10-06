@@ -5,7 +5,7 @@
 @inject IServicioTokensExtension Tokens
 @inject AuthenticationStateProvider AuthState
 
-<PageTitle>Extensión de Chrome — Aplicativos web PSA</PageTitle>
+<PageTitle>Extensión de Chrome — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Extensión de Chrome"
                Subtitle="Token de acceso para que la extensión del módulo Conciliación con SRI - Docs Recibidos suba reportes a nombre tuyo." />
@@ -22,7 +22,7 @@ else if (_tokenRecienGenerado is not null)
 {
     <PsaCard Title="Token generado">
         <p class="psa-notice psa-notice--danger">
-            Copiá este token ahora — no se va a volver a mostrar. Pegalo en el ícono de la extensión de Chrome.
+            Copia este token ahora — no se va a volver a mostrar. Pégalo en el ícono de la extensión de Chrome.
         </p>
         <code style="display:block;padding:.75rem;word-break:break-all;background:var(--psa-surface-2,#f2f2f2);border-radius:6px">@_tokenRecienGenerado</code>
         <div class="psa-row" style="margin-top:1rem">
@@ -36,6 +36,7 @@ else if (_info is not null)
         <p class="psa-notice">
             Creado el @_info.CreadoUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
             · último uso: @(_info.UltimoUsoUtc is { } u ? u.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : "nunca usado")
+            · @(_info.Vencido ? "VENCIDO: genera uno nuevo" : $"vence el {_info.VenceUtc.ToLocalTime():dd/MM/yyyy}")
         </p>
         <div class="psa-row" style="margin-top:1rem">
             <PsaButton Variant="secondary" OnClick="Generar" Disabled="_procesando">Generar uno nuevo</PsaButton>

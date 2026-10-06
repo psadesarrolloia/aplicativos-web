@@ -1,0 +1,62 @@
+@page "/recuperar-clave"
+@layout PsaWeb.Host.Components.Layout.ShellLayout
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [EnableRateLimiting("login")]
+@using System.ComponentModel.DataAnnotations
+@using PsaWeb.Seguridad
+@inject ServicioAccesos Accesos
+@inject NavigationManager Nav
+@inject ILogger<RecuperarClave> Log
+
+<PageTitle>Recuperar la contraseña — Aplicativos Web PSA</PageTitle>
+
+<h1>Recuperar la contraseña</h1>
+
+@if (_enviado)
+{
+    @* Mismo mensaje exista o no la cuenta: no se revela qué correos están registrados. *@
+    <p class="psa-notice">Si ese correo tiene una cuenta activa, te llegó un enlace para cambiar la contraseña (vale 24 horas). Revisa también el correo no deseado.</p>
+    <p style="margin-top:1rem"><a href="/ingresar">Volver a ingresar</a></p>
+}
+else
+{
+    <p class="psa-muted">Escribe el correo con el que ingresas y te mandamos un enlace.</p>
+    <EditForm Model="Input" method="post" OnValidSubmit="Enviar" FormName="recuperar-clave">
+        <DataAnnotationsValidator />
+        <div class="psa-field" style="width:100%">
+            <span class="psa-field__lbl">Correo</span>
+            <InputText class="psa-input" @bind-Value="Input.Correo" autocomplete="username" inputmode="email" />
+            <ValidationMessage For="() => Input.Correo" />
+        </div>
+        <button type="submit" class="psa-btn psa-btn--primary" style="margin-top:1.2rem;width:100%">Enviar el enlace</button>
+    </EditForm>
+    <p style="margin-top:1rem;text-align:center"><a href="/ingresar">Volver</a></p>
+}
+
+@code {
+    [SupplyParameterFromForm(FormName = "recuperar-clave")]
+    private DatosRecuperar Input { get; set; } = new();
+
+    private bool _enviado;
+
+    private async Task Enviar()
+    {
+        try
+        {
+            await Accesos.SolicitarRecuperacionAsync(Input.Correo, Nav.BaseUri);
+        }
+        catch (Exception ex)
+        {
+            // Nunca se le muestra el motivo (no revelar si la cuenta existe); queda en el log.
+            Log.LogWarning(ex, "No se pudo enviar el enlace de recuperación de clave.");
+        }
+        _enviado = true;
+    }
+
+    public sealed class DatosRecuperar
+    {
+        [Required(ErrorMessage = "Ingresa tu correo.")]
+        public string Correo { get; set; } = "";
+    }
+}

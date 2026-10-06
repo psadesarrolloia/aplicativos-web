@@ -162,7 +162,7 @@ public class ArmadorOcTests
         var r = ArmadorOc.Armar(Entrada(detalles, [Iva(10m, 1.5m)], FormaPagoRetencion.Otros, proveedor: CatalogoPrueba.Proveedor(email: "")), Catalogo);
 
         Assert.Contains("Ver detalle SIN RET, según la forma de pago seleccionada debería aplicar retenciones", r.Errores);
-        Assert.Contains("Revise la información del PROVEEDOR: email del proveedor es requerido", r.Errores);
+        Assert.Contains("Revisa la información del PROVEEDOR: email del proveedor es requerido", r.Errores);
         Assert.Contains("Debe especificar los detalles de retención", r.Errores);
     }
 
@@ -214,7 +214,7 @@ public class ArmadorOcTests
 
         var r = ArmadorOc.Armar(Entrada(detalles, [Iva(10m, 1.5m)], FormaPagoRetencion.TarjetaCredito, numeroOc: numero), Catalogo);
 
-        Assert.Equal(valido, !r.Errores.Contains("Ingrese un número de Orden de Compra correcto xx-xxxx"));
+        Assert.Equal(valido, !r.Errores.Contains("Ingresa un número de Orden de Compra correcto xx-xxxx"));
     }
 
     [Fact]
@@ -327,7 +327,7 @@ public class PreparacionCompraTests
         var (impuestos, errores) = PreparacionCompra.Impuestos(f, "60505", Catalogo);
 
         Assert.Null(Assert.Single(impuestos).ItemId);
-        Assert.Contains("No hay un ítem de IVA (5%) activo en Sage: revise la categoría IMPUESTO.", errores);
+        Assert.Contains("No hay un ítem de IVA (5%) activo en Sage: revisa la categoría IMPUESTO.", errores);
     }
 
     [Fact]

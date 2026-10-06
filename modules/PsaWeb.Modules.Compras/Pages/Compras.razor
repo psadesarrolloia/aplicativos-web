@@ -9,7 +9,7 @@
 @inject ILogger<Compras> Logger
 @implements IDisposable
 
-<PageTitle>Compras — Aplicativos web PSA</PageTitle>
+<PageTitle>Compras — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Compras" Subtitle="@Subtitulo">
     <a class="psa-linkbtn" href="/compras/importaciones">Liquidación de importaciones →</a>
@@ -22,14 +22,18 @@
 }
 else if (_ruc is null)
 {
-    <div class="psa-notice">Elija una empresa para trabajar.</div>
+    <div class="psa-notice">Elige una empresa para trabajar.</div>
 }
 else if (_permisos is { Ver: false })
 {
-    <div class="psa-notice psa-notice--danger">No tiene permiso para ver las compras de esta empresa.</div>
+    <div class="psa-notice psa-notice--danger">No tienes permiso para ver las compras de esta empresa.</div>
 }
 else
 {
+    @if (_permisos is { FaltaUsuarioSage: true })
+    {
+        <div class="psa-notice" style="margin-bottom: .8rem">@_permisos.MotivoSinRegistro Puedes consultar, pero no registrar en Sage.</div>
+    }
     <PsaCard Title="Órdenes de compra registradas">
         <div class="psa-row" style="align-items: flex-end; gap: 1rem; flex-wrap: wrap">
             <label class="psa-field">

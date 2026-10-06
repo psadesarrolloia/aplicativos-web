@@ -109,7 +109,7 @@ async function subirReporte() {
     });
 
     if (!respuestaSri.ok) {
-      mostrarEstado("No se pudo conectar con el SRI. Reintentá en unos minutos.", true);
+      mostrarEstado("No se pudo conectar con el SRI. Reintenta en unos minutos.", true);
       return;
     }
 
@@ -121,7 +121,7 @@ async function subirReporte() {
     mostrarEstado("Subiendo a PSA…", false);
     chrome.runtime.sendMessage({ tipo: "reporteDescargado", ruc, contenido }, (respuesta) => {
       if (chrome.runtime.lastError) {
-        mostrarEstado("No se pudo conectar con PSA. Reintentá en unos minutos.", true);
+        mostrarEstado("No se pudo conectar con PSA. Reintenta en unos minutos.", true);
         return;
       }
       if (!respuesta?.ok) {

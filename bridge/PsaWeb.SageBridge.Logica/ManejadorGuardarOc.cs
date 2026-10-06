@@ -204,7 +204,7 @@ public sealed class ManejadorGuardarOc : IManejadorTrabajo
 
         if (p.EsNuevo && !string.Equals(v.MailToContact.Address.Country?.Trim(), p.Identificacion, StringComparison.OrdinalIgnoreCase))
         {
-            throw new RechazoTrabajoException($"El ID de proveedor {p.Id} ya lo usa otro proveedor en Sage ({v.Name}). Elija otro ID.");
+            throw new RechazoTrabajoException($"El ID de proveedor {p.Id} ya lo usa otro proveedor en Sage ({v.Name}). Elige otro ID.");
         }
 
         var cambios = false;

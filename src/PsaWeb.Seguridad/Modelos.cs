@@ -14,3 +14,14 @@ public sealed record ContextoDeUsuario(
 {
     public bool Puede(string codigoPermiso) => Permisos.Contains(codigoPermiso);
 }
+
+/// <summary>
+/// Vínculo de la cuenta web con su usuario de Sage 50 en una empresa (PLAN-ACCESOS-WEB §6). <see cref="Exigido"/> = false cuando la fuente
+/// de accesos no lo maneja (PeachEBills): ahí no se bloquea nada. Con la fuente Web, sin usuario de Sage no se escribe en Sage.
+/// </summary>
+public sealed record VinculoSage(bool Exigido, string? UsuarioSage)
+{
+    public static readonly VinculoSage NoAplica = new(false, null);
+
+    public bool PermiteEscribir => !Exigido || !string.IsNullOrWhiteSpace(UsuarioSage);
+}

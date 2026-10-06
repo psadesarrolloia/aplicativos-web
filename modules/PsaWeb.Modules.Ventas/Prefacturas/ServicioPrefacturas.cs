@@ -36,7 +36,7 @@ public sealed class ServicioPrefacturas(IAlmacenPrefacturas almacen, IServicioCo
 
     public async Task<IReadOnlyList<Prefactura>> ListarAsync(string ruc, FiltroPrefacturas filtro, ActorVentas actor, CancellationToken ct = default)
     {
-        if (!actor.Permisos.VerPrefacturas) throw new AccesoDenegadoVentasException("No tenés permiso para ver prefacturas.");
+        if (!actor.Permisos.VerPrefacturas) throw new AccesoDenegadoVentasException("No tienes permiso para ver prefacturas.");
         // Sin «cerrar» solo se ven las propias, sin importar el filtro que mande la pantalla.
         var efectivo = actor.Permisos.VerTodas ? filtro : filtro with { CreadaPor = actor.Usuario };
         return await almacen.ListarAsync(ruc, efectivo, ct);
@@ -45,7 +45,7 @@ public sealed class ServicioPrefacturas(IAlmacenPrefacturas almacen, IServicioCo
     public async Task<ResultadoEmision> EmitirAsync(string ruc, string empresaNombre, SolicitudPrefactura solicitud, ActorVentas actor, string? urlBase,
         CancellationToken ct = default)
     {
-        if (!actor.Permisos.Emitir) throw new AccesoDenegadoVentasException("No tenés permiso para emitir prefacturas.");
+        if (!actor.Permisos.Emitir) throw new AccesoDenegadoVentasException("No tienes permiso para emitir prefacturas.");
         var config = await almacen.ConfiguracionAsync(ruc, ct);
         var validacion = ValidadorPrefactura.Validar(solicitud, config);
         if (!validacion.EsValida) return new ResultadoEmision(null, validacion);
@@ -73,14 +73,14 @@ public sealed class ServicioPrefacturas(IAlmacenPrefacturas almacen, IServicioCo
     {
         var p = await ObtenerAsync(ruc, id, actor, ct) ?? throw new InvalidOperationException("La prefactura no existe.");
         var propia = string.Equals(p.CreadaPor, actor.Usuario, StringComparison.OrdinalIgnoreCase);
-        if (!actor.Permisos.Cerrar && !(actor.Permisos.Emitir && propia)) throw new AccesoDenegadoVentasException("No tenés permiso para reenviar el correo de esta prefactura.");
+        if (!actor.Permisos.Cerrar && !(actor.Permisos.Emitir && propia)) throw new AccesoDenegadoVentasException("No tienes permiso para reenviar el correo de esta prefactura.");
         return await EnviarCorreoAsync(p, await almacen.ConfiguracionAsync(ruc, ct), urlBase, ct);
     }
 
     public async Task MarcarFacturadaAsync(string ruc, int id, string facturaSage, ActorVentas actor, CancellationToken ct = default)
     {
         if (!actor.Permisos.Cerrar) throw new AccesoDenegadoVentasException("Solo Contabilidad puede marcar una prefactura como facturada.");
-        if (string.IsNullOrWhiteSpace(facturaSage)) throw new ArgumentException("Anotá el número de la factura de Sage.", nameof(facturaSage));
+        if (string.IsNullOrWhiteSpace(facturaSage)) throw new ArgumentException("Anota el número de la factura de Sage.", nameof(facturaSage));
         var p = await ObtenerAsync(ruc, id, actor, ct) ?? throw new InvalidOperationException("La prefactura no existe.");
         if (p.Estado != EstadoPrefactura.Emitida) throw new InvalidOperationException($"La prefactura {p.NumeroTexto} ya está {p.Estado.ToString().ToLowerInvariant()}.");
         await almacen.MarcarFacturadaAsync(ruc, id, facturaSage, actor.Usuario, reloj.GetUtcNow().UtcDateTime, ct);

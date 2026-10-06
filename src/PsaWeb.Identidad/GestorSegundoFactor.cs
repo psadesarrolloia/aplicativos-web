@@ -18,7 +18,7 @@ public sealed record EnrolamientoTotp(string ClaveFormateada, string ClavePlana,
 /// </summary>
 public sealed class GestorSegundoFactor
 {
-    private const string Emisor = "Aplicativos web PSA";
+    private const string Emisor = MensajesCuenta.Producto;
     private readonly UserManager<UsuarioApp> _users;
 
     public GestorSegundoFactor(UserManager<UsuarioApp> users) => _users = users;
@@ -54,7 +54,7 @@ public sealed class GestorSegundoFactor
 
     /// <summary>
     /// Activa el 2FA si el código es válido. Devuelve los códigos de recuperación
-    /// nuevos (mostralos una sola vez).
+    /// nuevos (muéstralos una sola vez).
     /// </summary>
     public async Task<(bool Ok, IReadOnlyList<string> CodigosRecuperacion)> ActivarAsync(
         UsuarioApp usuario, string codigo)
@@ -68,9 +68,52 @@ public sealed class GestorSegundoFactor
             return (false, Array.Empty<string>());
         }
 
+        usuario.MetodoSegundoFactor = MetodosSegundoFactor.Totp;
+        await _users.SetTwoFactorEnabledAsync(usuario, true); // también guarda MetodoSegundoFactor (UpdateAsync)
+        var codigos = await _users.GenerateNewTwoFactorRecoveryCodesAsync(usuario, 10);
+        return (true, codigos?.ToList() ?? new List<string>());
+    }
+
+    private const string PropositoActivarCorreo = "activar-2fa-correo";
+
+    /// <summary>Método efectivo del segundo paso (las cuentas que lo activaron antes de existir el correo usan la app).</summary>
+    public static string MetodoDe(UsuarioApp usuario) =>
+        usuario.MetodoSegundoFactor == MetodosSegundoFactor.Correo ? MetodosSegundoFactor.Correo : MetodosSegundoFactor.Totp;
+
+    /// <summary>Manda al correo del usuario un código para activar la verificación por correo. false si no tiene correo o no hay SMTP.</summary>
+    public async Task<bool> EnviarCodigoActivacionCorreoAsync(UsuarioApp usuario, IEnviadorCorreoPlataforma correo, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(usuario.Email) || !correo.Disponible) return false;
+        var codigo = await _users.GenerateUserTokenAsync(usuario, TokenOptions.DefaultEmailProvider, PropositoActivarCorreo);
+        var (asunto, html) = MensajesCuenta.CodigoVerificacion(usuario.NombreCompleto ?? usuario.UserName ?? "", codigo, "activar la verificación por correo");
+        await correo.EnviarAsync(usuario.Email, asunto, html, ct);
+        return true;
+    }
+
+    /// <summary>Activa la verificación en dos pasos por correo si el código es válido (y deja el correo como confirmado).</summary>
+    public async Task<(bool Ok, IReadOnlyList<string> CodigosRecuperacion)> ActivarPorCorreoAsync(UsuarioApp usuario, string codigo)
+    {
+        var limpio = (codigo ?? string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
+        if (!await _users.VerifyUserTokenAsync(usuario, TokenOptions.DefaultEmailProvider, PropositoActivarCorreo, limpio))
+        {
+            return (false, Array.Empty<string>());
+        }
+
+        usuario.EmailConfirmed = true; // el proveedor "Email" de Identity solo emite códigos de ingreso a correos confirmados
+        usuario.MetodoSegundoFactor = MetodosSegundoFactor.Correo;
         await _users.SetTwoFactorEnabledAsync(usuario, true);
         var codigos = await _users.GenerateNewTwoFactorRecoveryCodesAsync(usuario, 10);
         return (true, codigos?.ToList() ?? new List<string>());
+    }
+
+    /// <summary>Manda el código de ingreso por correo (segundo paso del login de quien eligió correo).</summary>
+    public async Task<bool> EnviarCodigoIngresoAsync(UsuarioApp usuario, IEnviadorCorreoPlataforma correo, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(usuario.Email) || !correo.Disponible) return false;
+        var codigo = await _users.GenerateTwoFactorTokenAsync(usuario, TokenOptions.DefaultEmailProvider);
+        var (asunto, html) = MensajesCuenta.CodigoVerificacion(usuario.NombreCompleto ?? usuario.UserName ?? "", codigo, "ingresar");
+        await correo.EnviarAsync(usuario.Email, asunto, html, ct);
+        return true;
     }
 
     public async Task<IReadOnlyList<string>> RegenerarCodigosRecuperacionAsync(UsuarioApp usuario)
@@ -81,6 +124,7 @@ public sealed class GestorSegundoFactor
 
     public async Task DesactivarAsync(UsuarioApp usuario)
     {
+        usuario.MetodoSegundoFactor = null;
         await _users.SetTwoFactorEnabledAsync(usuario, false);
         await _users.ResetAuthenticatorKeyAsync(usuario);
     }

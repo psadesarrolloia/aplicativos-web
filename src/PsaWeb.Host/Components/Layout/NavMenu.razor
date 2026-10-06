@@ -4,7 +4,7 @@
 @inject ISecurityDirectory Seguridad
 @inject EmpresaActualService EmpresaActual
 @inject AuthenticationStateProvider AuthState
-@inject IOptions<PlataformaOptions> Plataforma
+@inject IServiceProvider Servicios
 @inject IOptions<EscrituraOptions> Escritura
 @inject NavigationManager Nav
 @implements IDisposable
@@ -43,7 +43,7 @@
         </div>
     }
 
-    @if (_esAdmin)
+    @if (_rol != RolPanel.Ninguno)
     {
         // Menú de configuración (solo administradores): mismas páginas que la subnavegación de /admin.
         <div class="psa-navgroup">
@@ -57,21 +57,30 @@
             {
                 <div class="psa-navgroup__backdrop" @onclick="Cerrar"></div>
                 <div class="psa-navgroup__panel">
-                    <NavLink class="psa-navgroup__item" href="/admin/usuarios">
-                        <span class="psa-navgroup__icon">👤</span><span>Usuarios</span>
+                    @if (_rol == RolPanel.SuperAdmin)
+                    {
+                        <NavLink class="psa-navgroup__item" href="/admin/usuarios">
+                            <span class="psa-navgroup__icon">👤</span><span>Usuarios</span>
+                        </NavLink>
+                    }
+                    <NavLink class="psa-navgroup__item" href="/admin/accesos" Match="NavLinkMatch.Prefix">
+                        <span class="psa-navgroup__icon">🔐</span><span>Accesos (empresas y módulos)</span>
                     </NavLink>
                     <NavLink class="psa-navgroup__item" href="/admin/auditoria">
                         <span class="psa-navgroup__icon">📜</span><span>Auditoría</span>
                     </NavLink>
-                    @if (Escritura.Value.Habilitada)
+                    @if (_rol == RolPanel.SuperAdmin && Escritura.Value.Habilitada)
                     {
                         <NavLink class="psa-navgroup__item" href="/admin/sage-bridge">
                             <span class="psa-navgroup__icon">🔌</span><span>Sage Bridge (empresas y cola)</span>
                         </NavLink>
                     }
-                    <NavLink class="psa-navgroup__item" href="/admin/ventas">
-                        <span class="psa-navgroup__icon">🧾</span><span>Ventas (prefacturas)</span>
-                    </NavLink>
+                    @if (_rol == RolPanel.SuperAdmin)
+                    {
+                        <NavLink class="psa-navgroup__item" href="/admin/ventas">
+                            <span class="psa-navgroup__icon">🧾</span><span>Ventas (prefacturas)</span>
+                        </NavLink>
+                    }
                 </div>
             }
         </div>
@@ -80,7 +89,7 @@
 
 @code {
     private IReadOnlyList<AppWeb> _apps = Array.Empty<AppWeb>();
-    private bool _esAdmin;
+    private RolPanel _rol;
     private string? _categoriaAbierta;
 
     protected override void OnInitialized()
@@ -92,7 +101,7 @@
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthState.GetAuthenticationStateAsync();
-        _esAdmin = Plataforma.Value.EsAdmin(state.User.Identity?.Name);
+        _rol = await PsaWeb.Host.Auth.RolesPanel.RolAsync(Servicios, state.User.Identity?.Name);
         await CargarAsync();
     }
 

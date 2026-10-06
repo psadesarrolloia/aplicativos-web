@@ -1,0 +1,73 @@
+@page "/admin/accesos"
+@using PsaWeb.Identidad
+@using PsaWeb.Seguridad
+@inject ServicioAccesos Servicio
+
+<PageTitle>Accesos — Aplicativos Web PSA</PageTitle>
+
+<AdminMarco Requiere="RolPanel.Admin" AlCargar="AlCargar"
+            Subtitulo="Qué empresas y qué módulos tiene cada cuenta. Elige una cuenta para editar sus accesos.">
+    <AvisoFuenteAccesos />
+
+    @if (_filas is null)
+    {
+        <p class="psa-muted">Cargando…</p>
+    }
+    else
+    {
+        <PsaCard Title="@($"{_filas.Count} cuentas")">
+            <div class="psa-row" style="margin-bottom:.6rem">
+                <input class="psa-input" placeholder="Buscar por nombre, usuario o correo" @bind="_filtro" @bind:event="oninput" style="max-width:340px" />
+            </div>
+            <div style="overflow-x:auto">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th title="Acceso al panel de administración">Panel</th><th title="Deducido de sus módulos">Nivel</th><th class="num">Empresas</th><th>2FA</th><th>Estado</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in Filtradas)
+                    {
+                        var editable = ReglasPanel.PuedeEditarAccesos(_actor!.Rol, _actor.Id, f.PerfilEfectivo, f.Id);
+                        <tr>
+                            <td>@f.Nombre</td>
+                            <td>@f.UserName</td>
+                            <td>@f.Email</td>
+                            <td>@Perfiles.Etiqueta(f.PerfilEfectivo)</td>
+                            <td>@f.Nivel</td>
+                            <td class="num">@f.Empresas</td>
+                            <td>@(f.DosFactores ? "sí" : "no")</td>
+                            <td>@(f.Activo ? "activa" : "deshabilitada")</td>
+                            <td>
+                                @if (editable)
+                                {
+                                    <a class="psa-linkbtn" href="@($"/admin/accesos/{f.Id}")">Editar accesos</a>
+                                }
+                                else
+                                {
+                                    <span class="psa-muted" title="Un Admin no edita cuentas Super Admin ni la propia">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            </div>
+        </PsaCard>
+    }
+</AdminMarco>
+
+@code {
+    private ServicioAccesos.Actor? _actor;
+    private List<UsuarioPanel>? _filas;
+    private string _filtro = "";
+
+    private IEnumerable<UsuarioPanel> Filtradas => string.IsNullOrWhiteSpace(_filtro)
+        ? _filas!
+        : _filas!.Where(f => $"{f.Nombre} {f.UserName} {f.Email}".Contains(_filtro.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private async Task AlCargar(ServicioAccesos.Actor actor)
+    {
+        _actor = actor;
+        _filas = (await Servicio.UsuariosAsync()).ToList();
+    }
+}

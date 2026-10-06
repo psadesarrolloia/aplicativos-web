@@ -64,6 +64,10 @@ public static class Permisos
     // Requiere 1 fila nueva en allowAction de PeachEBills asignada a los roles.
     public const string VerConciliacionSri = "quconcsri";
 
+    // Cierre de Caja — código nuevo (el piloto no tenía llave: era visible para cualquier empresa). Solo existe en la tabla de
+    // accesos web (PLAN-ACCESOS-WEB); no hace falta cargarlo en allowAction.
+    public const string VerCierreCaja = "quCierre";
+
     // Configuración
     public const string ConfigurarDatil = "setDatilP";
     public const string ConfigurarOdbc = "setODBC";

@@ -47,7 +47,7 @@ public sealed class ChequePdfRenderer
                     });
                 }
             })
-            .WithMetadata(new DocumentMetadata { Title = titulo, Author = "Aplicativos web PSA" });
+            .WithMetadata(new DocumentMetadata { Title = titulo, Author = "Aplicativos Web PSA" });
     }
 
     private static void Dibujar(LayersDescriptor layers, PaginaCheque pagina, string fuente, LogoEmpresa? logo)

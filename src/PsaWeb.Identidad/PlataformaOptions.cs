@@ -14,6 +14,9 @@ public sealed class PlataformaOptions
     /// </summary>
     public List<string> Admins { get; set; } = new();
 
+    /// <summary>Días de vigencia del token de la extensión de Chrome (después hay que generar otro).</summary>
+    public int TokenExtensionDias { get; set; } = ServicioTokensExtension.DiasVigenciaPorDefecto;
+
     public bool EsAdmin(string? usuario) =>
         !string.IsNullOrWhiteSpace(usuario)
         && Admins.Any(a => string.Equals(a, usuario, StringComparison.OrdinalIgnoreCase));

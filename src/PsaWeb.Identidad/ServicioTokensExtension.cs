@@ -2,7 +2,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace PsaWeb.Identidad;
 
-public sealed record TokenExtensionInfo(DateTime CreadoUtc, DateTime? UltimoUsoUtc);
+/// <summary>Token activo sin el secreto. <c>VenceUtc</c>: pasada esa fecha deja de servir aunque no se haya revocado.</summary>
+public sealed record TokenExtensionInfo(DateTime CreadoUtc, DateTime? UltimoUsoUtc, DateTime VenceUtc)
+{
+    public bool Vencido => DateTime.UtcNow >= VenceUtc;
+}
 
 /// <summary>
 /// Alta, validación y revocación del token de API de la extensión de Chrome
@@ -22,8 +26,16 @@ public interface IServicioTokensExtension
     Task RevocarAsync(string usuarioId, CancellationToken cancellationToken = default);
 }
 
-public sealed class ServicioTokensExtension(PlataformaDbContext db) : IServicioTokensExtension
+/// <summary>
+/// Los tokens vencen a los <paramref name="diasVigencia"/> días de creados (90 por defecto, <c>Plataforma:TokenExtensionDias</c>): la extensión
+/// se usa desde fuera de la red y un token robado no debe servir para siempre.
+/// </summary>
+public sealed class ServicioTokensExtension(PlataformaDbContext db, int diasVigencia = ServicioTokensExtension.DiasVigenciaPorDefecto) : IServicioTokensExtension
 {
+    public const int DiasVigenciaPorDefecto = 90;
+
+    private DateTime Vence(DateTime creadoUtc) => creadoUtc.AddDays(diasVigencia > 0 ? diasVigencia : DiasVigenciaPorDefecto);
+
     public async Task<string> GenerarAsync(string usuarioId, CancellationToken cancellationToken = default)
     {
         await RevocarAsync(usuarioId, cancellationToken);
@@ -59,6 +71,11 @@ public sealed class ServicioTokensExtension(PlataformaDbContext db) : IServicioT
             return null;
         }
 
+        if (DateTime.UtcNow >= Vence(token.CreadoUtc))
+        {
+            return null;
+        }
+
         token.UltimoUsoUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return token.UsuarioId;
@@ -70,7 +87,7 @@ public sealed class ServicioTokensExtension(PlataformaDbContext db) : IServicioT
             .Where(t => t.UsuarioId == usuarioId && t.RevocadoUtc == null)
             .OrderByDescending(t => t.CreadoUtc)
             .FirstOrDefaultAsync(cancellationToken);
-        return token is null ? null : new TokenExtensionInfo(token.CreadoUtc, token.UltimoUsoUtc);
+        return token is null ? null : new TokenExtensionInfo(token.CreadoUtc, token.UltimoUsoUtc, Vence(token.CreadoUtc));
     }
 
     public async Task RevocarAsync(string usuarioId, CancellationToken cancellationToken = default)

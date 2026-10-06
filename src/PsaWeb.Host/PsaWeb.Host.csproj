@@ -16,6 +16,12 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="9.0.18" />
   </ItemGroup>
 
+  <!-- appsettings.Development.json NO viaja al servidor: trae el usuario de prueba y Escritura:Habilitada=true, que se activarían
+       si alguien pusiera ASPNETCORE_ENVIRONMENT=Development en producción (hallazgo de la auditoría 2026-10-05). -->
+  <ItemGroup>
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\PsaWeb.Shared\PsaWeb.Shared.csproj" />
     <ProjectReference Include="..\PsaWeb.Sage50\PsaWeb.Sage50.csproj" />

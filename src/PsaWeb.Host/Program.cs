@@ -43,6 +43,14 @@ builder.Services.AddReportes(builder.Configuration); // Reportes de Access: PWC,
 // sitio (piloto Cierre de Caja) sigue funcionando igual.
 var peachEbillsConfigurado = !string.IsNullOrWhiteSpace(
     builder.Configuration.GetSection(PeachEbillsOptions.SectionName)["ConnectionString"]);
+
+// Shell F-Shell-0: identidad local (ASP.NET Core Identity) + rate-limiting del
+// login. Solo se registra si hay cadena a PsaWebPlataforma.
+var plataformaConfigurada = !string.IsNullOrWhiteSpace(
+    builder.Configuration.GetSection(PsaWeb.Identidad.ServiceCollectionExtensions.SectionName)["ConnectionString"]);
+
+// De dónde salen empresas y permisos (PLAN-ACCESOS-WEB): Accesos:Fuente = PeachEBills (por defecto) | Web.
+var fuenteAccesos = PsaWeb.Seguridad.FuenteAccesos.PeachEBills;
 if (peachEbillsConfigurado)
 {
     builder.Services.AddPeachEbills(builder.Configuration);
@@ -52,7 +60,7 @@ if (peachEbillsConfigurado)
     builder.Services.AddAts(builder.Configuration); // Ola 1 app #3: ATS (requiere PeachEBills por dicIdentityTypeATS/Establishments/Transmitter)
     // Shell F-Shell-0: directorio de seguridad (empresas + permisos por usuario)
     // y estado de sesión de empresa/ambiente.
-    builder.Services.AddSeguridad();
+    fuenteAccesos = builder.Services.AddSeguridad(builder.Configuration, plataformaConfigurada);
 
     // Shell F-Shell-3b: los módulos de solo lectura (Cierre de Caja, Kardex)
     // resuelven la empresa/conexión Sage por el RUC de sesión (reemplaza el
@@ -63,13 +71,10 @@ if (peachEbillsConfigurado)
     builder.Services.AddScoped<
         PsaWeb.Modules.Reportes.Comun.IEmpresaSesionInfo,
         PsaWeb.Host.Cierre.HostEmpresaSesionInfo>();
+    // AW-5: usuarios de Sage 50 de cada compañía (para elegir y validar el usuario de Sage de cada cuenta en el panel).
+    builder.Services.AddMemoryCache();
+    builder.Services.AddScoped<PsaWeb.Seguridad.ILectorUsuariosSage, PsaWeb.Host.Auth.LectorUsuariosSageOdbc>();
 }
-
-// Shell F-Shell-0: identidad local (ASP.NET Core Identity) + rate-limiting del
-// login. Solo se registra si hay cadena a PsaWebPlataforma. Todavía NO fija el
-// esquema de auth por defecto — eso lo hace F-Shell-1 con las pantallas de login.
-var plataformaConfigurada = !string.IsNullOrWhiteSpace(
-    builder.Configuration.GetSection(PsaWeb.Identidad.ServiceCollectionExtensions.SectionName)["ConnectionString"]);
 
 // Interruptor de los módulos que ESCRIBEN en Sage por el Sage Bridge (Ola 2: Compras, Facturas recibidas, Liquidación de importaciones,
 // administración del Bridge). Apagado por defecto: producción no los activa hasta el «deploy de escritura»; desarrollo lo enciende en
@@ -79,7 +84,17 @@ builder.Services.Configure<PsaWeb.Seguridad.EscrituraOptions>(builder.Configurat
 if (plataformaConfigurada)
 {
     builder.Services.AddIdentidadPlataforma(builder.Configuration);
-    builder.Services.AddRateLimiter(PsaWeb.Identidad.ServiceCollectionExtensions.AgregarPoliticaLimiteLogin);
+    // Correos de la cuenta (invitación, recuperación, código por correo, aviso de IP nueva) por el SMTP de Notificaciones.
+    builder.Services.AddScoped<IEnviadorCorreoPlataforma, PsaWeb.Host.Auth.EnviadorCorreoNotificaciones>();
+    builder.Services.AddMemoryCache();
+    builder.Services.AddRateLimiter(opciones =>
+    {
+        PsaWeb.Identidad.ServiceCollectionExtensions.AgregarPoliticaLimiteLogin(opciones);
+        // Extensión de Chrome (endpoint público por token): 30 subidas por minuto por IP.
+        opciones.AddPolicy(Program.PoliticaExtension, contexto => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            contexto.Connection.RemoteIpAddress?.ToString() ?? "sin-ip",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+    });
     // Módulo de Conciliación SRI (F1): staging de comprobantes del SRI, misma
     // base física que PsaWebPlataforma. El endpoint de subida y la pantalla
     // /mi-cuenta/extension solo tienen sentido si hay plataforma (token de API
@@ -135,6 +150,14 @@ if (plataformaConfigurada)
         options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
         options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest;
     });
+
+    // «Confiar en este dispositivo» del segundo paso: 30 días (se invalida al cambiar clave, correo o 2FA: sello de seguridad).
+    builder.Services.Configure<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions>(
+        Microsoft.AspNetCore.Identity.IdentityConstants.TwoFactorRememberMeScheme,
+        o => o.ExpireTimeSpan = TimeSpan.FromDays(30));
+    // La cookie re-valida el sello cada 5 min (cuenta deshabilitada, clave/perfil cambiados) y los circuitos de Blazor igual.
+    builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(5));
+    builder.Services.AddScoped<Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider, PsaWeb.Host.Auth.RevalidacionSesion>();
 }
 else
 {
@@ -187,6 +210,10 @@ app.Logger.LogInformation(
 app.Logger.LogInformation(
     "Plataforma (identidad local): {Estado}.",
     plataformaConfigurada ? "ACTIVA" : "INACTIVA (sin Plataforma:ConnectionString)");
+app.Logger.LogInformation(
+    "Accesos (empresas y permisos): fuente {Fuente}{Modo}.",
+    fuenteAccesos,
+    fuenteAccesos == PsaWeb.Seguridad.FuenteAccesos.Web ? " (tabla web, sin GateProvisional)" : " (tablas del .exe, con GateProvisional)");
 app.Logger.LogInformation(
     "Conciliación SRI: módulo {Estado}.",
     conciliacionSriActiva ? "ACTIVO" : "INACTIVO (necesita Plataforma:ConnectionString y PeachEbills:ConnectionString)");
@@ -266,15 +293,15 @@ if (plataformaConfigurada)
             {
                 app.Logger.LogWarning(
                     "Plataforma:AdminInicial está definido pero ya hay usuarios: no se creó nada. " +
-                    "Quitá esas variables de entorno.");
+                    "Quita esas variables de entorno.");
             }
             else
             {
                 await seeder.CrearSiNoExisteAsync(
                     adminUsuario, adminClave, nombreCompleto: adminUsuario, peachUsername: adminUsuario);
                 app.Logger.LogWarning(
-                    "Admin inicial {Usuario} creado. Verificá que esté en Plataforma:Admins y " +
-                    "quitá Plataforma:AdminInicial:* del entorno.", adminUsuario);
+                    "Admin inicial {Usuario} creado. Verifica que esté en Plataforma:Admins y " +
+                    "quita Plataforma:AdminInicial:* del entorno.", adminUsuario);
             }
         }
     }
@@ -292,7 +319,18 @@ app.UseAuthentication();
 app.UseAuthorization();
 if (plataformaConfigurada)
 {
+    PsaWeb.Host.Auth.AccesoModulosExtensions.UseSegundoFactorObligatorio(app);
     app.UseRateLimiter();
+    // La extensión sube el reporte del SRI (texto): 10 MB alcanzan de sobra. Se fija antes de que el endpoint lea el cuerpo.
+    app.Use(async (http, next) =>
+    {
+        if (http.Request.Path.StartsWithSegments("/conciliacion-sri/api")
+            && http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } tope)
+        {
+            tope.MaxRequestBodySize = 10 * 1024 * 1024;
+        }
+        await next();
+    });
 }
 app.UseAntiforgery();
 
@@ -344,7 +382,8 @@ app.MapGet("/cierre-de-caja/export", async (
         var bytes = exportador.Generar(resultado, desde, hasta);
         return Results.File(bytes, CierreExcelExporter.ContentType, exportador.NombreArchivo(desde, hasta));
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("cierre-de-caja");
 
 // Descarga del Kardex en Excel. Re-consulta con el mismo filtro para que el
 // archivo coincida con lo que se ve en pantalla.
@@ -373,7 +412,7 @@ app.MapGet("/kardex/export", async (
         }
         if (!filtro.TieneAcotador)
         {
-            return Results.BadRequest("Elegí al menos un ítem, una cuenta o un rango de ítems.");
+            return Results.BadRequest("Elige al menos un ítem, una cuenta o un rango de ítems.");
         }
 
         PsaWeb.Modules.Kardex.Data.ResultadoKardex resultado;
@@ -400,7 +439,8 @@ app.MapGet("/kardex/export", async (
             PsaWeb.Modules.Kardex.Export.KardexExcelExporter.ContentType,
             exportador.NombreArchivo(desde, hasta));
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("kardex");
 
 // Ola 2: reporte Excel de una liquidación de importación (port de ApportionImportsCPTDC). Se arma con lo guardado
 // (la página exige guardar antes) y las filas de la cuenta en Sage.
@@ -433,7 +473,8 @@ app.MapGet("/exportar/liquidacion-importacion", async (
         return Results.File(bytes, PsaWeb.Modules.Compras.Importaciones.ReporteLiquidacion.ContentType,
             PsaWeb.Modules.Compras.Importaciones.ReporteLiquidacion.NombreArchivo(d.Cuenta.Cuenta));
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("compras-importaciones");
 
 // Descarga del reporte PWC (cuentas por cobrar) en Excel. Re-consulta con el mismo filtro y usa la
 // personalización guardada de la empresa (encabezado, cobrador, columnas).
@@ -496,7 +537,8 @@ app.MapGet("/cartera/pwc/export", async (
             PsaWeb.Modules.Reportes.Pwc.PwcExcelExporter.ContentType,
             exportador.NombreArchivo(cfg, nombreEmpresa, corte));
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("reporte-pwc");
 
 // Descarga del reporte de Comisiones en Excel. Re-consulta con el mismo filtro (incluidas las opciones
 // C1/C2 del reporte heredado) y usa la personalización guardada de la empresa.
@@ -530,7 +572,7 @@ app.MapGet("/cartera/comisiones/export", async (
         }
         if (!filtro.TieneAcotador)
         {
-            return Results.BadRequest("Indique un rango de recibos o un rango de fechas del recibo.");
+            return Results.BadRequest("Indica un rango de recibos o un rango de fechas del recibo.");
         }
 
         var nombreEmpresa = "";
@@ -569,7 +611,8 @@ app.MapGet("/cartera/comisiones/export", async (
             PsaWeb.Modules.Reportes.Comisiones.ComisionesExcelExporter.ContentType,
             exportador.NombreArchivo(nombreEmpresa, filtro, DateOnly.FromDateTime(DateTime.Today)));
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("reporte-comisiones");
 
 // Cheques y comprobantes de egreso: PDF A4 con medidas en mm (imprimir al 100 %), vista previa PNG y hoja
 // de prueba de calibración. Sólo se imprimen pagos reales (diario 2 / tipo 5) de una empresa a la que el
@@ -626,7 +669,8 @@ app.MapGet("/ventas/prefacturas/{id:int}/pdf", async (
             "application/pdf",
             PsaWeb.Ventas.Prefacturas.PrefacturaPdf.NombreDeArchivo(prefactura));
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("ventas-prefacturas");
 
 app.MapGet("/bancos/cheques/pdf", async (
         string? ruc,
@@ -641,11 +685,11 @@ app.MapGet("/bancos/cheques/pdf", async (
         var opciones = new PsaWeb.Modules.Reportes.Cheques.OpcionesImpresion(cheque ?? true, comprobante ?? true);
         if (po is not { Length: > 0 })
         {
-            return Results.BadRequest("Elija al menos un pago.");
+            return Results.BadRequest("Elige al menos un pago.");
         }
         if (!opciones.Valida)
         {
-            return Results.BadRequest("Elija al menos «cheque» o «comprobante de egreso».");
+            return Results.BadRequest("Elige al menos «cheque» o «comprobante de egreso».");
         }
         if (po.Length > PsaWeb.Modules.Reportes.Cheques.ServicioImpresionCheques.MaximoPagos)
         {
@@ -663,7 +707,8 @@ app.MapGet("/bancos/cheques/pdf", async (
             ? Results.NotFound("No se encontraron esos pagos.")
             : Results.File(pdf, PsaWeb.Modules.Reportes.Cheques.ChequePdfRenderer.ContentType); // inline: se abre en el visor
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("cheques");
 
 app.MapGet("/bancos/cheques/vista", async (
         string? ruc,
@@ -678,7 +723,7 @@ app.MapGet("/bancos/cheques/vista", async (
         var opciones = new PsaWeb.Modules.Reportes.Cheques.OpcionesImpresion(cheque ?? true, comprobante ?? true);
         if (po is not { Length: > 0 } || !opciones.Valida)
         {
-            return Results.BadRequest("Elija un pago y qué imprimir.");
+            return Results.BadRequest("Elige un pago y qué imprimir.");
         }
 
         var (ok, nombre) = await AccesoEmpresaAsync(ruc, usuario, seguridad, cancellationToken);
@@ -690,7 +735,8 @@ app.MapGet("/bancos/cheques/vista", async (
         var png = await servicio.GenerarVistaPreviaAsync(ruc, nombre, po, opciones, cancellationToken);
         return png is null ? Results.NotFound("No se encontró ese pago.") : Results.File(png, "image/png");
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("cheques");
 
 app.MapGet("/bancos/cheques/prueba", async (
         string? ruc,
@@ -708,7 +754,8 @@ app.MapGet("/bancos/cheques/prueba", async (
         var pdf = await servicio.GenerarHojaPruebaAsync(ruc, nombre, cancellationToken);
         return Results.File(pdf, PsaWeb.Modules.Reportes.Cheques.ChequePdfRenderer.ContentType);
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("cheques");
 
 // Descarga del ATS en XML. Re-arma el `ivaType` con el mismo período para que
 // el archivo coincida con lo que se ve en pantalla; es el archivo que luego se
@@ -749,7 +796,8 @@ app.MapGet("/ats/export", async (
         var xml = PsaWeb.Ats.EscritorXmlAts.Serializar(ats);
         return Results.File(xml, "application/xml", $"ATS_{ats.IdInformante}_{anio:0000}{mes:00}.xml");
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("ats");
 
 // Descarga del Talón Resumen en PDF (F5.6). Re-arma el `ivaType` con el mismo
 // período; "Fecha de Generación" es la del momento de la descarga, igual que
@@ -791,7 +839,8 @@ app.MapGet("/ats/talon-resumen", async (
         var pdf = PsaWeb.Ats.TalonResumen.TalonResumenPdfBuilder.Generar(info);
         return Results.File(pdf, "application/pdf", $"TRSMN-ATS-{mes:00}-{anio:0000}-{ats.IdInformante}.pdf");
     })
-    .RequireAuthorization();
+    .RequireAuthorization()
+    .ExigirModulo("ats");
 
 // Subida del reporte de "Comprobantes electrónicos recibidos" del SRI, desde
 // la extensión de Chrome del módulo de Conciliación SRI (F1). No usa la
@@ -813,10 +862,17 @@ app.MapPost("/conciliacion-sri/api/comprobantes", async (
             return Results.Unauthorized();
         }
 
+        if (!usuario.Activo)
+        {
+            return Results.Unauthorized();
+        }
         if (seguridad is not null)
         {
-            var empresas = await seguridad.EmpresasDelUsuarioAsync(usuario.UserName ?? string.Empty, cancellationToken);
-            if (!empresas.Any(e => e.Ruc == body.Ruc))
+            // Misma regla que la página: empresa asignada y llave de Conciliación SRI (quconcsri) en esa empresa.
+            var principal = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+                new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, usuario.UserName ?? string.Empty) }, "token-extension"));
+            var veredicto = await PsaWeb.Host.Auth.FiltroAccesoModulo.EvaluarAsync(principal, body.Ruc, "conciliacion-sri", seguridad, cancellationToken);
+            if (veredicto != PsaWeb.Host.Auth.VeredictoAcceso.Permitido)
             {
                 return Results.StatusCode(StatusCodes.Status403Forbidden);
             }
@@ -843,6 +899,33 @@ app.MapPost("/conciliacion-sri/api/comprobantes", async (
         }
     })
     .AllowAnonymous()
+    .RequireRateLimiting(Program.PoliticaExtension)
     .AddEndpointFilter<TokenExtensionEndpointFilter>();
 
+// Re-firma la cookie con los claims al día (perfil, 2FA) — p. ej. después de activar la verificación en dos pasos, que se hace desde
+// el circuito interactivo y no puede tocar la cookie. Solo redirige a rutas locales.
+if (plataformaConfigurada)
+{
+    app.MapGet("/mi-cuenta/refrescar-sesion", async (
+            string? volver,
+            System.Security.Claims.ClaimsPrincipal principal,
+            SignInManager<UsuarioApp> signIn,
+            UserManager<UsuarioApp> usuarios) =>
+        {
+            if (await usuarios.GetUserAsync(principal) is { Activo: true } u)
+            {
+                await signIn.RefreshSignInAsync(u);
+            }
+            var destino = !string.IsNullOrEmpty(volver) && volver.StartsWith('/') && !volver.StartsWith("//") ? volver : "/";
+            return Results.LocalRedirect(destino);
+        })
+        .RequireAuthorization();
+}
+
 app.Run();
+
+public partial class Program
+{
+    /// <summary>Política de rate-limiting del endpoint de la extensión de Chrome.</summary>
+    internal const string PoliticaExtension = "extension";
+}

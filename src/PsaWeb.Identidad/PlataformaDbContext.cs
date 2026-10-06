@@ -15,11 +15,35 @@ public class PlataformaDbContext : IdentityDbContext<UsuarioApp>
 
     public DbSet<EventoAuth> EventosAuth => Set<EventoAuth>();
     public DbSet<TokenExtension> TokensExtension => Set<TokenExtension>();
+    public DbSet<AccesoEmpresa> AccesosEmpresa => Set<AccesoEmpresa>();
+    public DbSet<AccesoLlave> AccesosLlave => Set<AccesoLlave>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
         builder.Entity<UsuarioApp>().HasIndex(u => u.PeachUsername);
+        // El correo es el login: único entre los que lo tienen (las cuentas viejas sin correo siguen valiendo).
+        // No se usa RequireUniqueEmail de Identity porque invalidaría cualquier UpdateAsync de las cuentas sin correo.
+        builder.Entity<UsuarioApp>().HasIndex(u => u.NormalizedEmail)
+            .HasDatabaseName("UX_AspNetUsers_NormalizedEmail")
+            .IsUnique()
+            .HasFilter("[NormalizedEmail] IS NOT NULL");
+        builder.Entity<UsuarioApp>().Property(u => u.Perfil).HasDefaultValue(Perfiles.Usuario);
+
+        builder.Entity<AccesoEmpresa>(e =>
+        {
+            e.ToTable("AccesosEmpresa");
+            e.HasKey(a => new { a.UsuarioId, a.Ruc });
+            e.HasOne<UsuarioApp>().WithMany().HasForeignKey(a => a.UsuarioId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(a => a.Llaves).WithOne().HasForeignKey(l => new { l.UsuarioId, l.Ruc }).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(a => a.Ruc);
+        });
+        builder.Entity<AccesoLlave>(e =>
+        {
+            e.ToTable("AccesosLlave");
+            e.HasKey(l => new { l.UsuarioId, l.Ruc, l.Llave });
+        });
+
         builder.Entity<EventoAuth>().HasIndex(e => e.Utc);
         builder.Entity<EventoAuth>().HasIndex(e => e.Usuario);
         builder.Entity<TokenExtension>().HasIndex(t => t.Prefijo);

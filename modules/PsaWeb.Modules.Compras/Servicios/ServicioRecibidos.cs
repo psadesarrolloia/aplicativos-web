@@ -100,7 +100,7 @@ public sealed class ServicioRecibidos(ServicioCompras compras, IServiceProvider 
             var estado = oc is { } x ? (x.Item3 ? EstadoRecibido.Registrado : EstadoRecibido.Guardado)
                 : conXml.Contains(f.Key) ? EstadoRecibido.Pendiente : EstadoRecibido.FaltaXml;
             var motivo = estado == EstadoRecibido.FaltaXml && fallidas.TryGetValue(f.Key, out var fa)
-                ? (fa.Motivo == ServicioDescargaXml.MotivoSinXml ? "El WS del SRI ya no lo entrega: súbalo a mano." : fa.Detalle ?? fa.Motivo)
+                ? (fa.Motivo == ServicioDescargaXml.MotivoSinXml ? "El WS del SRI ya no lo entrega: súbelo a mano." : fa.Detalle ?? fa.Motivo)
                 : null;
             return new DocumentoRecibido(f.Key, tipo, f.Value.Fecha, f.Value.RucEmisor, f.Value.Emisor, f.Value.Serie, f.Value.Total,
                 f.Value.EstadoSri, estado, oc?.Item1, oc?.Item2, motivo);
@@ -163,7 +163,7 @@ public sealed class ServicioRecibidos(ServicioCompras compras, IServiceProvider 
             {
                 var ids = await LectorCatalogoCompras.IdsProveedoresAsync(cn, ct);
                 proveedor = ProveedorEdicion.NuevoDesdeFactura(factura, ReglasProveedor.IdPropuesto(factura.Emisor.RazonSocial, ids));
-                avisos.Add("El emisor no existe como proveedor en Sage: se creará al guardar (revise el ID, el email y la cuenta de gasto).");
+                avisos.Add("El emisor no existe como proveedor en Sage: se creará al guardar (revisa el ID, el email y la cuenta de gasto).");
             }
         }
 

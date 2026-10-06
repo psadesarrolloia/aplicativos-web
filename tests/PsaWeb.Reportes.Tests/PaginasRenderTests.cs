@@ -225,7 +225,7 @@ public class PaginasRenderTests
     public async Task Comisiones_sin_rango_pide_un_acotador()
     {
         var (html, _) = await Renderizar<Comisiones>(async p => await LlamarAsync<object>(p, "Consultar"));
-        Assert.Contains("Indique un rango de recibos o un rango de fechas del recibo", html);
+        Assert.Contains("Indica un rango de recibos o un rango de fechas del recibo", html);
     }
 
     [Fact]

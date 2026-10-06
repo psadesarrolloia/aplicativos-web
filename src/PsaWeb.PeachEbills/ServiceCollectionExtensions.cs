@@ -20,7 +20,7 @@ public static class ServiceCollectionExtensions
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             throw new InvalidOperationException(
-                $"Falta la cadena de conexión. Configure '{PeachEbillsOptions.SectionName}:ConnectionString'.");
+                $"Falta la cadena de conexión. Configura '{PeachEbillsOptions.SectionName}:ConnectionString'.");
         }
 
         services.Configure<PeachEbillsOptions>(configuration.GetSection(PeachEbillsOptions.SectionName));

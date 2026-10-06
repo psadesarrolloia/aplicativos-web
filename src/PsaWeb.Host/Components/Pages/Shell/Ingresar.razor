@@ -8,7 +8,7 @@
 @inject IProveedorAutenticacion Auth
 @inject NavigationManager Nav
 
-<PageTitle>Ingresar — Aplicativos web PSA</PageTitle>
+<PageTitle>Ingresar — Aplicativos Web PSA</PageTitle>
 
 <div class="psa-portada__logo-wrap">
     <img class="psa-portada__logo" src="_content/PsaWeb.Shared/img/psa-logo-white.png" alt="PSA" />
@@ -23,8 +23,8 @@
 <EditForm Model="Input" method="post" OnValidSubmit="Enviar" FormName="ingresar">
     <DataAnnotationsValidator />
     <div class="psa-field" style="width:100%">
-        <span class="psa-field__lbl">Usuario</span>
-        <InputText class="psa-input" @bind-Value="Input.Usuario" autocomplete="username" />
+        <span class="psa-field__lbl">Correo</span>
+        <InputText class="psa-input" @bind-Value="Input.Usuario" autocomplete="username" inputmode="email" />
         <ValidationMessage For="() => Input.Usuario" />
     </div>
     <div class="psa-field" style="width:100%;margin-top:.8rem">
@@ -38,6 +38,8 @@
     </label>
     <button type="submit" class="psa-btn psa-btn--primary" style="margin-top:1.2rem;width:100%">Ingresar</button>
 </EditForm>
+
+<p style="margin-top:1rem;text-align:center"><a href="/recuperar-clave">¿Olvidaste tu contraseña?</a></p>
 
 @code {
     [CascadingParameter]
@@ -92,10 +94,11 @@
 
     public sealed class DatosIngreso
     {
-        [Required(ErrorMessage = "Ingresá el usuario.")]
+        // Correo (o, durante la transición, el usuario interno).
+        [Required(ErrorMessage = "Ingresa tu correo.")]
         public string Usuario { get; set; } = "";
 
-        [Required(ErrorMessage = "Ingresá la contraseña.")]
+        [Required(ErrorMessage = "Ingresa la contraseña.")]
         public string Clave { get; set; } = "";
 
         public bool Recordarme { get; set; }

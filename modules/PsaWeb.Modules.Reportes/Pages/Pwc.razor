@@ -13,7 +13,7 @@
 @inject NavigationManager Nav
 @implements IDisposable
 
-<PageTitle>Cuentas por cobrar (PWC) — Aplicativos web PSA</PageTitle>
+<PageTitle>Cuentas por cobrar (PWC) — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Cuentas por cobrar (PWC)"
                Subtitle="@Subtitulo" />
@@ -42,7 +42,7 @@
         <label class="psa-field" style="min-width: 18rem">
             <span class="psa-field__label">Cliente / agencia (contiene)</span>
             <input class="psa-input @Activo(_cliente)" list="pwc-clientes" @bind="_cliente" @bind:event="oninput"
-                   placeholder="Escriba o elija de la lista…" />
+                   placeholder="Escribe o elige de la lista…" />
             <datalist id="pwc-clientes">
                 @foreach (var c in _opciones.Clientes)
                 {

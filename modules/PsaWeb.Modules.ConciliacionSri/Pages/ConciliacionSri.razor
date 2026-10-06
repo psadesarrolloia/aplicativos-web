@@ -13,7 +13,7 @@
 @inject IServiceProvider Sp
 @implements IDisposable
 
-<PageTitle>Conciliación con SRI - Docs Recibidos — Aplicativos web PSA</PageTitle>
+<PageTitle>Conciliación con SRI - Docs Recibidos — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="Conciliación con SRI - Docs Recibidos"
                Subtitle="Concilia los documentos electrónicos recibidos del SRI (facturas, notas de crédito y retenciones, subidos por la extensión de Chrome) contra lo registrado en Sage 50." />
@@ -46,7 +46,7 @@ else
         </div>
         <p class="psa-muted" style="margin-top:.6rem">
             Recordatorio: el listado de "recibidos" del portal del SRI solo cubre bien los últimos 5 días del mes en
-            curso — si el período no está completo, corré la extensión de nuevo antes de confiar en el resultado.
+            curso — si el período no está completo, corre la extensión de nuevo antes de confiar en el resultado.
         </p>
     </PsaCard>
 
@@ -419,7 +419,7 @@ else
             {
                 <p style="margin:.2rem 0">
                     <span class="psa-estado psa-estado--warn" style="font-size:.8rem">En plazo (@Plazo días)</span>
-                    <span class="psa-muted">— el SRI da @Plazo días para emitir una retención después de la venta, así que puede no haberse emitido o registrado todavía. Revisala pasado ese plazo.</span>
+                    <span class="psa-muted">— el SRI da @Plazo días para emitir una retención después de la venta, así que puede no haberse emitido o registrado todavía. Revísala pasado ese plazo.</span>
                 </p>
             }
             @if (fila.Clasificacion == ClasificacionConciliacion.SoloEnSage && DocumentoFisico.EsProbable(fila.ClaveAcceso))
@@ -448,7 +448,7 @@ else
                     var previa = d.Revision!;
                     <p class="psa-notice" style="margin-top:1rem">
                         Este hallazgo ya se había revisado (@previa.RevisadaPor, @FechaLocal(previa.RevisadaUtc):
-                        "@previa.Comentario"), pero <strong>cambió desde entonces</strong>. Revisalo de nuevo.
+                        "@previa.Comentario"), pero <strong>cambió desde entonces</strong>. Revísalo de nuevo.
                     </p>
                 }
                 <div class="psa-field" style="margin-top:1rem;max-width:100%;width:100%">

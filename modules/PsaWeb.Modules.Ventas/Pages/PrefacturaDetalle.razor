@@ -11,7 +11,7 @@
 @inject NavigationManager Nav
 @inject ILogger<PrefacturaDetalle> Logger
 
-<PageTitle>@(_p?.NumeroTexto ?? "Prefactura") — Aplicativos web PSA</PageTitle>
+<PageTitle>@(_p?.NumeroTexto ?? "Prefactura") — Aplicativos Web PSA</PageTitle>
 
 <PsaPageHeader Title="@(_p is null ? "Prefactura" : $"Prefactura {_p.NumeroTexto}")"
                Subtitle="Cotización emitida: el PDF es para el cliente; Contabilidad la digita en Sage con los datos del correo." />
@@ -24,7 +24,7 @@
 }
 else if (_p is null)
 {
-    <PsaCard Title="Prefactura"><p class="psa-notice psa-notice--danger">@(_error ?? "No existe esa prefactura en esta empresa, o no tenés acceso a ella.")</p></PsaCard>
+    <PsaCard Title="Prefactura"><p class="psa-notice psa-notice--danger">@(_error ?? "No existe esa prefactura en esta empresa, o no tienes acceso a ella.")</p></PsaCard>
 }
 else
 {
@@ -126,7 +126,7 @@ else
             }
             else
             {
-            <p class="psa-muted">Cuando la factura esté digitada en Sage, anotá su número para cerrar la prefactura.</p>
+            <p class="psa-muted">Cuando la factura esté digitada en Sage, anota su número para cerrar la prefactura.</p>
             <div class="psa-row" style="gap: .6rem; flex-wrap: wrap; align-items: flex-end">
                 <label class="psa-field">
                     <span class="psa-field__label">N.º de factura en Sage</span>
@@ -212,7 +212,7 @@ else
 
     private async Task Anular()
     {
-        if (!_confirmaAnular) { _confirmaAnular = true; _mensaje = "Pulsá de nuevo para confirmar: la prefactura quedará anulada."; return; }
+        if (!_confirmaAnular) { _confirmaAnular = true; _mensaje = "Pulsa de nuevo para confirmar: la prefactura quedará anulada."; return; }
         _trabajando = true; _mensaje = null; _error = null;
         try
         {

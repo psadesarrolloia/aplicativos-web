@@ -1,0 +1,339 @@
+@page "/admin/accesos/{Id}"
+@using Microsoft.Extensions.Options
+@using PsaWeb.Identidad
+@using PsaWeb.Seguridad
+@inject ServicioAccesos Accesos
+@inject IOptions<EscrituraOptions> Escritura
+@inject IServiceProvider Servicios
+
+<PageTitle>Accesos de @(_usuario?.Nombre ?? "la cuenta") — Aplicativos Web PSA</PageTitle>
+
+<AdminMarco Requiere="RolPanel.Admin" AlCargar="AlCargar"
+            Subtitulo="Empresas, módulos y usuario de Sage de una cuenta. Los cambios rigen al guardar y quedan en la auditoría.">
+    <AvisoFuenteAccesos />
+
+    @if (_noEditable)
+    {
+        <PsaCard Title="Sin acceso">
+            <p class="psa-notice psa-notice--danger">Un Admin no puede cambiar los accesos de una cuenta Super Admin ni los propios.</p>
+        </PsaCard>
+    }
+    else if (_usuario is null || _filas is null)
+    {
+        <p class="psa-muted">@(_cargado ? "No existe esa cuenta." : "Cargando…")</p>
+    }
+    else
+    {
+        <p style="margin-bottom:.8rem"><a href="/admin/accesos">← Todas las cuentas</a></p>
+
+        <PsaCard Title="@($"{_usuario.Nombre} ({_usuario.UserName})")">
+            <p>
+                @(_usuario.Email ?? "sin correo") · @Perfiles.Etiqueta(_usuario.PerfilEfectivo) ·
+                2FA @(_usuario.DosFactores ? "activa" : "no") · @(_usuario.Activo ? "cuenta activa" : "cuenta DESHABILITADA") ·
+                último acceso @(_usuario.UltimoAccesoUtc?.AddHours(-5).ToString("dd/MM/yyyy HH:mm") ?? "nunca")
+            </p>
+            <p style="margin-top:.4rem">
+                Extensión de Chrome:
+                @if (_token is null)
+                {
+                    <span class="psa-muted">sin token activo.</span>
+                }
+                else
+                {
+                    <span>token creado @_token.CreadoUtc.AddHours(-5).ToString("dd/MM/yyyy"), @(_token.Vencido ? "VENCIDO" : $"vence {_token.VenceUtc.AddHours(-5):dd/MM/yyyy}"), último uso @(_token.UltimoUsoUtc?.AddHours(-5).ToString("dd/MM/yyyy HH:mm") ?? "nunca").</span>
+                    <button type="button" class="psa-linkbtn" @onclick="RevocarToken">Revocar</button>
+                }
+            </p>
+        </PsaCard>
+
+        <PsaCard Title="Herramientas">
+            <div class="psa-row" style="align-items:flex-end;flex-wrap:wrap">
+                <label class="psa-field"><span class="psa-field__lbl">Plantilla de perfil</span>
+                    <select class="psa-input" @bind="_plantilla">
+                        @foreach (var p in LlavesWeb.Plantillas.Keys)
+                        {
+                            <option value="@p">@p</option>
+                        }
+                    </select></label>
+                <PsaButton Variant="secondary" OnClick="AplicarPlantillaMarcadas">Aplicar a las empresas con acceso</PsaButton>
+                <label class="psa-field"><span class="psa-field__lbl">Copiar accesos del .exe (usuario PeachEBills)</span>
+                    <input class="psa-input" @bind="_peachUsername" placeholder="p. ej. peachb2019" /></label>
+                <PsaButton Variant="secondary" OnClick="ImportarPeach" Disabled="@string.IsNullOrWhiteSpace(_peachUsername)">Copiar (suma, no quita)</PsaButton>
+            </div>
+            <p class="psa-muted" style="margin-top:.4rem">
+                La plantilla REEMPLAZA los módulos de cada empresa con acceso (no se guarda hasta «Guardar cambios»). Copiar del .exe guarda enseguida.
+            </p>
+        </PsaCard>
+
+        @if (_msg is not null)
+        {
+            <p class="psa-notice @(_msgOk ? "" : "psa-notice--danger")" style="margin:.8rem 0">@_msg</p>
+        }
+
+        <PsaCard Title="Empresas y módulos">
+            <div class="psa-row" style="margin-bottom:.6rem;justify-content:space-between;flex-wrap:wrap">
+                <label class="psa-check" style="display:flex;gap:.4rem;align-items:center">
+                    <input type="checkbox" @bind="_verInactivas" /> Mostrar empresas inactivas en PeachEBills
+                </label>
+                @if (_lectorSage is not null)
+                {
+                    <PsaButton Variant="secondary" OnClick="ValidarSage" Disabled="_validandoSage"
+                               Title="Consulta en cada compañía con acceso los usuarios de Sage que entraron alguna vez">
+                        @(_validandoSage ? "Consultando Sage…" : "Validar usuarios de Sage")
+                    </PsaButton>
+                }
+                <PsaButton Variant="primary" OnClick="GuardarTodo" Disabled="@(!HayCambios || _guardando)">
+                    @(_guardando ? "Guardando…" : HayCambios ? $"Guardar cambios ({_filas.Count(f => f.Sucio)})" : "Sin cambios")
+                </PsaButton>
+            </div>
+            <div style="overflow-x:auto">
+            <table class="psa-table">
+                <thead>
+                    <tr><th>Acceso</th><th>Empresa</th><th>Usuario de Sage</th><th>Módulos</th><th></th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in _filas.Where(f => _verInactivas || f.EmpresaActiva || f.Asignada))
+                    {
+                        <tr style="@(f.Sucio ? "background:var(--psa-warn-bg, #fff7e0)" : null)">
+                            <td><input type="checkbox" checked="@f.Activo" @onchange="e => { f.Activo = (bool)(e.Value ?? false); f.Sucio = true; }" /></td>
+                            <td>
+                                @f.Nombre
+                                @if (!f.EmpresaActiva) { <span class="psa-muted"> (inactiva)</span> }
+                                <div class="psa-muted" style="font-size:.8rem">@f.Ruc</div>
+                            </td>
+                            <td>
+                                <input class="psa-input" style="max-width:180px" value="@f.UsuarioSage" placeholder="p. ej. MONICA MARTINEZ"
+                                       list="@($"sage-{f.Ruc}")"
+                                       @onchange="e => { f.UsuarioSage = e.Value?.ToString(); f.Sucio = true; }" />
+                                @if (_sage.TryGetValue(f.Ruc, out var us))
+                                {
+                                    <datalist id="@($"sage-{f.Ruc}")">
+                                        @foreach (var u in us.Usuarios)
+                                        {
+                                            <option value="@u"></option>
+                                        }
+                                    </datalist>
+                                    <div style="font-size:.75rem;margin-top:.2rem">
+                                        @if (us.Error is not null)
+                                        {
+                                            <span class="psa-muted" title="@us.Error">⚠ no se pudo consultar Sage</span>
+                                        }
+                                        else if (string.IsNullOrWhiteSpace(f.UsuarioSage))
+                                        {
+                                            <span class="psa-muted">@(f.Activo ? "⚠ sin usuario de Sage: no podrá registrar en Sage" : "")</span>
+                                        }
+                                        else if (us.Contiene(f.UsuarioSage))
+                                        {
+                                            <span style="color:#1e7e34">✔ existe en esta compañía</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#b40046" title="No aparece entre los usuarios que entraron alguna vez a esta compañía en Sage">⚠ no aparece en esta compañía</span>
+                                        }
+                                    </div>
+                                }
+                            </td>
+                            <td>@Resumen(f)</td>
+                            <td><button type="button" class="psa-linkbtn" @onclick="() => f.Abierta = !f.Abierta">@(f.Abierta ? "Cerrar" : "Módulos ▾")</button></td>
+                        </tr>
+                        @if (f.Abierta)
+                        {
+                            <tr>
+                                <td></td>
+                                <td colspan="4">
+                                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.8rem">
+                                        @foreach (var app in Modulos)
+                                        {
+                                            <div style="border:1px solid var(--psa-border, #e5e7eb);border-radius:6px;padding:.5rem .7rem">
+                                                <div style="font-weight:600">@app.Icono @app.Nombre</div>
+                                                <div class="psa-muted" style="font-size:.75rem">@app.Categoria@(AppCatalogo.IdsDeEscritura.Contains(app.Id) ? " · escribe en Sage" + (Escritura.Value.Habilitada ? "" : " (apagado en este servidor)") : "")</div>
+                                                @foreach (var l in LlavesWeb.DeModulo(app.Id))
+                                                {
+                                                    <label class="psa-check" style="display:flex;gap:.4rem;align-items:center;margin-top:.2rem">
+                                                        <input type="checkbox" checked="@f.Llaves.Contains(l.Codigo)" @onchange="e => Alternar(f, l.Codigo, (bool)(e.Value ?? false))" />
+                                                        <span>@l.Nivel <code style="font-size:.7rem">@l.Codigo</code></span>
+                                                    </label>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            </div>
+            @if (_filas.Any(f => f.Asignada && f.ModificadoPor is not null))
+            {
+                var ultima = _filas.Where(f => f.ModificadoUtc is not null).MaxBy(f => f.ModificadoUtc);
+                <p class="psa-muted" style="margin-top:.6rem">Último cambio: @ultima?.ModificadoPor, @ultima?.ModificadoUtc?.AddHours(-5).ToString("dd/MM/yyyy HH:mm").</p>
+            }
+        </PsaCard>
+    }
+</AdminMarco>
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+
+    private sealed class Fila
+    {
+        public required string Ruc { get; init; }
+        public required string Nombre { get; init; }
+        public bool EmpresaActiva { get; init; }
+        public bool Asignada { get; set; }
+        public bool Activo { get; set; }
+        public string? UsuarioSage { get; set; }
+        public HashSet<string> Llaves { get; set; } = new(StringComparer.Ordinal);
+        public string? ModificadoPor { get; init; }
+        public DateTime? ModificadoUtc { get; init; }
+        public bool Abierta { get; set; }
+        public bool Sucio { get; set; }
+    }
+
+    private ServicioAccesos.Actor? _actor;
+    private UsuarioPanel? _usuario;
+    private List<Fila>? _filas;
+    private TokenExtensionInfo? _token;
+    private bool _cargado;
+    private bool _noEditable;
+    private bool _verInactivas;
+    private bool _guardando;
+    private ILectorUsuariosSage? _lectorSage;
+    private bool _validandoSage;
+    private readonly Dictionary<string, UsuariosSage> _sage = new();
+
+    protected override void OnInitialized() => _lectorSage = Servicios.GetService<ILectorUsuariosSage>();
+
+    /// <summary>Consulta Sage en las empresas con acceso (en paralelo, de a 4: cada compañía es una conexión ODBC).</summary>
+    private async Task ValidarSage()
+    {
+        if (_lectorSage is null || _filas is null) return;
+        _validandoSage = true;
+        StateHasChanged();
+        using var cupo = new SemaphoreSlim(4);
+        var tareas = _filas.Where(f => f.Activo || f.Asignada).Select(async f =>
+        {
+            await cupo.WaitAsync();
+            try { return (f.Ruc, await _lectorSage.UsuariosAsync(f.Ruc)); }
+            finally { cupo.Release(); }
+        });
+        foreach (var (ruc, us) in await Task.WhenAll(tareas)) _sage[ruc] = us;
+        _validandoSage = false;
+        var sinValidar = _filas.Count(f => f.Activo && _sage.TryGetValue(f.Ruc, out var u) && u.Error is null
+                                          && !string.IsNullOrWhiteSpace(f.UsuarioSage) && !u.Contiene(f.UsuarioSage));
+        Aviso(sinValidar == 0 ? "Usuarios de Sage consultados." : $"Usuarios de Sage consultados: {sinValidar} no aparecen en su compañía (revísalos).", sinValidar == 0);
+    }
+    private string _plantilla = LlavesWeb.Plantillas.Keys.First();
+    private string _peachUsername = "";
+    private string? _msg;
+    private bool _msgOk;
+
+    // Los módulos de escritura se muestran aunque estén apagados: se pueden dejar asignados para el deploy de escritura.
+    private static readonly IReadOnlyList<AppWeb> Modulos = AppCatalogo.Todas.Where(a => LlavesWeb.DeModulo(a.Id).Count > 0).ToList();
+
+    private bool HayCambios => _filas?.Any(f => f.Sucio) == true;
+
+    private async Task AlCargar(ServicioAccesos.Actor actor)
+    {
+        _actor = actor;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        _usuario = await Accesos.UsuarioAsync(Id);
+        _cargado = true;
+        if (_usuario is null) return;
+        if (!ReglasPanel.PuedeEditarAccesos(_actor!.Rol, _actor.Id, _usuario.PerfilEfectivo, _usuario.Id))
+        {
+            _noEditable = true;
+            return;
+        }
+        _filas = (await Accesos.FichaAsync(Id)).Select(a => new Fila
+        {
+            Ruc = a.Ruc, Nombre = a.Nombre, EmpresaActiva = a.EmpresaActiva, Asignada = a.Asignada, Activo = a.Activo,
+            UsuarioSage = a.UsuarioSage, Llaves = new HashSet<string>(a.Llaves, StringComparer.Ordinal),
+            ModificadoPor = a.ModificadoPor, ModificadoUtc = a.ModificadoUtc,
+        }).ToList();
+        _token = await Accesos.TokenExtensionAsync(Id);
+    }
+
+    private static string Resumen(Fila f)
+    {
+        if (f.Llaves.Count == 0) return "ninguno";
+        var modulos = Modulos.Where(a => LlavesWeb.DeModulo(a.Id).Any(l => f.Llaves.Contains(l.Codigo))).Select(a => a.Nombre).ToList();
+        return modulos.Count <= 3 ? string.Join(", ", modulos) : $"{modulos.Count} módulos";
+    }
+
+    private static void Alternar(Fila f, string llave, bool marcado)
+    {
+        if (marcado) f.Llaves.Add(llave); else f.Llaves.Remove(llave);
+        f.Sucio = true;
+    }
+
+    private void AplicarPlantillaMarcadas()
+    {
+        var llaves = LlavesWeb.Plantillas[_plantilla];
+        var n = 0;
+        foreach (var f in _filas!.Where(f => f.Activo))
+        {
+            f.Llaves = new HashSet<string>(llaves, StringComparer.Ordinal);
+            f.Sucio = true;
+            n++;
+        }
+        Aviso(n == 0
+            ? "Marca primero «Acceso» en las empresas a las que quieres aplicar la plantilla."
+            : $"Plantilla «{_plantilla}» aplicada a {n} empresa(s). Revisa y toca «Guardar cambios».", n > 0);
+    }
+
+    private async Task GuardarTodo()
+    {
+        _guardando = true;
+        var errores = new List<string>();
+        foreach (var f in _filas!.Where(f => f.Sucio).ToList())
+        {
+            try
+            {
+                await Accesos.GuardarEmpresaAsync(_actor!, Id, f.Ruc, f.Activo, f.UsuarioSage, f.Llaves);
+            }
+            catch (Exception ex) when (ex is AccesoDenegadoException or InvalidOperationException)
+            {
+                errores.Add($"{f.Nombre}: {ex.Message}");
+            }
+        }
+        _guardando = false;
+        await CargarAsync();
+        Aviso(errores.Count == 0 ? "Cambios guardados." : "Algunos cambios no se guardaron: " + string.Join(" · ", errores), errores.Count == 0);
+    }
+
+    private async Task ImportarPeach()
+    {
+        if (HayCambios)
+        {
+            Aviso("Guarda o descarta (recargando la página) los cambios pendientes antes de copiar del .exe.", false);
+            return;
+        }
+        try
+        {
+            var n = await Accesos.ImportarDesdePeachEbillsAsync(_actor!, Id, _peachUsername.Trim());
+            await CargarAsync();
+            Aviso(n == 0
+                ? $"«{_peachUsername}» no tiene empresas activas en PeachEBills (¿está bien escrito?)."
+                : $"Se copiaron los accesos del .exe de «{_peachUsername}» en {n} empresa(s).", n > 0);
+        }
+        catch (Exception ex) when (ex is AccesoDenegadoException or InvalidOperationException)
+        {
+            Aviso(ex.Message, false);
+        }
+    }
+
+    private async Task RevocarToken()
+    {
+        await Accesos.RevocarTokenExtensionAsync(_actor!, Id);
+        _token = null;
+        Aviso("Token de la extensión revocado. La persona tiene que generar uno nuevo en «Mi cuenta → Extensión».", true);
+    }
+
+    private void Aviso(string texto, bool ok) { _msg = texto; _msgOk = ok; }
+}

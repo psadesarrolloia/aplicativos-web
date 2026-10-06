@@ -30,3 +30,16 @@ public static class ReglasCompras
         PuedeRegistrarLiquidaciones(permisos) || permisos.Contains(Permisos.VerLiquidacionImportaciones)
         || (PermisosProvisionales && PuedeVer(permisos));
 }
+
+/// <summary>Mensajes comunes cuando alguien intenta escribir en Sage sin poder (revalidación en el servidor).</summary>
+public static class MensajesEscrituraSage
+{
+    public const string SinPermiso = "No tienes permiso para registrar en Sage en esta empresa.";
+
+    public const string SinUsuarioSage =
+        "Tu cuenta no tiene usuario de Sage vinculado en esta empresa: pídelo a la administración (Configuración › Accesos).";
+
+    /// <summary>Para la auditoría: «usuario» o «usuario (Sage: X)».</summary>
+    public static string ConUsuarioSage(string usuario, string? usuarioSage) =>
+        string.IsNullOrWhiteSpace(usuarioSage) ? usuario : $"{usuario} (Sage: {usuarioSage})";
+}

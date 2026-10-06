@@ -74,7 +74,7 @@ public static class PrefacturaCorreo
 
         if (!string.IsNullOrWhiteSpace(urlPrefactura))
         {
-            h.Append($"<p style=\"margin-top:16px\">Al facturar, anotá el número de la factura de Sage en la prefactura: <a href=\"{E(urlPrefactura!)}\">{E(p.NumeroTexto)}</a>.</p>");
+            h.Append($"<p style=\"margin-top:16px\">Al facturar, anota el número de la factura de Sage en la prefactura: <a href=\"{E(urlPrefactura!)}\">{E(p.NumeroTexto)}</a>.</p>");
         }
         h.Append("</div>");
         return h.ToString();

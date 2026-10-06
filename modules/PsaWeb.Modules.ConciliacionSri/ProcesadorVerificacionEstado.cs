@@ -224,7 +224,7 @@ public sealed class ProcesadorVerificacionEstado(
             {
                 advertencias.Add(
                     $"Hay {enSage} {TiposDocumentoRecibido.Etiqueta(tipo).ToLowerInvariant()} en Sage y ninguna del SRI cargada para este período: " +
-                    "aparecen como «Solo en Sage». Subí el reporte de ese tipo desde el portal (campo «Tipo de documento») o desmarcalo.");
+                    "aparecen como «Solo en Sage». Sube el reporte de ese tipo desde el portal (campo «Tipo de documento») o desmárcalo.");
             }
         }
 

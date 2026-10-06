@@ -17,7 +17,7 @@ internal sealed class OdbcSageConnectionFactory : ISageConnectionFactory
         if (string.IsNullOrWhiteSpace(_options.ConnectionString))
         {
             throw new InvalidOperationException(
-                $"Falta la cadena de conexión a Sage 50. Configure '{SageOptions.SectionName}:ConnectionString'.");
+                $"Falta la cadena de conexión a Sage 50. Configura '{SageOptions.SectionName}:ConnectionString'.");
         }
 
         return new OdbcConnection(_options.ConnectionString);
