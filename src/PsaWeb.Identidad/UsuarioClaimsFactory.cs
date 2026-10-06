@@ -13,7 +13,7 @@ public static class ClaimsPsa
     /// <summary>"1" si la verificación en dos pasos está activa.</summary>
     public const string SegundoFactor = "psa:2fa";
 
-    public static string PerfilDe(ClaimsPrincipal usuario) => usuario.FindFirstValue(Perfil) ?? Perfiles.Usuario;
+    public static string PerfilDe(ClaimsPrincipal usuario) => usuario.FindFirstValue(Perfil) ?? Perfiles.Consulta;
 
     public static bool TieneSegundoFactor(ClaimsPrincipal usuario) => usuario.FindFirstValue(SegundoFactor) == "1";
 
@@ -41,5 +41,5 @@ public sealed class UsuarioClaimsFactory : UserClaimsPrincipalFactory<UsuarioApp
 
     /// <summary>El perfil guardado, salvo que el usuario esté en <c>Plataforma:Admins</c> (respaldo de emergencia) → Super Admin.</summary>
     public static string PerfilEfectivo(UsuarioApp user, PlataformaOptions plataforma) =>
-        plataforma.EsAdmin(user.UserName) ? Perfiles.SuperAdmin : (Perfiles.Valido(user.Perfil) ? user.Perfil : Perfiles.Usuario);
+        plataforma.EsAdmin(user.UserName) ? Perfiles.SuperAdmin : (Perfiles.Valido(user.Perfil) ? user.Perfil : Perfiles.Consulta);
 }

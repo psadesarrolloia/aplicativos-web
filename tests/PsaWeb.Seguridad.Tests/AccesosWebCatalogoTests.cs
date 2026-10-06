@@ -190,7 +190,7 @@ public class ReglasPanelTests
     public void Super_Admin_edita_a_cualquiera_incluso_a_si_mismo()
     {
         Assert.True(ReglasPanel.PuedeEditarAccesos(RolPanel.SuperAdmin, "a", Perfiles.SuperAdmin, "b"));
-        Assert.True(ReglasPanel.PuedeEditarAccesos(RolPanel.SuperAdmin, "a", Perfiles.Usuario, "a"));
+        Assert.True(ReglasPanel.PuedeEditarAccesos(RolPanel.SuperAdmin, "a", Perfiles.Digitador, "a"));
     }
 
     [Fact]
@@ -198,13 +198,13 @@ public class ReglasPanelTests
     {
         Assert.False(ReglasPanel.PuedeEditarAccesos(RolPanel.Admin, "m", Perfiles.SuperAdmin, "s"));
         Assert.False(ReglasPanel.PuedeEditarAccesos(RolPanel.Admin, "m", Perfiles.Admin, "m"));
-        Assert.True(ReglasPanel.PuedeEditarAccesos(RolPanel.Admin, "m", Perfiles.Usuario, "v"));
+        Assert.True(ReglasPanel.PuedeEditarAccesos(RolPanel.Admin, "m", Perfiles.Digitador, "v"));
     }
 
     [Fact]
     public void Un_usuario_comun_no_edita_nada()
     {
-        Assert.False(ReglasPanel.PuedeEditarAccesos(RolPanel.Ninguno, "u", Perfiles.Usuario, "v"));
+        Assert.False(ReglasPanel.PuedeEditarAccesos(RolPanel.Ninguno, "u", Perfiles.Digitador, "v"));
         Assert.False(ReglasPanel.PuedeVerAuditoria(RolPanel.Ninguno));
     }
 
@@ -213,18 +213,30 @@ public class ReglasPanelTests
     {
         Assert.True(ReglasPanel.PuedeAdministrarUsuarios(RolPanel.SuperAdmin));
         Assert.False(ReglasPanel.PuedeAdministrarUsuarios(RolPanel.Admin));
-        Assert.True(ReglasPanel.PuedeCambiarPerfil(RolPanel.SuperAdmin, "a", "b"));
-        Assert.False(ReglasPanel.PuedeCambiarPerfil(RolPanel.SuperAdmin, "a", "a"));
-        Assert.False(ReglasPanel.PuedeCambiarPerfil(RolPanel.Admin, "m", "v"));
+        Assert.True(ReglasPanel.PuedeCambiarPerfil(RolPanel.SuperAdmin, "a", "b", Perfiles.Digitador, Perfiles.Admin));
+        Assert.False(ReglasPanel.PuedeCambiarPerfil(RolPanel.SuperAdmin, "a", "a", Perfiles.SuperAdmin, Perfiles.Digitador));
+        Assert.False(ReglasPanel.PuedeCambiarPerfil(RolPanel.Ninguno, "x", "v", Perfiles.Digitador, Perfiles.Vendedor));
+    }
+
+    [Fact]
+    public void Admin_cambia_perfiles_sin_panel_pero_no_da_ni_quita_Admin_o_Super_Admin()
+    {
+        Assert.True(ReglasPanel.PuedeCambiarPerfil(RolPanel.Admin, "m", "v", Perfiles.Digitador, Perfiles.Supervisor));
+        Assert.True(ReglasPanel.PuedeCambiarPerfil(RolPanel.Admin, "m", "v", Perfiles.Vendedor, Perfiles.Consulta));
+        Assert.False(ReglasPanel.PuedeCambiarPerfil(RolPanel.Admin, "m", "v", Perfiles.Digitador, Perfiles.Admin));
+        Assert.False(ReglasPanel.PuedeCambiarPerfil(RolPanel.Admin, "m", "s", Perfiles.SuperAdmin, Perfiles.Digitador));
+        Assert.False(ReglasPanel.PuedeCambiarPerfil(RolPanel.Admin, "m", "m", Perfiles.Admin, Perfiles.Admin));
+        Assert.DoesNotContain(Perfiles.Admin, ReglasPanel.PerfilesAsignables(RolPanel.Admin));
+        Assert.Equal(Perfiles.Todos, ReglasPanel.PerfilesAsignables(RolPanel.SuperAdmin));
     }
 
     [Fact]
     public void Plataforma_Admins_del_web_config_cuenta_como_Super_Admin()
     {
         var opciones = new PlataformaOptions { Admins = { "lparedes" } };
-        Assert.Equal(Perfiles.SuperAdmin, UsuarioClaimsFactory.PerfilEfectivo(new UsuarioApp { UserName = "LPAREDES", Perfil = Perfiles.Usuario }, opciones));
+        Assert.Equal(Perfiles.SuperAdmin, UsuarioClaimsFactory.PerfilEfectivo(new UsuarioApp { UserName = "LPAREDES", Perfil = Perfiles.Digitador }, opciones));
         Assert.Equal(Perfiles.Admin, UsuarioClaimsFactory.PerfilEfectivo(new UsuarioApp { UserName = "mmartinez", Perfil = Perfiles.Admin }, opciones));
-        Assert.Equal(Perfiles.Usuario, UsuarioClaimsFactory.PerfilEfectivo(new UsuarioApp { UserName = "x", Perfil = "inventado" }, opciones));
+        Assert.Equal(Perfiles.Consulta, UsuarioClaimsFactory.PerfilEfectivo(new UsuarioApp { UserName = "x", Perfil = "inventado" }, opciones));
     }
 
     [Fact]
@@ -232,7 +244,9 @@ public class ReglasPanelTests
     {
         Assert.True(Perfiles.ExigeSegundoFactor(Perfiles.SuperAdmin));
         Assert.True(Perfiles.ExigeSegundoFactor(Perfiles.Admin));
-        Assert.False(Perfiles.ExigeSegundoFactor(Perfiles.Usuario));
+        Assert.False(Perfiles.ExigeSegundoFactor(Perfiles.Supervisor));
+        Assert.False(Perfiles.ExigeSegundoFactor(Perfiles.Digitador));
+        Assert.False(Perfiles.ExigeSegundoFactor(Perfiles.Vendedor));
         Assert.False(Perfiles.ExigeSegundoFactor(null));
     }
 
@@ -300,35 +314,61 @@ public class VinculoSageTests
     }
 }
 
-/// <summary>Nivel deducido de las llaves (columna «Nivel» de Usuarios y Accesos).</summary>
-public class NivelesWebTests
+/// <summary>Perfil único (2026-10-06): módulos por defecto, «personalizado» y la deducción que replica la migración PerfilUnico.</summary>
+public class PerfilesWebTests
 {
     [Theory]
-    [InlineData("Super Admin", "Supervisor")]
-    [InlineData("Digitador/a", "Digitador")]
-    [InlineData("Vendedor", "Vendedor")]
-    [InlineData("Contabilidad de Ventas", "Contabilidad de Ventas")]
-    [InlineData("Ninguna (vaciar)", NivelesWeb.SinModulos)]
-    public void Cada_plantilla_se_reconoce_por_sus_llaves(string plantilla, string esperado)
+    [InlineData(Perfiles.SuperAdmin, PerfilesWeb.PlantillaTodo)]
+    [InlineData(Perfiles.Admin, PerfilesWeb.PlantillaTodo)]
+    [InlineData(Perfiles.Supervisor, "Supervisor")]
+    [InlineData(Perfiles.Digitador, "Digitador/a")]
+    [InlineData(Perfiles.Vendedor, "Vendedor")]
+    public void Cada_perfil_trae_los_modulos_de_su_plantilla(string perfil, string plantilla)
     {
-        // «Super Admin / Admin (todo)» como llaves de un perfil «Usuario» = tiene anulaciones => Supervisor.
-        var clave = plantilla == "Super Admin" ? "Super Admin / Admin (todo)" : plantilla;
-        Assert.Equal(esperado, NivelesWeb.Describir(Perfiles.Usuario, LlavesWeb.Plantillas[clave]));
+        Assert.Equal(LlavesWeb.Plantillas[plantilla], PerfilesWeb.LlavesPorDefecto(perfil));
+        Assert.Equal(plantilla, PerfilesWeb.PlantillaDe(perfil));
     }
 
     [Fact]
-    public void Supervisor_por_la_plantilla_y_por_el_exe()
+    public void Consulta_no_trae_modulos_y_el_perfil_heredado_no_tiene_plantilla()
     {
-        Assert.Equal("Supervisor", NivelesWeb.Describir(Perfiles.Usuario, LlavesWeb.Plantillas["Supervisor"]));
-        Assert.Equal("Supervisor", NivelesWeb.Describir(Perfiles.Usuario, new[] { Permisos.VerFacturas, Permisos.AutorizarAnulacionRetencion }));
+        Assert.Empty(PerfilesWeb.LlavesPorDefecto(Perfiles.Consulta)!);
+        Assert.Null(PerfilesWeb.LlavesPorDefecto(Perfiles.Usuario));
     }
 
     [Fact]
-    public void Solo_lectura_es_Consulta_y_el_panel_manda_sobre_las_llaves()
+    public void Personalizado_si_alguna_empresa_se_aparta_del_perfil()
     {
-        Assert.Equal("Consulta", NivelesWeb.Describir(Perfiles.Usuario, new[] { Permisos.VerKardex, Permisos.VerAts }));
-        Assert.Equal("Vendedor", NivelesWeb.Describir(Perfiles.Usuario, new[] { Permisos.VerInventarioVentas }));
-        Assert.Equal("Admin", NivelesWeb.Describir(Perfiles.Admin, Array.Empty<string>()));
-        Assert.Equal("Super Admin", NivelesWeb.Describir(Perfiles.SuperAdmin, new[] { Permisos.VerKardex }));
+        var dig = LlavesWeb.Plantillas["Digitador/a"];
+        Assert.False(PerfilesWeb.Personalizado(Perfiles.Digitador, new[] { dig, dig }));
+        Assert.True(PerfilesWeb.Personalizado(Perfiles.Digitador, new[] { dig, dig.Append(Permisos.VerKardex) }));
+        Assert.True(PerfilesWeb.Personalizado(Perfiles.Digitador, new[] { dig.Take(3) }));
+        Assert.False(PerfilesWeb.Personalizado(Perfiles.Consulta, new[] { new[] { Permisos.VerKardex } })); // Consulta: siempre a mano
+        Assert.False(PerfilesWeb.Personalizado(Perfiles.Vendedor, Array.Empty<IEnumerable<string>>()));
+    }
+
+    [Fact]
+    public void Deducir_replica_la_regla_de_la_migracion()
+    {
+        Assert.Equal(Perfiles.Supervisor, PerfilesWeb.Deducir(LlavesWeb.Plantillas["Supervisor"]));
+        Assert.Equal(Perfiles.Supervisor, PerfilesWeb.Deducir(new[] { Permisos.VerFacturas, Permisos.AutorizarAnulacionRetencion }));
+        Assert.Equal(Perfiles.Digitador, PerfilesWeb.Deducir(LlavesWeb.Plantillas["Digitador/a"]));
+        Assert.Equal(Perfiles.Vendedor, PerfilesWeb.Deducir(LlavesWeb.Plantillas["Vendedor"]));
+        Assert.Equal(Perfiles.Consulta, PerfilesWeb.Deducir(new[] { Permisos.VerKardex, Permisos.VerAts }));
+        Assert.Equal(Perfiles.Consulta, PerfilesWeb.Deducir(Array.Empty<string>()));
+    }
+
+    [Fact]
+    public void La_migracion_PerfilUnico_usa_las_mismas_llaves_que_Deducir()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "PsaWeb.sln"))) dir = dir.Parent;
+        var archivo = Directory.GetFiles(Path.Combine(dir!.FullName, "src", "PsaWeb.Identidad", "Migrations"), "*_PerfilUnico.cs").Single();
+        var sql = File.ReadAllText(archivo);
+        foreach (var llave in new[] { "auCanceInv", "auCanceNc", "auCanceLiq", "auCanceTwh", "mksaleinv", "mksalenc", "mkpurchliq", "mkpurchtwh",
+                                      "mksinBatch", "mkncBatch", "mkliqBatch", "mkTwhBatch", "mkpurchinv", "mkimpliq", "quSalesStk", "quSalesQte", "mkSalesQte" })
+        {
+            Assert.Contains($"'{llave}'", sql);
+        }
     }
 }

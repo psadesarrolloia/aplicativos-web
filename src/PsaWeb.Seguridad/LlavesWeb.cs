@@ -84,12 +84,46 @@ public static class LlavesWeb
 }
 
 /// <summary>
-/// Nivel de trabajo de una cuenta, deducido de sus llaves (para mostrarlo junto al perfil del panel). Se mira el conjunto de llaves de todas
-/// sus empresas activas: el nivel más alto que alcance en alguna.
+/// Perfil único ↔ módulos (PLAN-ACCESOS-WEB §13): qué llaves carga cada perfil por defecto en una empresa, si una cuenta se apartó de su
+/// perfil («personalizado») y qué perfil le corresponde a una cuenta anterior a la unificación (misma regla que la migración PerfilUnico).
 /// </summary>
-public static class NivelesWeb
+public static class PerfilesWeb
 {
-    public const string SinModulos = "Sin módulos";
+    public const string PlantillaTodo = "Super Admin / Admin (todo)";
+
+    /// <summary>Llaves por defecto del perfil en cada empresa (Consulta: ninguna). null para el perfil heredado «Usuario».</summary>
+    public static IReadOnlyList<string>? LlavesPorDefecto(string? perfil) => perfil switch
+    {
+        Identidad.Perfiles.SuperAdmin or Identidad.Perfiles.Admin => LlavesWeb.Plantillas[PlantillaTodo],
+        Identidad.Perfiles.Supervisor => LlavesWeb.Plantillas["Supervisor"],
+        Identidad.Perfiles.Digitador => LlavesWeb.Plantillas["Digitador/a"],
+        Identidad.Perfiles.Vendedor => LlavesWeb.Plantillas["Vendedor"],
+        Identidad.Perfiles.Consulta => Array.Empty<string>(),
+        _ => null,
+    };
+
+    /// <summary>Nombre de la plantilla del perfil en <see cref="LlavesWeb.Plantillas"/> (para preseleccionarla en la ficha).</summary>
+    public static string PlantillaDe(string? perfil) => perfil switch
+    {
+        Identidad.Perfiles.SuperAdmin or Identidad.Perfiles.Admin => PlantillaTodo,
+        Identidad.Perfiles.Supervisor => "Supervisor",
+        Identidad.Perfiles.Digitador => "Digitador/a",
+        Identidad.Perfiles.Vendedor => "Vendedor",
+        _ => "Ninguna (vaciar)",
+    };
+
+    /// <summary>
+    /// true si en alguna empresa activa las llaves no son exactamente las del perfil (p. ej. un Digitador con Kardex, o con lo que le
+    /// daba el .exe). Consulta nunca es «personalizado»: sus módulos siempre se marcan a mano.
+    /// </summary>
+    public static bool Personalizado(string? perfil, IEnumerable<IEnumerable<string>> llavesPorEmpresa)
+    {
+        if (perfil == Identidad.Perfiles.Consulta) return false;
+        var base_ = LlavesPorDefecto(perfil);
+        if (base_ is null) return false;
+        var esperado = base_.ToHashSet(StringComparer.Ordinal);
+        return llavesPorEmpresa.Any(llaves => !esperado.SetEquals(llaves));
+    }
 
     private static readonly string[] Anulaciones =
     {
@@ -106,17 +140,16 @@ public static class NivelesWeb
 
     private static readonly string[] Ventas = { Permisos.VerInventarioVentas, Permisos.VerPrefacturas, Permisos.EmitirPrefactura };
 
-    /// <param name="perfilEfectivo">Perfil del panel (Super Admin y Admin se muestran como tales).</param>
-    public static string Describir(string perfilEfectivo, IEnumerable<string> llaves)
+    /// <summary>
+    /// Perfil que le corresponde a una cuenta sin panel según sus llaves (de todas sus empresas activas). La migración PerfilUnico aplica
+    /// esta misma regla en SQL a las cuentas con el perfil heredado «Usuario».
+    /// </summary>
+    public static string Deducir(IEnumerable<string> llaves)
     {
-        if (perfilEfectivo == Identidad.Perfiles.SuperAdmin) return "Super Admin";
-        if (perfilEfectivo == Identidad.Perfiles.Admin) return "Admin";
         var set = llaves.ToHashSet(StringComparer.Ordinal);
-        if (set.Count == 0) return SinModulos;
-        if (Anulaciones.Any(set.Contains)) return "Supervisor";
-        if (Emision.Any(set.Contains)) return "Digitador";
-        if (set.Contains(Permisos.CerrarPrefactura)) return "Contabilidad de Ventas";
-        if (set.Contains(Permisos.EmitirPrefactura) || set.All(Ventas.Contains)) return "Vendedor";
-        return "Consulta";
+        if (Anulaciones.Any(set.Contains)) return Identidad.Perfiles.Supervisor;
+        if (Emision.Any(set.Contains)) return Identidad.Perfiles.Digitador;
+        if (set.Count > 0 && set.All(Ventas.Contains)) return Identidad.Perfiles.Vendedor;
+        return Identidad.Perfiles.Consulta;
     }
 }

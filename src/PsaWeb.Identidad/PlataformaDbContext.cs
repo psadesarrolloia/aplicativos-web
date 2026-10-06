@@ -28,7 +28,7 @@ public class PlataformaDbContext : IdentityDbContext<UsuarioApp>
             .HasDatabaseName("UX_AspNetUsers_NormalizedEmail")
             .IsUnique()
             .HasFilter("[NormalizedEmail] IS NOT NULL");
-        builder.Entity<UsuarioApp>().Property(u => u.Perfil).HasDefaultValue(Perfiles.Usuario);
+        builder.Entity<UsuarioApp>().Property(u => u.Perfil).HasDefaultValue(Perfiles.Consulta);
 
         builder.Entity<AccesoEmpresa>(e =>
         {

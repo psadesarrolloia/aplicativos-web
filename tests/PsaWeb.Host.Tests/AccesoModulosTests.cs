@@ -86,7 +86,7 @@ public class AccesoModulosTests
         Assert.True(ClaimsPsa.DebeActivarSegundoFactor(Usuario("a", Perfiles.SuperAdmin, false)));
         Assert.True(ClaimsPsa.DebeActivarSegundoFactor(Usuario("a", Perfiles.Admin, false)));
         Assert.False(ClaimsPsa.DebeActivarSegundoFactor(Usuario("a", Perfiles.Admin, true)));
-        Assert.False(ClaimsPsa.DebeActivarSegundoFactor(Usuario("a", Perfiles.Usuario, false)));
+        Assert.False(ClaimsPsa.DebeActivarSegundoFactor(Usuario("a", Perfiles.Supervisor, false)));
         // Cookies emitidas antes del deploy (sin los claims nuevos): no se bloquea a nadie hasta que se renueven.
         Assert.False(ClaimsPsa.DebeActivarSegundoFactor(Usuario("a")));
         Assert.False(ClaimsPsa.DebeActivarSegundoFactor(new ClaimsPrincipal(new ClaimsIdentity())));

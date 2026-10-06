@@ -20,7 +20,7 @@
                     <InputText class="psa-input" @bind-Value="_nuevo.Email" inputmode="email" /></label>
                 <label class="psa-field"><span class="psa-field__lbl">Usuario interno (no cambia nunca)</span>
                     <InputText class="psa-input" @bind-Value="_nuevo.Usuario" placeholder="p. ej. kpaucar" /></label>
-                <label class="psa-field"><span class="psa-field__lbl">Acceso al panel</span>
+                <label class="psa-field"><span class="psa-field__lbl">Perfil</span>
                     <InputSelect class="psa-input" @bind-Value="_nuevo.Perfil">
                         @foreach (var p in Perfiles.Todos)
                         {
@@ -61,7 +61,7 @@
             <table class="psa-table">
                 <thead>
                     <tr>
-                        <th>Usuario</th><th>Nombre</th><th>Correo</th><th title="Acceso al panel de administración">Panel</th><th title="Deducido de sus módulos">Nivel</th><th class="num">Empresas</th>
+                        <th>Usuario</th><th>Nombre</th><th>Correo</th><th>Perfil</th><th class="num">Empresas</th>
                         <th>2FA</th><th>Último acceso</th><th>Estado</th><th>Acciones</th>
                     </tr>
                 </thead>
@@ -80,25 +80,12 @@
                                 }
                             </td>
                             <td>
-                                @if (propia || f.PerfilEfectivo != f.Perfil)
+                                @f.PerfilParaMostrar
+                                @if (f.PerfilEfectivo == Perfiles.SuperAdmin && f.Perfil != Perfiles.SuperAdmin)
                                 {
-                                    @Perfiles.Etiqueta(f.PerfilEfectivo)
-                                    @if (f.PerfilEfectivo != f.Perfil)
-                                    {
-                                        <span class="psa-muted" title="Está en Plataforma:Admins del web.config (respaldo de emergencia)"> (web.config)</span>
-                                    }
-                                }
-                                else
-                                {
-                                    <select class="psa-input" value="@f.Perfil" @onchange="e => CambiarPerfil(f, e.Value?.ToString())">
-                                        @foreach (var p in Perfiles.Todos)
-                                        {
-                                            <option value="@p">@Perfiles.Etiqueta(p)</option>
-                                        }
-                                    </select>
+                                    <span class="psa-muted" title="Está en Plataforma:Admins del web.config (respaldo de emergencia)"> (web.config)</span>
                                 }
                             </td>
-                            <td>@f.Nivel</td>
                             <td class="num">@f.Empresas</td>
                             <td>
                                 @(f.DosFactores ? (f.Metodo == MetodosSegundoFactor.Correo ? "correo" : "app") : "no")
@@ -129,7 +116,7 @@
                         @if (_editando == f.Id)
                         {
                             <tr>
-                                <td colspan="10">
+                                <td colspan="9">
                                     <div class="psa-row" style="align-items:flex-end;flex-wrap:wrap">
                                         <label class="psa-field"><span class="psa-field__lbl">Correo</span>
                                             <input class="psa-input" @bind="_editCorreo" /></label>
@@ -214,7 +201,7 @@
             _crearOk = true;
             _msgCrear = string.Join(" ", partes);
             _nuevo.Usuario = _nuevo.Nombre = _nuevo.Email = _nuevo.PeachUsername = "";
-            _nuevo.Perfil = Perfiles.Usuario;
+            _nuevo.Perfil = Perfiles.Digitador;
             await CargarAsync();
         }
         catch (Exception ex) when (ex is AccesoDenegadoException or InvalidOperationException)
@@ -257,9 +244,6 @@
         finally { _ocupado = false; }
         await CargarAsync();
     }
-
-    private Task CambiarPerfil(UsuarioPanel f, string? perfil) =>
-        Ejecutar(() => Accesos.CambiarPerfilAsync(Actor!, f.Id, perfil ?? ""), $"Perfil de {f.UserName} actualizado.");
 
     private void AbrirEdicion(UsuarioPanel f)
     {
@@ -310,7 +294,7 @@
         [Required(ErrorMessage = "El usuario interno es obligatorio.")]
         public string Usuario { get; set; } = "";
 
-        public string Perfil { get; set; } = Perfiles.Usuario;
+        public string Perfil { get; set; } = Perfiles.Digitador;
         public string PeachUsername { get; set; } = "";
     }
 }

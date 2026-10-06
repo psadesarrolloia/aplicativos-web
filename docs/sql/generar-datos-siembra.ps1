@@ -25,9 +25,10 @@ function Convertir-Perfil([string]$p) {
     if ($p -eq 'SUPERADMIN' -or $p -eq 'SUPER ADMIN') { return @('SuperAdmin', 'TODO') }
     if ($p -eq 'ADMIN') { return @('Admin', 'TODO') }
     # Supervisor (nivel entre Digitador y Admin): lo del .exe + autorizar anulaciones en todas sus empresas. «DIGITADOR PSA» = Supervisor.
-    if ($p -eq 'SUPERVISOR' -or $p -eq 'DIGITADOR PSA') { return @('Usuario', 'SUPERVISOR') }
-    if ($p.StartsWith('DIGITADOR')) { return @('Usuario', 'EXE') }   # «los mismos permisos de hoy en el .exe» (+ Conciliación)
-    if ($p.StartsWith('VENDEDOR')) { return @('Usuario', 'VENDEDOR') }
+    if ($p -eq 'SUPERVISOR' -or $p -eq 'DIGITADOR PSA') { return @('Supervisor', 'SUPERVISOR') }
+    if ($p.StartsWith('DIGITADOR')) { return @('Digitador', 'EXE') }   # «los mismos permisos de hoy en el .exe» (+ Conciliación)
+    if ($p.StartsWith('VENDEDOR')) { return @('Vendedor', 'VENDEDOR') }
+    if ($p -eq 'CONSULTA') { return @('Consulta', 'NINGUNA') }          # solo las empresas; los módulos se marcan a mano
     throw "Perfil desconocido en la matriz: '$p'"
 }
 

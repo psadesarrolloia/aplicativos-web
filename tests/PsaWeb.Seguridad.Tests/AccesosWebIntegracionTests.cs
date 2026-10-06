@@ -107,7 +107,7 @@ public sealed class AccesosWebIntegracionTests : IAsyncLifetime
 
         var super = await CrearAsync(users, "super", Perfiles.SuperAdmin);
         var admin = await CrearAsync(users, "admin", Perfiles.Admin);
-        var vend = await CrearAsync(users, "vend", Perfiles.Usuario);
+        var vend = await CrearAsync(users, "vend", Perfiles.Vendedor);
 
         var actorSuper = (await servicio.ActorAsync(super.UserName))!;
         var actorAdmin = (await servicio.ActorAsync(admin.UserName))!;
@@ -157,11 +157,22 @@ public sealed class AccesosWebIntegracionTests : IAsyncLifetime
         await Assert.ThrowsAsync<AccesoDenegadoException>(() =>
             servicio.GuardarEmpresaAsync(actorAdmin, admin.Id, Sancev, true, null, vendedor));
         await Assert.ThrowsAsync<AccesoDenegadoException>(() =>
-            servicio.CrearUsuarioAsync(actorAdmin, "t_aw_x" + _sufijo, "X", "x@x.ec", Perfiles.Usuario, null));
+            servicio.CrearUsuarioAsync(actorAdmin, "t_aw_x" + _sufijo, "X", "x@x.ec", Perfiles.Consulta, null));
+
+        // Perfil único: Admin pasa al vendedor a Digitador cargando los módulos del perfil (reemplaza lo que tenía en sus empresas).
+        await servicio.CambiarPerfilAsync(actorAdmin, vend.Id, Perfiles.Digitador, aplicarModulos: true);
+        Assert.Equal(LlavesWeb.Plantillas["Digitador/a"].ToHashSet(), (await dir.PermisosAsync(vend.UserName!, Sancev)).ToHashSet());
+        var vendPanel = (await servicio.UsuarioAsync(vend.Id))!;
+        Assert.Equal(Perfiles.Digitador, vendPanel.PerfilEfectivo);
+        Assert.False(vendPanel.Personalizado);
+        // Admin no puede dar Admin; y un módulo extra lo deja «personalizado».
+        await Assert.ThrowsAsync<AccesoDenegadoException>(() => servicio.CambiarPerfilAsync(actorAdmin, vend.Id, Perfiles.Admin));
+        await servicio.GuardarEmpresaAsync(actorAdmin, vend.Id, Sancev, true, "VENDEDOR 1", LlavesWeb.Plantillas["Digitador/a"].Append(Permisos.VerKardex));
+        Assert.True((await servicio.UsuarioAsync(vend.Id))!.Personalizado);
 
         // Correo único: no se puede crear otra cuenta con el mismo correo.
         await Assert.ThrowsAsync<AccesoDenegadoException>(() =>
-            servicio.CrearUsuarioAsync(actorSuper, "t_aw_" + _sufijo + "_dup", "Dup", vend.Email!, Perfiles.Usuario, null));
+            servicio.CrearUsuarioAsync(actorSuper, "t_aw_" + _sufijo + "_dup", "Dup", vend.Email!, Perfiles.Vendedor, null));
 
         // Supervisor (anulaciones) = quien tiene llaves auCance* en esa empresa.
         await servicio.GuardarEmpresaAsync(actorSuper, admin.Id, Sancev, true, null, new[] { Permisos.AutorizarAnulacionFactura });
@@ -192,7 +203,7 @@ public sealed class AccesosWebIntegracionTests : IAsyncLifetime
         var catalogo = sp.GetRequiredService<ICatalogoEmpresas>();
 
         var super = await CrearAsync(users, "super2", Perfiles.SuperAdmin);
-        var dig = await CrearAsync(users, "dig", Perfiles.Usuario);
+        var dig = await CrearAsync(users, "dig", Perfiles.Digitador);
         var actor = (await servicio.ActorAsync(super.UserName))!;
 
         // Algo propio de la web que no está en el .exe: no se tiene que perder.

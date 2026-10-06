@@ -22,7 +22,7 @@
             <div style="overflow-x:auto">
             <table class="psa-table">
                 <thead>
-                    <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th title="Acceso al panel de administración">Panel</th><th title="Deducido de sus módulos">Nivel</th><th class="num">Empresas</th><th>2FA</th><th>Estado</th><th></th></tr>
+                    <tr><th>Nombre</th><th>Usuario</th><th>Correo</th><th>Perfil</th><th class="num">Empresas</th><th>2FA</th><th>Estado</th><th></th></tr>
                 </thead>
                 <tbody>
                     @foreach (var f in Filtradas)
@@ -32,8 +32,7 @@
                             <td>@f.Nombre</td>
                             <td>@f.UserName</td>
                             <td>@f.Email</td>
-                            <td>@Perfiles.Etiqueta(f.PerfilEfectivo)</td>
-                            <td>@f.Nivel</td>
+                            <td>@f.PerfilParaMostrar</td>
                             <td class="num">@f.Empresas</td>
                             <td>@(f.DosFactores ? "sí" : "no")</td>
                             <td>@(f.Activo ? "activa" : "deshabilitada")</td>

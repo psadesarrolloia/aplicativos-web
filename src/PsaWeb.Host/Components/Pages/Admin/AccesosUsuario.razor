@@ -28,7 +28,7 @@
 
         <PsaCard Title="@($"{_usuario.Nombre} ({_usuario.UserName})")">
             <p>
-                @(_usuario.Email ?? "sin correo") · @Perfiles.Etiqueta(_usuario.PerfilEfectivo) ·
+                @(_usuario.Email ?? "sin correo") · <strong>@_usuario.PerfilParaMostrar</strong> ·
                 2FA @(_usuario.DosFactores ? "activa" : "no") · @(_usuario.Activo ? "cuenta activa" : "cuenta DESHABILITADA") ·
                 último acceso @(_usuario.UltimoAccesoUtc?.AddHours(-5).ToString("dd/MM/yyyy HH:mm") ?? "nunca")
             </p>
@@ -46,9 +46,37 @@
             </p>
         </PsaCard>
 
+        <PsaCard Title="Perfil">
+            @if (_perfilesAsignables.Count == 0)
+            {
+                <p class="psa-muted">No puedes cambiar el perfil de esta cuenta.</p>
+            }
+            else
+            {
+                <div class="psa-row" style="align-items:flex-end;flex-wrap:wrap">
+                    <label class="psa-field"><span class="psa-field__lbl">Perfil</span>
+                        <select class="psa-input" @bind="_perfilNuevo">
+                            @foreach (var p in _perfilesAsignables)
+                            {
+                                <option value="@p">@Perfiles.Etiqueta(p)</option>
+                            }
+                        </select></label>
+                    <label class="psa-check" style="display:flex;gap:.4rem;align-items:center">
+                        <input type="checkbox" @bind="_aplicarModulosPerfil" /> Cargar los módulos del perfil en todas sus empresas
+                    </label>
+                    <PsaButton Variant="primary" OnClick="CambiarPerfil"
+                               Disabled="@(_perfilNuevo == _usuario.PerfilEfectivo && !_aplicarModulosPerfil || HayCambios)">Guardar perfil</PsaButton>
+                </div>
+                <p class="psa-muted" style="margin-top:.4rem">
+                    Super Admin y Admin manejan el panel y deben usar 2FA. Supervisor = Digitador + autorizar anulaciones. Consulta no trae módulos:
+                    se marcan a mano. Los módulos se pueden ajustar por empresa más abajo (la cuenta queda «personalizada»).
+                </p>
+            }
+        </PsaCard>
+
         <PsaCard Title="Herramientas">
             <div class="psa-row" style="align-items:flex-end;flex-wrap:wrap">
-                <label class="psa-field"><span class="psa-field__lbl">Plantilla de perfil</span>
+                <label class="psa-field"><span class="psa-field__lbl">Módulos de un perfil</span>
                     <select class="psa-input" @bind="_plantilla">
                         @foreach (var p in LlavesWeb.Plantillas.Keys)
                         {
@@ -61,7 +89,7 @@
                 <PsaButton Variant="secondary" OnClick="ImportarPeach" Disabled="@string.IsNullOrWhiteSpace(_peachUsername)">Copiar (suma, no quita)</PsaButton>
             </div>
             <p class="psa-muted" style="margin-top:.4rem">
-                La plantilla REEMPLAZA los módulos de cada empresa con acceso (no se guarda hasta «Guardar cambios»). Copiar del .exe guarda enseguida.
+                «Aplicar» REEMPLAZA los módulos de cada empresa con acceso (no se guarda hasta «Guardar cambios»). Copiar del .exe guarda enseguida. Al activar una empresa nueva se cargan solos los módulos de su perfil.
             </p>
         </PsaCard>
 
@@ -95,7 +123,7 @@
                     @foreach (var f in _filas.Where(f => _verInactivas || f.EmpresaActiva || f.Asignada))
                     {
                         <tr style="@(f.Sucio ? "background:var(--psa-warn-bg, #fff7e0)" : null)">
-                            <td><input type="checkbox" checked="@f.Activo" @onchange="e => { f.Activo = (bool)(e.Value ?? false); f.Sucio = true; }" /></td>
+                            <td><input type="checkbox" checked="@f.Activo" @onchange="e => ActivarEmpresa(f, (bool)(e.Value ?? false))" /></td>
                             <td>
                                 @f.Nombre
                                 @if (!f.EmpresaActiva) { <span class="psa-muted"> (inactiva)</span> }
@@ -257,6 +285,42 @@
             ModificadoPor = a.ModificadoPor, ModificadoUtc = a.ModificadoUtc,
         }).ToList();
         _token = await Accesos.TokenExtensionAsync(Id);
+        _perfilNuevo = _usuario.PerfilEfectivo;
+        _plantilla = PerfilesWeb.PlantillaDe(_usuario.PerfilEfectivo);
+        _perfilesAsignables = ReglasPanel.PuedeCambiarPerfil(_actor.Rol, _actor.Id, _usuario.Id, _usuario.PerfilEfectivo, _usuario.PerfilEfectivo)
+            ? ReglasPanel.PerfilesAsignables(_actor.Rol).ToList()
+            : new List<string>();
+    }
+
+    private string _perfilNuevo = "";
+    private bool _aplicarModulosPerfil = true;
+    private List<string> _perfilesAsignables = new();
+
+    /// <summary>Al dar acceso a una empresa que no tenía módulos, se cargan los del perfil (después se pueden ajustar).</summary>
+    private void ActivarEmpresa(Fila f, bool activo)
+    {
+        f.Activo = activo;
+        f.Sucio = true;
+        if (activo && f.Llaves.Count == 0 && PerfilesWeb.LlavesPorDefecto(_usuario?.PerfilEfectivo) is { Count: > 0 } llaves)
+        {
+            f.Llaves = new HashSet<string>(llaves, StringComparer.Ordinal);
+        }
+    }
+
+    private async Task CambiarPerfil()
+    {
+        try
+        {
+            await Accesos.CambiarPerfilAsync(_actor!, Id, _perfilNuevo, _aplicarModulosPerfil);
+            await CargarAsync();
+            Aviso(_aplicarModulosPerfil
+                ? $"Perfil: {Perfiles.Etiqueta(_perfilNuevo)}. Se cargaron sus módulos en todas sus empresas."
+                : $"Perfil: {Perfiles.Etiqueta(_perfilNuevo)}. Los módulos quedaron como estaban.", true);
+        }
+        catch (Exception ex) when (ex is AccesoDenegadoException or InvalidOperationException)
+        {
+            Aviso(ex.Message, false);
+        }
     }
 
     private static string Resumen(Fila f)

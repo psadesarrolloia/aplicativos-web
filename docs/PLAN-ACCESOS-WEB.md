@@ -243,3 +243,28 @@ Probado en PREDATOR con la fuente Web: siembra aplicada dos veces (sin duplicar 
 Paucar). Sin panel ni 2FA obligatorio (perfil web «Usuario»). Verónica Paredes queda Digitadora y conserva las anulaciones que le da el .exe
 en PyP. Plantilla «Supervisor» en el panel (llega con el próximo deploy del sitio; la siembra no lo necesita). Recordatorio: el usuario de
 Sage solo se exige para registrar en Sage; los vendedores (inventario + prefacturas) no lo necesitan.
+
+## 13. Perfil único (2026-10-06, para el próximo deploy)
+
+El usuario pidió dejar de tener dos conceptos («perfil de panel» + «nivel por módulos»). Ahora cada cuenta tiene **un solo Perfil**
+(`AspNetUsers.Perfil`), que define el panel, el 2FA y los módulos por defecto:
+
+| Perfil | Panel | 2FA | Módulos por defecto en cada empresa |
+|---|---|---|---|
+| Super Admin | todo | obligatorio | todos |
+| Admin | edita accesos; no crea usuarios ni toca Super Admin | obligatorio | todos |
+| Supervisor | no | opcional (decisión del usuario) | Digitador + autorizar anulaciones |
+| Digitador | no | opcional | comprobantes + reportes + Conciliación |
+| Vendedor | no | opcional | inventario + prefacturas propias |
+| Consulta | no | opcional | ninguno (se marcan a mano) |
+
+- Al dar acceso a una empresa nueva se cargan solos los módulos del perfil; los módulos se pueden ajustar por empresa y la cuenta se
+  muestra «(personalizado)» si se aparta de su perfil (`PerfilesWeb.Personalizado`).
+- Ficha → tarjeta «Perfil»: cambiar perfil con «Cargar los módulos del perfil en todas sus empresas». Super Admin asigna cualquiera;
+  **Admin solo entre Supervisor / Digitador / Vendedor / Consulta** (no da ni quita Admin / Super Admin); nadie cambia el propio.
+- Migración `PerfilUnico` (automática al arrancar): las cuentas con el perfil viejo «Usuario» pasan al que les corresponde por sus módulos
+  (anulaciones → Supervisor; emisión/registro → Digitador; solo ventas → Vendedor; resto → Consulta), misma regla que
+  `PerfilesWeb.Deducir`. En producción: Carina y Verónica → Supervisor, los demás digitadores → Digitador.
+- Matriz / siembra: PERFIL = SUPERADMIN, ADMIN, SUPERVISOR (o DIGITADOR PSA), DIGITADOR, VENDEDOR, CONSULTA. **Verónica Paredes figura
+  DIGITADOR en la matriz**: cambiarla a SUPERVISOR antes de volver a correr la siembra (si no, la siembra le cambia el perfil a Digitador;
+  las llaves no se tocan).

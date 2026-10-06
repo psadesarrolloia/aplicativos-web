@@ -12,6 +12,7 @@
          SUPERVISOR -> lo mismo que EXE + autorizar anulaciones (auCance*) en TODAS sus empresas (nivel entre Digitador y Admin)
          DIGITADOR  -> plantilla Digitador/a (rol «Hacer Comprobantes Electrónicos» + Conciliación SRI)
          VENDEDOR   -> inventario + prefacturas propias + emitir
+         NINGUNA    -> solo acceso a las empresas (perfil Consulta: los módulos se marcan a mano en el panel)
      - Solo AGREGA: no quita empresas ni llaves que alguien haya dado desde el panel.
      - Deshabilita la cuenta de prueba «pruebas1».
      - Deja un evento de auditoría por persona (usuario «siembra-AW4»).
@@ -44,8 +45,8 @@ CREATE TABLE #Personas (
     UsuarioWeb  nvarchar(50)  COLLATE DATABASE_DEFAULT NOT NULL PRIMARY KEY,
     Nombre      nvarchar(120) COLLATE DATABASE_DEFAULT NOT NULL,
     Correo      nvarchar(256) COLLATE DATABASE_DEFAULT NOT NULL,
-    Perfil      nvarchar(20)  COLLATE DATABASE_DEFAULT NOT NULL,   -- SuperAdmin | Admin | Usuario
-    Plantilla   nvarchar(20)  COLLATE DATABASE_DEFAULT NOT NULL,   -- TODO | EXE | DIGITADOR | VENDEDOR
+    Perfil      nvarchar(20)  COLLATE DATABASE_DEFAULT NOT NULL,   -- SuperAdmin | Admin | Supervisor | Digitador | Vendedor | Consulta
+    Plantilla   nvarchar(20)  COLLATE DATABASE_DEFAULT NOT NULL,   -- TODO | EXE | SUPERVISOR | DIGITADOR | VENDEDOR | NINGUNA
     PeachOrigen nvarchar(50)  COLLATE DATABASE_DEFAULT NULL);      -- usuario del .exe en PeachEBills (para EXE)
 CREATE TABLE #Empresas (
     UsuarioWeb  nvarchar(50) COLLATE DATABASE_DEFAULT NOT NULL,
@@ -70,8 +71,8 @@ INSERT INTO #Llaves (Llave, Digitador, Vendedor) VALUES
 
 /* ---------------------------------------------------------------- validaciones (abortan antes de tocar nada) */
 DECLARE @Errores TABLE (Error nvarchar(400));
-INSERT INTO @Errores SELECT N'Perfil inválido para ' + UsuarioWeb + N': ' + Perfil FROM #Personas WHERE Perfil NOT IN (N'SuperAdmin', N'Admin', N'Usuario');
-INSERT INTO @Errores SELECT N'Plantilla inválida para ' + UsuarioWeb + N': ' + Plantilla FROM #Personas WHERE Plantilla NOT IN (N'TODO', N'EXE', N'SUPERVISOR', N'DIGITADOR', N'VENDEDOR');
+INSERT INTO @Errores SELECT N'Perfil inválido para ' + UsuarioWeb + N': ' + Perfil FROM #Personas WHERE Perfil NOT IN (N'SuperAdmin', N'Admin', N'Supervisor', N'Digitador', N'Vendedor', N'Consulta');
+INSERT INTO @Errores SELECT N'Plantilla inválida para ' + UsuarioWeb + N': ' + Plantilla FROM #Personas WHERE Plantilla NOT IN (N'TODO', N'EXE', N'SUPERVISOR', N'DIGITADOR', N'VENDEDOR', N'NINGUNA');
 INSERT INTO @Errores SELECT N'Correo inválido para ' + UsuarioWeb + N': ' + Correo FROM #Personas WHERE Correo NOT LIKE N'_%@_%._%' OR Correo LIKE N'% %';
 INSERT INTO @Errores SELECT N'Correo repetido en los datos: ' + Correo FROM #Personas GROUP BY Correo HAVING COUNT(*) > 1;
 INSERT INTO @Errores

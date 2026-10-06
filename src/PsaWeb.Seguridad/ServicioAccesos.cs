@@ -40,15 +40,38 @@ public static class ReglasPanel
         _ => false,
     };
 
-    /// <summary>Nadie cambia su propio perfil (evita quedarse sin Super Admin por error); solo un Super Admin cambia perfiles.</summary>
-    public static bool PuedeCambiarPerfil(RolPanel actor, string actorId, string objetivoId) =>
-        actor == RolPanel.SuperAdmin && !string.Equals(actorId, objetivoId, StringComparison.Ordinal);
+    /// <summary>
+    /// Nadie cambia su propio perfil (evita quedarse sin Super Admin por error). Super Admin cambia cualquiera. Admin solo entre perfiles sin
+    /// panel (Supervisor, Digitador, Vendedor, Consulta): no da ni quita Admin / Super Admin.
+    /// </summary>
+    public static bool PuedeCambiarPerfil(RolPanel actor, string actorId, string objetivoId, string perfilActual, string perfilNuevo)
+    {
+        if (string.Equals(actorId, objetivoId, StringComparison.Ordinal)) return false;
+        return actor switch
+        {
+            RolPanel.SuperAdmin => true,
+            RolPanel.Admin => !Perfiles.TienePanel(perfilActual) && !Perfiles.TienePanel(perfilNuevo),
+            _ => false,
+        };
+    }
+
+    /// <summary>Perfiles que el actor puede asignarle a otra cuenta (para el selector).</summary>
+    public static IReadOnlyList<string> PerfilesAsignables(RolPanel actor) => actor switch
+    {
+        RolPanel.SuperAdmin => Perfiles.Todos,
+        RolPanel.Admin => Perfiles.Todos.Where(p => !Perfiles.TienePanel(p)).ToList(),
+        _ => Array.Empty<string>(),
+    };
 }
 
+/// <param name="Personalizado">En alguna empresa sus módulos no son exactamente los de su perfil.</param>
 public sealed record UsuarioPanel(
     string Id, string UserName, string? Nombre, string? Email, bool EmailConfirmado, string Perfil, string PerfilEfectivo,
     bool Activo, bool DosFactores, string? Metodo, bool TieneClave, DateTime? UltimoAccesoUtc, int Empresas, string PeachUsername,
-    string Nivel = NivelesWeb.SinModulos);
+    bool Personalizado = false)
+{
+    public string PerfilParaMostrar => Perfiles.Etiqueta(PerfilEfectivo) + (Personalizado ? " (personalizado)" : "");
+}
 
 /// <summary>Estado de una empresa en la ficha de un usuario (asignada o no).</summary>
 public sealed record AccesoEmpresaPanel(
@@ -138,18 +161,20 @@ public sealed class ServicioAccesos
         var usuarios = await db.Users.AsNoTracking().OrderBy(u => u.UserName).ToListAsync(ct);
         var empresas = await db.AccesosEmpresa.AsNoTracking().Where(a => a.Activo)
             .GroupBy(a => a.UsuarioId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
-        var llaves = (await LlavesActivasAsync(db, null, ct)).ToLookup(x => x.UsuarioId, x => x.Llave);
+        var llaves = (await LlavesPorEmpresaAsync(db, null, ct)).ToLookup(x => x.UsuarioId);
         return usuarios.Select(u => Mapear(u, empresas.GetValueOrDefault(u.Id), llaves[u.Id])).ToList();
     }
 
-    /// <summary>Llaves de las empresas activas (de un usuario o de todos), para deducir el nivel.</summary>
-    private static async Task<List<(string UsuarioId, string Llave)>> LlavesActivasAsync(PlataformaDbContext db, string? usuarioId, CancellationToken ct)
+    private sealed record LlavesEmpresa(string UsuarioId, string Ruc, IReadOnlySet<string> Llaves);
+
+    /// <summary>Llaves por empresa activa (de un usuario o de todos): para ver si la cuenta se apartó de su perfil.</summary>
+    private static async Task<List<LlavesEmpresa>> LlavesPorEmpresaAsync(PlataformaDbContext db, string? usuarioId, CancellationToken ct)
     {
-        var q = from l in db.AccesosLlave.AsNoTracking()
-                join a in db.AccesosEmpresa.AsNoTracking() on new { l.UsuarioId, l.Ruc } equals new { a.UsuarioId, a.Ruc }
-                where a.Activo && (usuarioId == null || l.UsuarioId == usuarioId)
-                select new { l.UsuarioId, l.Llave };
-        return (await q.Distinct().ToListAsync(ct)).Select(x => (x.UsuarioId, x.Llave)).ToList();
+        var empresas = await db.AccesosEmpresa.AsNoTracking()
+            .Where(a => a.Activo && (usuarioId == null || a.UsuarioId == usuarioId))
+            .Select(a => new { a.UsuarioId, a.Ruc, Llaves = a.Llaves.Select(l => l.Llave).ToList() })
+            .ToListAsync(ct);
+        return empresas.Select(e => new LlavesEmpresa(e.UsuarioId, e.Ruc, e.Llaves.ToHashSet(StringComparer.Ordinal))).ToList();
     }
 
     public async Task<UsuarioPanel?> UsuarioAsync(string usuarioId, CancellationToken ct = default)
@@ -158,17 +183,20 @@ public sealed class ServicioAccesos
         var u = await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == usuarioId, ct);
         if (u is null) return null;
         var n = await db.AccesosEmpresa.CountAsync(a => a.UsuarioId == usuarioId && a.Activo, ct);
-        var llaves = (await LlavesActivasAsync(db, usuarioId, ct)).Select(x => x.Llave);
-        return Mapear(u, n, llaves);
+        return Mapear(u, n, await LlavesPorEmpresaAsync(db, usuarioId, ct));
     }
 
-    private UsuarioPanel Mapear(UsuarioApp u, int empresas, IEnumerable<string> llaves)
+    private UsuarioPanel Mapear(UsuarioApp u, int empresas, IEnumerable<LlavesEmpresa> llaves)
     {
+        var porEmpresa = llaves.ToList();
         var perfil = UsuarioClaimsFactory.PerfilEfectivo(u, _opciones);
+        // Cuenta anterior a la unificación que todavía no migró: se muestra con el perfil que le corresponde por sus módulos.
+        if (perfil == Perfiles.Usuario) perfil = PerfilesWeb.Deducir(porEmpresa.SelectMany(e => e.Llaves));
         return new(
             u.Id, u.UserName ?? "", u.NombreCompleto, u.Email, u.EmailConfirmed, u.Perfil, perfil,
             u.Activo, u.TwoFactorEnabled, u.TwoFactorEnabled ? (u.MetodoSegundoFactor ?? MetodosSegundoFactor.Totp) : null,
-            u.PasswordHash is not null, u.UltimoAccesoUtc, empresas, u.PeachUsername, NivelesWeb.Describir(perfil, llaves));
+            u.PasswordHash is not null, u.UltimoAccesoUtc, empresas, u.PeachUsername,
+            PerfilesWeb.Personalizado(perfil, porEmpresa.Select(e => e.Llaves)));
     }
 
     /// <summary>Todas las empresas del catálogo (más las asignadas que ya no estén en él) con el estado de acceso del usuario.</summary>
@@ -455,20 +483,36 @@ public sealed class ServicioAccesos
         await _auditoria.RegistrarAsync(TiposEventoAuth.Admin2faQuitado, actor.UserName, u.UserName, ct);
     }
 
-    public async Task CambiarPerfilAsync(Actor actor, string usuarioId, string perfil, CancellationToken ct = default)
+    /// <summary>
+    /// Cambia el perfil. Con <paramref name="aplicarModulos"/>, deja en TODAS sus empresas activas exactamente los módulos del perfil nuevo
+    /// (Consulta: los vacía). Sin él, los módulos quedan como estaban (la cuenta se verá «personalizada» si no coinciden).
+    /// </summary>
+    public async Task CambiarPerfilAsync(Actor actor, string usuarioId, string perfil, bool aplicarModulos = false, CancellationToken ct = default)
     {
-        Exigir(ReglasPanel.PuedeCambiarPerfil(actor.Rol, actor.Id, usuarioId), "No puedes cambiar el perfil de esta cuenta.");
-        Exigir(Perfiles.Valido(perfil), "Perfil inválido.");
-        await using var ambito = Ambito();
-        var users = Usuarios(ambito);
-        var u = await users.FindByIdAsync(usuarioId) ?? throw new InvalidOperationException("No existe ese usuario.");
-        if (u.Perfil == perfil) return;
-        var antes = u.Perfil;
-        u.Perfil = perfil;
-        await users.UpdateAsync(u);
-        await users.UpdateSecurityStampAsync(u); // la sesión abierta de esa persona se re-valida con el perfil nuevo
-        await _auditoria.RegistrarAsync(TiposEventoAuth.PerfilCambiado, actor.UserName,
-            $"{u.UserName}: {Perfiles.Etiqueta(antes)} → {Perfiles.Etiqueta(perfil)}", ct);
+        Exigir(Perfiles.Todos.Contains(perfil), "Perfil inválido.");
+        string antes;
+        await using (var ambito = Ambito())
+        {
+            var users = Usuarios(ambito);
+            var u = await users.FindByIdAsync(usuarioId) ?? throw new InvalidOperationException("No existe ese usuario.");
+            antes = UsuarioClaimsFactory.PerfilEfectivo(u, _opciones);
+            Exigir(ReglasPanel.PuedeCambiarPerfil(actor.Rol, actor.Id, usuarioId, antes, perfil), "No puedes asignar ese perfil a esta cuenta.");
+            if (u.Perfil != perfil)
+            {
+                u.Perfil = perfil;
+                await users.UpdateAsync(u);
+                await users.UpdateSecurityStampAsync(u); // la sesión abierta de esa persona se re-valida con el perfil nuevo
+                await _auditoria.RegistrarAsync(TiposEventoAuth.PerfilCambiado, actor.UserName,
+                    $"{u.UserName}: {Perfiles.Etiqueta(antes)} → {Perfiles.Etiqueta(perfil)}", ct);
+            }
+        }
+        if (!aplicarModulos) return;
+
+        var llaves = PerfilesWeb.LlavesPorDefecto(perfil)!;
+        foreach (var e in (await FichaAsync(usuarioId, ct)).Where(f => f.Asignada && f.Activo))
+        {
+            await GuardarEmpresaAsync(actor, usuarioId, e.Ruc, true, e.UsuarioSage, llaves, ct);
+        }
     }
 
     public async Task CambiarCorreoAsync(Actor actor, string usuarioId, string email, CancellationToken ct = default)
