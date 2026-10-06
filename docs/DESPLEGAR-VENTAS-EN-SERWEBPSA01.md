@@ -84,6 +84,38 @@ facturación de venta (ver §6).
    Los intentos también quedan en `C:\inetpub\CierreDeCaja\logs` («Correo enviado a …» o «No se pudo enviar el correo de la prefactura …»).
 7. **Los 2 destinatarios** no son del `web.config`: se cargan por empresa en **Configuración → Ventas** (correo de Contabilidad y uno adicional).
 
+### 3.2 Caso real: SMTP de HostGator (cPanel) para `paredes.com.ec` — configuración que funcionó (2026-10-05)
+
+Buzón `portalweb@paredes.com.ec`. cPanel lista como «recomendado» el SMTP `mail.paredes.com.ec:465`, pero **desde `SERWEBPSA01` eso no sirve**; lo que funcionó:
+
+```xml
+<environmentVariable name="Correo__Servidor" value="gator4065.hostgator.com" />
+<environmentVariable name="Correo__Puerto"   value="587" />
+<environmentVariable name="Correo__Usuario"  value="portalweb@paredes.com.ec" />
+<environmentVariable name="Correo__Clave"    value="********" />
+<environmentVariable name="Correo__Ssl"      value="true" />
+<environmentVariable name="Correo__De"       value="portalweb@paredes.com.ec" />
+```
+
+Lo que pasó y por qué, para no repetirlo:
+
+| Síntoma | Causa | Solución |
+|---|---|---|
+| El puerto **465** no conecta (`Test-NetConnection` → `TcpTestSucceeded: False`) | Bloqueado desde el servidor. Además la aplicación no soporta SSL implícito (465) | Usar **587 + STARTTLS** (`Correo__Ssl=true`) |
+| `mail.paredes.com.ec:587` abre el puerto pero **no da el saludo `220`**; la web mostraba «Syntax error, command unrecognized» y PowerShell «Unable to read data from the transport connection» | Ese nombre no atiende SMTP en el 587 desde esa red | Usar el **nombre real del servidor de HostGator** (el que sale en la URL de cPanel, `gator4065.hostgator.com`), que sí responde (`220 … bulk e-mail`) |
+| `Send-MailMessage` de PowerShell: «A call to SSPI failed» / «The function requested is not supported» | PowerShell 5.1 negocia TLS 1.0 por defecto en Windows Server 2012 R2 y HostGator exige TLS 1.2. **Es un defecto de la herramienta de prueba**, no de la aplicación | Antes de probar: `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12`. La web usa .NET moderno (SChannel con los valores del sistema) y **no** lo necesita |
+| Kaspersky Small Office | Se sospechó (corta SMTP en algunos equipos) y se descartó: Gmail:587 daba `220` desde el mismo servidor y apagarlo no cambió nada | — |
+
+Diagnóstico rápido que sirve para cualquier proveedor (solo conecta y lee el saludo; en SMTP habla primero el servidor):
+
+```powershell
+function Probar-Smtp($h,$p=587){ try{ $t=New-Object Net.Sockets.TcpClient($h,$p); $s=$t.GetStream(); $s.ReadTimeout=8000; $r=New-Object IO.StreamReader($s); "$h`:$p -> " + $r.ReadLine() }catch{ "$h`:$p -> SIN SALUDO: " + $_.Exception.Message } finally { if($t){$t.Close()} } }
+Probar-Smtp smtp.gmail.com                  # referencia: debe dar 220
+Probar-Smtp gator4065.hostgator.com         # el servidor del proveedor
+```
+
+Notas: pegar los comandos de PowerShell **de uno en uno** (pegados juntos se concatenan y fallan); y `Invoke-WebRequest` a cPanel (`https://gator4065.hostgator.com:2083`) en PowerShell 5.1 da el error inocuo `"utf-8" is not a supported encoding name` *después* de negociar TLS, lo que confirma que el cifrado funciona.
+
 ## 4. Paquete y despliegue
 
 El paquete ya está generado en PREDATOR (Release, `win-x86`, autocontenido; arranca en modo Producción con la escritura apagada, verificado):
