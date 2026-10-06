@@ -27,6 +27,10 @@ public sealed class ChequePdfRenderer
     private static Document Crear(IEnumerable<PaginaCheque> paginas, ConfiguracionCheque config, LogoEmpresa? logo, string titulo)
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        // QuestPDF 2026.9 cambió estos valores por defecto; se fijan como antes para que el cheque no cambie (Arial/Courier del sistema, sin excepción por fuente o glifo faltante).
+        QuestPDF.Settings.UseSystemFonts = true;
+        QuestPDF.Settings.ThrowOnMissingFontFamilies = false;
+        QuestPDF.Settings.ThrowOnMissingTextGlyphs = false;
         var fuente = string.IsNullOrWhiteSpace(config.Fuente) ? "Courier New" : config.Fuente;
         var lista = paginas.ToList();
 

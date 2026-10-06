@@ -65,6 +65,17 @@ public class PrefacturaPdfCorreoTests
     }
 
     [Fact]
+    public void Generar_en_paralelo_no_corrompe_el_texto()
+    {
+        // QuestPDF 2026.8.0 cambiaba glifos al generar varios PDF a la vez (p. ej. "13,90" salía "qs,90"); corregido en 2026.9.x.
+        var p = Ejemplo();
+        var esperado = TextoDelPdf(PrefacturaPdf.Generar(p));
+        var pdfs = new System.Collections.Concurrent.ConcurrentBag<byte[]>();
+        Parallel.For(0, 200, new ParallelOptions { MaxDegreeOfParallelism = 8 }, _ => pdfs.Add(PrefacturaPdf.Generar(p)));
+        Assert.All(pdfs, pdf => Assert.Equal(esperado, TextoDelPdf(pdf)));
+    }
+
+    [Fact]
     public void El_nombre_de_archivo_es_valido_en_Windows()
     {
         var p = Ejemplo() with { ClienteNombre = "A/B: \"C\" <D>?" };

@@ -26,6 +26,10 @@ public static class PrefacturaPdf
     static PrefacturaPdf()
     {
         QuestPDF.Settings.License = LicenseType.Community;
+        // QuestPDF 2026.9 cambió estos valores por defecto; se fijan como antes para que el PDF no cambie (fuentes del sistema, sin excepción por fuente o glifo faltante).
+        QuestPDF.Settings.UseSystemFonts = true;
+        QuestPDF.Settings.ThrowOnMissingFontFamilies = false;
+        QuestPDF.Settings.ThrowOnMissingTextGlyphs = false;
     }
 
     public static string NombreDeArchivo(Prefactura p) => $"{p.NumeroTexto}-{Limpiar(p.ClienteNombre)}.pdf";
