@@ -72,7 +72,7 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Política de rate-limiting para el login: sólo cuenta los <c>POST</c>
-    /// (los envíos de credenciales), 10 por IP cada 5 minutos. Los <c>GET</c> de
+    /// (los envíos de credenciales), 30 por IP cada 5 minutos. Los <c>GET</c> de
     /// la pantalla no consumen cupo. El bloqueo de cuenta (5 fallos / 15 min) es
     /// la defensa primaria; esto es defensa en profundidad contra fuerza bruta
     /// distribuida por usuario. Se llama desde <c>AddRateLimiter(...)</c> del Host.
@@ -90,7 +90,7 @@ public static class ServiceCollectionExtensions
             var ip = contexto.Connection.RemoteIpAddress?.ToString() ?? "sin-ip";
             return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 10,
+                PermitLimit = 30, // en la oficina todos salen por la misma IP pública; el bloqueo por cuenta (5 fallos) es la defensa principal
                 Window = TimeSpan.FromMinutes(5),
                 QueueLimit = 0,
             });

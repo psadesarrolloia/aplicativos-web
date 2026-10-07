@@ -27,6 +27,9 @@ using PsaWeb.SageBridge.Cola;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Publicación por Cloudflare Tunnel (acceso externo, E1): IP real del cliente, cookies Secure, cabeceras, /admin por red, límite general.
+var publico = builder.AddPublicacion();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -90,6 +93,7 @@ if (plataformaConfigurada)
     builder.Services.AddRateLimiter(opciones =>
     {
         PsaWeb.Identidad.ServiceCollectionExtensions.AgregarPoliticaLimiteLogin(opciones);
+        PsaWeb.Host.Auth.PublicacionExtensions.AgregarLimiteGeneral(opciones, publico);
         // Extensión de Chrome (endpoint público por token): 30 subidas por minuto por IP.
         opciones.AddPolicy(Program.PoliticaExtension, contexto => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
             contexto.Connection.RemoteIpAddress?.ToString() ?? "sin-ip",
@@ -211,6 +215,15 @@ app.Logger.LogInformation(
     "Plataforma (identidad local): {Estado}.",
     plataformaConfigurada ? "ACTIVA" : "INACTIVA (sin Plataforma:ConnectionString)");
 app.Logger.LogInformation(
+    "Publicación externa: {Estado}; proxies confiables {Proxies}; /admin {Admin}.",
+    publico.Habilitado ? "HABILITADA (cookies Secure, HSTS)" : "deshabilitada (HTTP interno)",
+    publico.ProxiesConfiables.Count == 0 ? "ninguno" : string.Join(", ", publico.ProxiesConfiables),
+    publico.AdminIpsPermitidas.Count == 0 ? "sin restricción de red" : "solo desde " + string.Join(", ", publico.AdminIpsPermitidas));
+if (publico.Habilitado && (app.Configuration["AllowedHosts"] ?? "*") == "*")
+{
+    app.Logger.LogWarning("Publico:Habilitado=true con AllowedHosts=*: define AllowedHosts=webapp.paredes.com.ec;192.168.0.11;localhost en el web.config.");
+}
+app.Logger.LogInformation(
     "Accesos (empresas y permisos): fuente {Fuente}{Modo}.",
     fuenteAccesos,
     fuenteAccesos == PsaWeb.Seguridad.FuenteAccesos.Web ? " (tabla web, sin GateProvisional)" : " (tablas del .exe, con GateProvisional)");
@@ -306,6 +319,9 @@ if (plataformaConfigurada)
         }
     }
 }
+
+// Primero de todo: la IP y el esquema reales (del conector de Cloudflare), las cabeceras de seguridad y /admin por red.
+app.UsePublicacion();
 
 if (!app.Environment.IsDevelopment())
 {
