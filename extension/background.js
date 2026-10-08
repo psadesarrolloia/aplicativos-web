@@ -8,13 +8,22 @@
 
 const ENDPOINT = "/conciliacion-sri/api/comprobantes";
 
+// Desde 2026-10 el sitio se publica en https://webapp.paredes.com.ec (también para la oficina). Si la
+// configuración está vacía o todavía tiene la dirección interna vieja, se usa (y se guarda) la nueva.
+const HOST_PUBLICO = "https://webapp.paredes.com.ec";
+const HOST_VIEJO = /^http:\/\/192\.168\.0\.11(:8088)?$/;
+
 // El ícono ya no tiene un popup transitorio (se cerraba solo al cambiar de
 // pestaña para copiar el token o la URL de PSA, antes de terminar de pegar
 // las dos cosas) — abre la configuración como una pestaña normal en su lugar.
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
 
 async function obtenerConfiguracion() {
-  const { tokenApi, hostPsa } = await chrome.storage.local.get(["tokenApi", "hostPsa"]);
+  let { tokenApi, hostPsa } = await chrome.storage.local.get(["tokenApi", "hostPsa"]);
+  if (!hostPsa || HOST_VIEJO.test(hostPsa)) {
+    hostPsa = HOST_PUBLICO;
+    await chrome.storage.local.set({ hostPsa });
+  }
   return { tokenApi, hostPsa };
 }
 
@@ -33,10 +42,6 @@ async function subirReporte(ruc, contenido) {
   if (!tokenApi) {
     return { ok: false, mensaje: "Configura tu token de PSA en el ícono de la extensión." };
   }
-  if (!hostPsa) {
-    return { ok: false, mensaje: "Configura la dirección del sitio de PSA en el ícono de la extensión." };
-  }
-
   let respuesta;
   try {
     respuesta = await fetch(`${hostPsa}${ENDPOINT}`, {

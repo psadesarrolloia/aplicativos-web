@@ -32,20 +32,33 @@ Todo vive en `src/PsaWeb.Host/Auth/Publicacion.cs` y se configura en el web.conf
 | Login | El límite del login subió de 10 a **30 POST por IP cada 5 min** por la misma razón; la defensa principal sigue siendo el bloqueo por cuenta (5 fallos → 15 min). |
 | `AllowedHosts` | Se fija en el web.config; si la publicación está habilitada con `AllowedHosts=*`, el log lo advierte al arrancar. |
 
-### Variables del web.config (se cargan en E3, con el túnel funcionando)
+### Variables del web.config en producción
 
 ```xml
 <environmentVariable name="Publico__Habilitado" value="true" />
-<environmentVariable name="Publico__ProxiesConfiables__0" value="192.168.0.X" />        <!-- IP de la PC con cloudflared -->
-<environmentVariable name="Publico__AdminIpsPermitidas__0" value="IP.PUBLICA.OFICINA" /> <!-- si es fija -->
-<environmentVariable name="Publico__AdminIpsPermitidas__1" value="192.168.0.0/24" />    <!-- red interna -->
+<environmentVariable name="Publico__ProxiesConfiables__0" value="192.168.0.199" />   <!-- LENOVOTINY, conector cloudflared -->
 <environmentVariable name="AllowedHosts" value="webapp.paredes.com.ec;192.168.0.11;localhost" />
+<environmentVariable name="Publico__UrlPublica" value="https://webapp.paredes.com.ec" />          <!-- redirección de la dirección vieja -->
 ```
+
+`Publico__UrlPublica`: con la publicación habilitada, quien abra `http://192.168.0.11:8088` (marcador viejo) es redirigido (302) a la
+misma ruta en `https://webapp.paredes.com.ec`. Solo GET/HEAD: un POST redirigido a otro origen pierde el encabezado `Authorization`, y la
+extensión con la dirección vieja daría «token no válido». Debe ser `https://dominio` sin ruta; si no, el sitio no arranca.
+
+**Extensión de Chrome 0.2.2:** permiso para `https://webapp.paredes.com.ec/*`; si la configuración está vacía o tiene
+`http://192.168.0.11[:8088]`, usa y guarda sola la dirección pública. Verificado: `POST /conciliacion-sri/api/comprobantes` por la URL
+pública sin token responde 401 desde el sitio (Cloudflare no bloquea el POST).
+
+**Sin `Publico__AdminIpsPermitidas`** (decisión del usuario, 2026-10-07): Super Admin y Admin ven Configuración desde cualquier red; el
+control es su 2FA obligatorio. La restricción por red queda disponible en el código por si se quiere volver a usar.
 
 Las IPv4 se validan al arrancar (4 números): `IPAddress.Parse` acepta formas viejas como `200.1.2` = `200.1.0.2`, y una IP mal tipeada
 habilitaría otra dirección en silencio; ahora el sitio no arranca y el log dice cuál.
 
-Log esperado: `Publicación externa: HABILITADA (cookies Secure, HSTS); proxies confiables 192.168.0.X; /admin solo desde …`.
+Log esperado: `Publicación externa: HABILITADA (cookies Secure, HSTS); proxies confiables 192.168.0.199; /admin sin restricción de red.`
+
+Con `Publico__Habilitado=true` el login ya no funciona por `http://192.168.0.11:8088` (el antiforgery con cookie Secure da error por HTTP):
+todos entran por `https://webapp.paredes.com.ec`.
 
 **Pruebas** (`tests/PsaWeb.Host.Tests/PublicacionTests.cs`, pipeline real con TestServer): IP real solo desde el conector, encabezados
 ignorados desde otra IP, `/admin` desde celular 403 / desde la oficina y la red interna OK, cabeceras y CSP en páginas y no en PDF, cookies

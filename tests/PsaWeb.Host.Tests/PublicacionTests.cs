@@ -43,6 +43,7 @@ public class PublicacionTests
         app.MapGet("/doc.pdf", () => Results.Bytes(new byte[] { 1 }, "application/pdf"));
         app.MapGet("/admin/usuarios", () => "panel");
         app.MapGet("/quien", (HttpContext h) => $"{h.Connection.RemoteIpAddress}|{h.Request.Scheme}");
+        app.MapPost("/conciliacion-sri/api/comprobantes", () => "recibido");
         await app.StartAsync();
         return (app, app.GetTestServer());
     }
@@ -133,6 +134,59 @@ public class PublicacionTests
         await using var _ = app;
         var c = await Pedir(server, "/admin/usuarios", Externo);
         Assert.Equal(StatusCodes.Status200OK, c.Response.StatusCode);
+    }
+
+    private const string UrlPublica = "https://webapp.paredes.com.ec";
+
+    [Fact]
+    public async Task Por_HTTP_directo_se_redirige_a_la_direccion_publica_conservando_ruta_y_consulta()
+    {
+        var (app, server) = await Levantar(true, ("Publico:UrlPublica", UrlPublica + "/"));
+        await using var _ = app;
+        var c = await Pedir(server, "/ingresar", "192.168.0.23", r => r.QueryString = new QueryString("?ReturnUrl=%2Fventas"));
+        Assert.Equal(StatusCodes.Status302Found, c.Response.StatusCode);
+        Assert.Equal("https://webapp.paredes.com.ec/ingresar?ReturnUrl=%2Fventas", c.Response.Headers.Location.ToString());
+    }
+
+    [Fact]
+    public async Task Lo_que_llega_por_el_conector_en_HTTPS_no_se_redirige()
+    {
+        var (app, server) = await Levantar(true, ("Publico:UrlPublica", UrlPublica));
+        await using var _ = app;
+        var c = await Pedir(server, "/quien", Conector, r => { r.Headers["CF-Connecting-IP"] = Externo; r.Headers["X-Forwarded-Proto"] = "https"; });
+        Assert.Equal(StatusCodes.Status200OK, c.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Un_POST_por_HTTP_directo_no_se_redirige_para_no_perder_el_token_de_la_extension()
+    {
+        var (app, server) = await Levantar(true, ("Publico:UrlPublica", UrlPublica));
+        await using var _ = app;
+        var c = await server.SendAsync(h =>
+        {
+            h.Request.Path = "/conciliacion-sri/api/comprobantes";
+            h.Request.Method = "POST";
+            h.Connection.RemoteIpAddress = IPAddress.Parse("192.168.0.23");
+        });
+        Assert.Equal(StatusCodes.Status200OK, c.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Sin_publicacion_habilitada_no_hay_redireccion()
+    {
+        var (app, server) = await Levantar(false, ("Publico:UrlPublica", UrlPublica));
+        await using var _ = app;
+        var c = await Pedir(server, "/quien", "192.168.0.23");
+        Assert.Equal(StatusCodes.Status200OK, c.Response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("http://webapp.paredes.com.ec")]
+    [InlineData("https://webapp.paredes.com.ec/ingresar")]
+    [InlineData("webapp.paredes.com.ec")]
+    public async Task Una_UrlPublica_mal_escrita_falla_al_arrancar(string url)
+    {
+        await Assert.ThrowsAnyAsync<FormatException>(() => Levantar(true, ("Publico:UrlPublica", url)));
     }
 
     [Theory]

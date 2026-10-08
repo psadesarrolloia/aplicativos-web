@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "PSA - Conciliación con SRI - Docs Recibidos",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Sube el reporte de documentos electrónicos recibidos del SRI (facturas, notas de crédito y retenciones) a PSA para conciliarlo contra Sage 50.",
   "permissions": ["storage", "notifications"],
   "host_permissions": [
     "https://srienlinea.sri.gob.ec/*",
+    "https://webapp.paredes.com.ec/*",
     "http://192.168.0.11/*",
     "http://localhost/*",
     "http://127.0.0.1/*"

@@ -215,8 +215,9 @@ app.Logger.LogInformation(
     "Plataforma (identidad local): {Estado}.",
     plataformaConfigurada ? "ACTIVA" : "INACTIVA (sin Plataforma:ConnectionString)");
 app.Logger.LogInformation(
-    "Publicación externa: {Estado}; proxies confiables {Proxies}; /admin {Admin}.",
+    "Publicación externa: {Estado}{Redireccion}; proxies confiables {Proxies}; /admin {Admin}.",
     publico.Habilitado ? "HABILITADA (cookies Secure, HSTS)" : "deshabilitada (HTTP interno)",
+    publico.Habilitado && !string.IsNullOrWhiteSpace(publico.UrlPublica) ? $", HTTP directo redirige a {publico.UrlPublica}" : "",
     publico.ProxiesConfiables.Count == 0 ? "ninguno" : string.Join(", ", publico.ProxiesConfiables),
     publico.AdminIpsPermitidas.Count == 0 ? "sin restricción de red" : "solo desde " + string.Join(", ", publico.AdminIpsPermitidas));
 if (publico.Habilitado && (app.Configuration["AllowedHosts"] ?? "*") == "*")

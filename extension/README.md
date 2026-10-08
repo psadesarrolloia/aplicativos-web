@@ -16,8 +16,9 @@ sin pasar por la carpeta de Descargas.
    estar escondido bajo el ícono de rompecabezas) — abre una **pestaña normal**
    de configuración (no un cuadro chico que se cierra solo), así que puedes ir
    y volver de otra pestaña sin perder lo que ya escribiste → completar:
-   - **Sitio de PSA**: `http://192.168.0.11:8088` (o la dirección que
-     corresponda).
+   - **Sitio de PSA**: `https://webapp.paredes.com.ec` (ya viene puesto; desde
+     la versión 0.2.2 la dirección interna vieja `http://192.168.0.11:8088` se
+     cambia sola por esta). Funciona desde la oficina y desde fuera.
    - **Token de API**: generado en PSA, en `/mi-cuenta/extension` (logueada
      con tu usuario) → "Generar token para la extensión" → copiarlo
      **inmediatamente** (no se vuelve a mostrar).

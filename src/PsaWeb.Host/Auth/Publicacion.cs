@@ -38,6 +38,13 @@ public sealed class PublicacionOptions
 
     /// <summary>Peticiones por minuto por IP en todo el sitio (0 = sin límite). Holgado: en la oficina todos salen por la misma IP pública.</summary>
     public int PeticionesPorMinutoPorIp { get; set; } = 1200;
+
+    /// <summary>
+    /// Dirección pública (p. ej. https://webapp.paredes.com.ec). Con <see cref="Habilitado"/>, quien abra el sitio por HTTP directo
+    /// (http://192.168.0.11:8088, marcador viejo) es redirigido acá en lugar de ver el error del login sin HTTPS. Solo GET/HEAD: un POST
+    /// redirigido a otro origen pierde el encabezado Authorization (la extensión con la dirección vieja daría «token no válido»).
+    /// </summary>
+    public string? UrlPublica { get; set; }
 }
 
 /// <summary>Lista de IPs y redes CIDR (IPv4 / IPv6; una IPv4 mapeada en IPv6 se compara como IPv4).</summary>
@@ -89,6 +96,11 @@ public static class PublicacionExtensions
         // Valida las listas al arrancar (una IP mal escrita en el web.config tiene que fallar enseguida, no en la primera petición).
         var proxies = new ListaIps(opciones.ProxiesConfiables);
         _ = new ListaIps(opciones.AdminIpsPermitidas);
+        if (!string.IsNullOrWhiteSpace(opciones.UrlPublica)
+            && !(Uri.TryCreate(opciones.UrlPublica, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps && url.AbsolutePath == "/"))
+        {
+            throw new FormatException($"Publico:UrlPublica inválida: «{opciones.UrlPublica}» (se espera https://dominio, sin ruta).");
+        }
         builder.Services.AddSingleton(opciones);
 
         builder.Services.Configure<ForwardedHeadersOptions>(o =>
@@ -134,10 +146,19 @@ public static class PublicacionExtensions
         app.UseForwardedHeaders();
         var opciones = app.Services.GetRequiredService<PublicacionOptions>();
         var admin = new ListaIps(opciones.AdminIpsPermitidas);
+        var urlPublica = opciones.Habilitado && !string.IsNullOrWhiteSpace(opciones.UrlPublica) ? opciones.UrlPublica.TrimEnd('/') : null;
 
         app.Use(async (http, next) =>
         {
             AplicarCabeceras(http);
+            // Por HTTP directo el login ya no funciona (cookies Secure): se manda a la dirección pública. Lo que llega por el conector ya es
+            // HTTPS (X-Forwarded-Proto), así que no hay bucle.
+            if (urlPublica is not null && !http.Request.IsHttps
+                && (HttpMethods.IsGet(http.Request.Method) || HttpMethods.IsHead(http.Request.Method)))
+            {
+                http.Response.Redirect(urlPublica + http.Request.PathBase + http.Request.Path + http.Request.QueryString);
+                return;
+            }
             if (!admin.Vacia && EsRutaAdmin(http.Request.Path) && !admin.Contiene(http.Connection.RemoteIpAddress))
             {
                 http.Response.StatusCode = StatusCodes.Status403Forbidden;
